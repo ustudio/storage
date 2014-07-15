@@ -112,3 +112,56 @@ class TestFTPStorage(TestCase):
         mock_open.assert_called_with("some_file", "rb")
         mock_ftp.storbinary.assert_called_with(
             "STOR file", mock_open.return_value.__enter__.return_value)
+
+
+class TestFTPSStorage(TestCase):
+    @mock.patch("ftplib.FTP_TLS", autospec=True)
+    def test_save_to_filename(self, mock_ftp_class):
+        temp_output = tempfile.NamedTemporaryFile()
+
+        mock_results = ["foo", "bar"]
+
+        def mock_retrbinary(command, callback):
+            for chunk in mock_results:
+                callback(chunk)
+
+            return "226"
+
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.retrbinary.side_effect = mock_retrbinary
+
+        storage = get_storage("ftps://user:password@ftp.foo.com/folder/file")
+
+        storage.save_to_filename(temp_output.name)
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+        mock_ftp.prot_p.assert_called_with()
+
+        mock_ftp.cwd.assert_called_with("folder")
+        self.assertEqual(1, mock_ftp.retrbinary.call_count)
+        self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
+
+        with open(temp_output.name) as output_fp:
+            self.assertEqual("foobar", output_fp.read())
+
+    @mock.patch("__builtin__.open", autospec=True)
+    @mock.patch("ftplib.FTP_TLS", autospec=True)
+    def test_load_from_filename(self, mock_ftp_class, mock_open):
+        mock_ftp = mock_ftp_class.return_value
+
+        storage = get_storage("ftps://user:password@ftp.foo.com/folder/file")
+
+        storage.load_from_filename("some_file")
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+        mock_ftp.prot_p.assert_called_with()
+
+        mock_ftp.cwd.assert_called_with("folder")
+
+        mock_open.assert_called_with("some_file", "rb")
+        mock_ftp.storbinary.assert_called_with(
+            "STOR file", mock_open.return_value.__enter__.return_value)

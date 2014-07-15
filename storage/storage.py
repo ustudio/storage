@@ -91,10 +91,26 @@ class FTPStorage(Storage):
             ftp_client.storbinary("STOR {0}".format(filename), input_file)
 
 
+class FTPSStorage(FTPStorage):
+    def _connect(self):
+        username = self._parsed_storage_uri.username
+        password = self._parsed_storage_uri.password
+        hostname = self._parsed_storage_uri.hostname
+        port = 21
+
+        ftp_client = ftplib.FTP_TLS()
+        ftp_client.connect(hostname, port=port)
+        ftp_client.login(username, password)
+        ftp_client.prot_p()
+
+        return ftp_client
+
+
 _STORAGE_TYPES = {
     "file": LocalStorage,
     "cloudfiles": CloudFilesStorage,
-    "ftp": FTPStorage
+    "ftp": FTPStorage,
+    "ftps": FTPSStorage
 }
 
 
