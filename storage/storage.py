@@ -1,3 +1,5 @@
+import ftplib
+import os.path
 import shutil
 import urlparse
 
@@ -56,9 +58,43 @@ class CloudFilesStorage(Storage):
         pyrax.cloudfiles.upload_file(container_name, file_path, object_name)
 
 
+class FTPStorage(Storage):
+    def _connect(self):
+        username = self._parsed_storage_uri.username
+        password = self._parsed_storage_uri.password
+        hostname = self._parsed_storage_uri.hostname
+        port = 21
+
+        ftp_client = ftplib.FTP()
+        ftp_client.connect(hostname, port=port)
+        ftp_client.login(username, password)
+
+        return ftp_client
+
+    def _cd_to_file(self, ftp_client):
+        directory, filename = os.path.split(self._parsed_storage_uri.path.lstrip("/"))
+        ftp_client.cwd(directory)
+        return filename
+
+    def save_to_filename(self, file_path):
+        ftp_client = self._connect()
+        filename = self._cd_to_file(ftp_client)
+
+        with open(file_path, "wb") as output_file:
+            ftp_client.retrbinary("RETR {0}".format(filename), callback=output_file.write)
+
+    def load_from_filename(self, file_path):
+        ftp_client = self._connect()
+        filename = self._cd_to_file(ftp_client)
+
+        with open(file_path, "rb") as input_file:
+            ftp_client.storbinary("STOR {0}".format(filename), input_file)
+
+
 _STORAGE_TYPES = {
     "file": LocalStorage,
-    "cloudfiles": CloudFilesStorage
+    "cloudfiles": CloudFilesStorage,
+    "ftp": FTPStorage
 }
 
 
