@@ -31,6 +31,13 @@ class TestLocalStorage(TestCase):
         with open(temp_output.name) as temp_output_fp:
             self.assertEqual("FOOBAR", temp_output_fp.read())
 
+    @mock.patch("os.remove", autospec=True)
+    def test_local_storage_delete(self, mock_remove):
+        storage = get_storage("file:///folder/file")
+        storage.delete()
+
+        mock_remove.assert_called_with("/folder/file")
+
 
 class TestRackspaceStorage(TestCase):
 

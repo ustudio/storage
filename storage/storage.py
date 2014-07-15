@@ -1,4 +1,5 @@
 import ftplib
+import os
 import os.path
 import shutil
 import urlparse
@@ -16,16 +17,20 @@ class Storage(object):
     def load_from_filename(self, file_path):
         raise NotImplementedError("A Storage class must implement 'load_from_filename'")
 
+    def delete(self):
+        raise NotImplementedError("A Storage class must implement 'delete'")
+
 
 class LocalStorage(Storage):
 
     def save_to_filename(self, file_path):
-        input_path = self._storage_uri.split("://", 1)[1]
-        shutil.copy(input_path, file_path)
+        shutil.copy(self._parsed_storage_uri.path, file_path)
 
     def load_from_filename(self, file_path):
-        output_path = self._storage_uri.split("://", 1)[1]
-        shutil.copy(file_path, output_path)
+        shutil.copy(file_path, self._parsed_storage_uri.path)
+
+    def delete(self):
+        os.remove(self._parsed_storage_uri.path)
 
 
 import pyrax
