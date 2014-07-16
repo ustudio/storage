@@ -1,4 +1,5 @@
 import ftplib
+import os
 import os.path
 import shutil
 import urlparse
@@ -10,22 +11,31 @@ class Storage(object):
         self._storage_uri = storage_uri
         self._parsed_storage_uri = urlparse.urlparse(storage_uri)
 
+    def _class_name(self):
+        return self.__class__.__name__
+
     def save_to_filename(self, file_path):
-        raise NotImplementedError("A Storage class must implement 'save_to_filename'")
+        raise NotImplementedError(
+            "{0} does not implement 'save_to_filename'".format(self._class_name()))
 
     def load_from_filename(self, file_path):
-        raise NotImplementedError("A Storage class must implement 'load_from_filename'")
+        raise NotImplementedError(
+            "{0} does not implement 'load_from_filename'".format(self._class_name()))
+
+    def delete(self):
+        raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
 
 
 class LocalStorage(Storage):
 
     def save_to_filename(self, file_path):
-        input_path = self._storage_uri.split("://", 1)[1]
-        shutil.copy(input_path, file_path)
+        shutil.copy(self._parsed_storage_uri.path, file_path)
 
     def load_from_filename(self, file_path):
-        output_path = self._storage_uri.split("://", 1)[1]
-        shutil.copy(file_path, output_path)
+        shutil.copy(file_path, self._parsed_storage_uri.path)
+
+    def delete(self):
+        os.remove(self._parsed_storage_uri.path)
 
 
 import pyrax
@@ -56,6 +66,11 @@ class CloudFilesStorage(Storage):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
         pyrax.cloudfiles.upload_file(container_name, file_path, object_name)
+
+    def delete(self):
+        self._authenticate()
+        container_name, object_name = self._get_container_and_object_names()
+        pyrax.cloudfiles.delete_object(container_name, object_name)
 
 
 class FTPStorage(Storage):
@@ -89,6 +104,11 @@ class FTPStorage(Storage):
 
         with open(file_path, "rb") as input_file:
             ftp_client.storbinary("STOR {0}".format(filename), input_file)
+
+    def delete(self):
+        ftp_client = self._connect()
+        filename = self._cd_to_file(ftp_client)
+        ftp_client.delete(filename)
 
 
 class FTPSStorage(FTPStorage):
