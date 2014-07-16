@@ -11,14 +11,19 @@ class Storage(object):
         self._storage_uri = storage_uri
         self._parsed_storage_uri = urlparse.urlparse(storage_uri)
 
+    def _class_name(self):
+        return self.__class__.__name__
+
     def save_to_filename(self, file_path):
-        raise NotImplementedError("A Storage class must implement 'save_to_filename'")
+        raise NotImplementedError(
+            "{0} does not implement 'save_to_filename'".format(self._class_name()))
 
     def load_from_filename(self, file_path):
-        raise NotImplementedError("A Storage class must implement 'load_from_filename'")
+        raise NotImplementedError(
+            "{0} does not implement 'load_from_filename'".format(self._class_name()))
 
     def delete(self):
-        raise NotImplementedError("A Storage class must implement 'delete'")
+        raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
 
 
 class LocalStorage(Storage):
@@ -62,6 +67,11 @@ class CloudFilesStorage(Storage):
         container_name, object_name = self._get_container_and_object_names()
         pyrax.cloudfiles.upload_file(container_name, file_path, object_name)
 
+    def delete(self):
+        self._authenticate()
+        container_name, object_name = self._get_container_and_object_names()
+        pyrax.cloudfiles.delete_object(container_name, object_name)
+
 
 class FTPStorage(Storage):
     def _connect(self):
@@ -94,6 +104,11 @@ class FTPStorage(Storage):
 
         with open(file_path, "rb") as input_file:
             ftp_client.storbinary("STOR {0}".format(filename), input_file)
+
+    def delete(self):
+        ftp_client = self._connect()
+        filename = self._cd_to_file(ftp_client)
+        ftp_client.delete(filename)
 
 
 class FTPSStorage(FTPStorage):
