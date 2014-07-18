@@ -48,17 +48,18 @@ class TestRetry(unittest.TestCase):
     @mock.patch("random.uniform")
     @mock.patch("time.sleep")
     def test_reraises_last_exception_on_attempt_exhaustion(self, mock_sleep, mock_uniform):
-        mock_uniform.side_effect = [0.5, 2.4]
+        mock_uniform.side_effect = [0.5, 2.4, 3.6, 5.6]
 
-        failing_function = mock.Mock(side_effect=[RuntimeError, RuntimeError, RuntimeError])
+        failing_function = mock.Mock(
+            side_effect=[RuntimeError, RuntimeError, RuntimeError, RuntimeError, RuntimeError])
 
         with self.assertRaises(RuntimeError):
             retry.attempt(failing_function, 1, 2, foo="bar", biz="baz")
 
-        self.assertEqual(2, mock_uniform.call_count)
-        self.assertEqual(2, mock_sleep.call_count)
+        self.assertEqual(4, mock_uniform.call_count)
+        self.assertEqual(4, mock_sleep.call_count)
 
-        self.assertEqual(3, failing_function.call_count)
+        self.assertEqual(5, failing_function.call_count)
         failing_function.assert_called_with(1, 2, foo="bar", biz="baz")
 
     @mock.patch("random.uniform")
