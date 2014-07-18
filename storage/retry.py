@@ -1,3 +1,7 @@
+import random
+import time
+
+
 max_attempts = 3
 
 
@@ -15,3 +19,6 @@ def attempt(f, *args, **kwargs):
 
             if attempts >= max_attempts:
                 raise
+
+            sleep_time = random.uniform(0, (2 ** attempts) - 1)
+            time.sleep(sleep_time)
