@@ -35,7 +35,7 @@ The value returned by `get_storage` is a `Storage` object, which
 represents a file accessible by the scheme provided to
 `get_storage`. This object has the following methods:
 
-#### 'load_from_filename(filename)` ####
+#### `load_from_filename(filename)` ####
 
 Uploads the contents of the file at `filename` to the location
 specified by the URI to `get_storage`.
@@ -99,9 +99,9 @@ Example:
 ftps://username:password@my-secure-ftp-server/directory/awesome-file.txt
 ```
 
-### `retries` ###
+### `retry` ###
 
-The `retries` module provides a means for client code to attempt to
+The `retry` module provides a means for client code to attempt to
 transfer a file multiple times, in case of network or other
 failures. Exponential backoff is used to wait between retries, and the
 operation will be tried a maximum of 5 times before giving up.
@@ -120,7 +120,7 @@ configured to overwrite files by default.
 
 ```python
 from storage import get_storage
-from storage.retries import attempt
+from storage.retry import attempt
 
 # Create a reference to a local or remote file, by URI
 source_file = get_storage("file:///path/to/file.txt")
@@ -137,7 +137,7 @@ attempt(source_file.delete)
 
 #### API ####
 
-##### `attempt(function, *args, **kwargs) #####
+##### `attempt(function, *args, **kwargs)` #####
 
 Call `function`, passing in `*args` and `**kwargs`. If the function
 raises an exception, sleep and try again, using exponential backoff
