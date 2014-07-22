@@ -78,6 +78,16 @@ Example:
 cloudfiles://username:apikey@container/awesome-file.txt
 ```
 
+You can force CloudFiles to use the internal ServiceNet network, by
+adding the query parameter `?public=false` to the URI. This saves
+bandwidth if you are accessing CloudFiles from within the same
+datacenter.
+
+Note: Currently, the storage library will always connect to the DFW
+region in Rackspace; there is no way to specify a region at this
+time. It is possible that the URI scheme will change when this support
+is added.
+
 #### ftp ####
 
 A reference to a file on an FTP server. Username and passwords are supported.
