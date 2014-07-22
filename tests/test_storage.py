@@ -1,7 +1,7 @@
 import mock
 import tempfile
 from unittest import TestCase
-from storage.storage import get_storage
+from storage import get_storage
 
 
 class TestLocalStorage(TestCase):
