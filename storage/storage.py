@@ -4,6 +4,8 @@ import os.path
 import shutil
 import urlparse
 
+urlparse.uses_query.append("cloudfiles")
+
 
 class Storage(object):
 
@@ -46,9 +48,13 @@ class CloudFilesStorage(Storage):
     def _authenticate(self):
         auth, _ = self._parsed_storage_uri.netloc.split("@")
         username, password = auth.split(":", 1)
+
+        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        public = query.get("public", ["True"])[0].lower() != "false"
+
         context = pyrax.create_context("rackspace", username, password)
         context.authenticate()
-        self._cloudfiles = context.get_client("cloudfiles", "DFW", public=True)
+        self._cloudfiles = context.get_client("cloudfiles", "DFW", public=public)
 
     def _get_container_and_object_names(self):
         _, container_name = self._parsed_storage_uri.netloc.split("@")

@@ -87,6 +87,16 @@ class TestRackspaceStorage(TestCase):
         self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
         mock_cloudfiles.delete_object.assert_called_with("container", "file")
 
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_uses_servicenet_when_requested(self, mock_create_context):
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+
+        storage = get_storage("cloudfiles://user:key@container/file?public=False")
+        storage.delete()
+
+        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=False)
+        mock_cloudfiles.delete_object.assert_called_with("container", "file")
+
 
 class TestFTPStorage(TestCase):
     @mock.patch("ftplib.FTP", autospec=True)
