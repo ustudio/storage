@@ -40,25 +40,33 @@ class TestLocalStorage(TestCase):
 
 
 class TestRackspaceStorage(TestCase):
+    def _assert_login_correct(self, mock_create_context, username, password, region, public):
+        mock_context = mock_create_context.return_value
+        mock_create_context.assert_called_with("rackspace", username, password)
+        mock_context.authenticate.assert_called_with()
+        mock_context.get_client.assert_called_with("cloudfiles", region, public=public)
 
-    @mock.patch("pyrax.set_credentials")
-    @mock.patch("pyrax.cloudfiles")
-    def test_rackspace_save_to_filename(self, mock_cloudfiles, mock_set_credentials):
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_save_to_filename(self, mock_create_context):
+        mock_context = mock_create_context.return_value
+        mock_cloudfiles = mock_context.get_client.return_value
+
         temp_output = tempfile.NamedTemporaryFile()
         mock_cloudfiles.fetch_object.return_value = ["FOOBAR", ]
 
         storage = get_storage("cloudfiles://user:key@container/file")
         storage.save_to_filename(temp_output.name)
 
-        mock_set_credentials.assert_called_with("user", "key")
+        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
         mock_cloudfiles.fetch_object.assert_called_with("container", "file", chunk_size=4096)
 
         with open(temp_output.name) as output_fp:
             self.assertEqual("FOOBAR", output_fp.read())
 
-    @mock.patch("pyrax.set_credentials")
-    @mock.patch("pyrax.cloudfiles")
-    def test_rackspace_load_from_filename(self, mock_cloudfiles, mock_set_credentials):
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_load_from_filename(self, mock_create_context):
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+
         temp_input = tempfile.NamedTemporaryFile()
         temp_input.write("FOOBAR")
         temp_input.flush()
@@ -66,16 +74,17 @@ class TestRackspaceStorage(TestCase):
         storage = get_storage("cloudfiles://user:key@container/file")
         storage.load_from_filename(temp_input.name)
 
-        mock_set_credentials.assert_called_with("user", "key")
+        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
         mock_cloudfiles.upload_file.assert_called_with("container", temp_input.name, "file")
 
-    @mock.patch("pyrax.set_credentials")
-    @mock.patch("pyrax.cloudfiles")
-    def test_rackspace_delete(self, mock_cloudfiles, mock_set_credentials):
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_delete(self, mock_create_context):
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+
         storage = get_storage("cloudfiles://user:key@container/file")
         storage.delete()
 
-        mock_set_credentials.assert_called_with("user", "key")
+        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
         mock_cloudfiles.delete_object.assert_called_with("container", "file")
 
 
