@@ -4,6 +4,8 @@ import os.path
 import shutil
 import urlparse
 
+urlparse.uses_query.append("cloudfiles")
+
 
 class Storage(object):
 
@@ -39,7 +41,6 @@ class LocalStorage(Storage):
 
 
 import pyrax
-pyrax.set_setting("identity_type", "rackspace")
 
 
 class CloudFilesStorage(Storage):
@@ -47,7 +48,13 @@ class CloudFilesStorage(Storage):
     def _authenticate(self):
         auth, _ = self._parsed_storage_uri.netloc.split("@")
         username, password = auth.split(":", 1)
-        pyrax.set_credentials(username, password)
+
+        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        public = query.get("public", ["True"])[0].lower() != "false"
+
+        context = pyrax.create_context("rackspace", username, password)
+        context.authenticate()
+        self._cloudfiles = context.get_client("cloudfiles", "DFW", public=public)
 
     def _get_container_and_object_names(self):
         _, container_name = self._parsed_storage_uri.netloc.split("@")
@@ -58,19 +65,19 @@ class CloudFilesStorage(Storage):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
         with open(file_path, "wb") as output_fp:
-            for chunk in pyrax.cloudfiles.fetch_object(
+            for chunk in self._cloudfiles.fetch_object(
                     container_name, object_name, chunk_size=4096):
                 output_fp.write(chunk)
 
     def load_from_filename(self, file_path):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
-        pyrax.cloudfiles.upload_file(container_name, file_path, object_name)
+        self._cloudfiles.upload_file(container_name, file_path, object_name)
 
     def delete(self):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
-        pyrax.cloudfiles.delete_object(container_name, object_name)
+        self._cloudfiles.delete_object(container_name, object_name)
 
 
 class FTPStorage(Storage):
