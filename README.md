@@ -3,7 +3,7 @@ storage
 
 ![build status](https://circleci.com/gh/ustudio/storage.png?circle-token=3b3e87d02777a6e2ef90bcb9651457a215b6d333)
 
-Python library for storing/retrieving files via different protocols
+Python library for accessing files over various file transfer protocols.
 
 ## Quick Start ##
 

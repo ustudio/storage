@@ -7,7 +7,7 @@ with open("requirements.txt") as requirements_file:
 
 setup(name="storage",
       version="0.1",
-      description="Python library for storing/retrieving files via different protocols",
+      description="Python library for accessing files over various file transfer protocols.",
       url="https://github.com/ustudio/storage",
       packages=["storage"],
       install_requires=requirements)
