@@ -20,9 +20,17 @@ class Storage(object):
         raise NotImplementedError(
             "{0} does not implement 'save_to_filename'".format(self._class_name()))
 
+    def save_to_file(self, out_file):
+        raise NotImplementedError(
+            "{0} does not implement 'save_to_file'".format(self._class_name()))
+
     def load_from_filename(self, file_path):
         raise NotImplementedError(
             "{0} does not implement 'load_from_filename'".format(self._class_name()))
+
+    def load_from_file(self, file_path):
+        raise NotImplementedError(
+            "{0} does not implement 'load_from_file'".format(self._class_name()))
 
     def delete(self):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
@@ -33,8 +41,18 @@ class LocalStorage(Storage):
     def save_to_filename(self, file_path):
         shutil.copy(self._parsed_storage_uri.path, file_path)
 
+    def save_to_file(self, out_file):
+        with open(self._parsed_storage_uri.path) as in_file:
+            for chunk in in_file:
+                out_file.write(chunk)
+
     def load_from_filename(self, file_path):
         shutil.copy(file_path, self._parsed_storage_uri.path)
+
+    def load_from_file(self, in_file):
+        with open(self._parsed_storage_uri.path, "wb") as out_file:
+            for chunk in in_file:
+                out_file.write(chunk)
 
     def delete(self):
         os.remove(self._parsed_storage_uri.path)

@@ -2,6 +2,7 @@ import mock
 import tempfile
 from unittest import TestCase
 from storage import get_storage
+from StringIO import StringIO
 
 
 class TestLocalStorage(TestCase):
@@ -37,6 +38,28 @@ class TestLocalStorage(TestCase):
         storage.delete()
 
         mock_remove.assert_called_with("/folder/file")
+
+    def test_local_storage_save_to_file(self):
+        temp_input = tempfile.NamedTemporaryFile()
+        temp_input.write("FOOBAR")
+        temp_input.flush()
+
+        out_file = StringIO()
+
+        storage = get_storage("file://%s" % (temp_input.name))
+        storage.save_to_file(out_file)
+
+        self.assertEqual("FOOBAR", out_file.getvalue())
+
+    def test_local_storage_load_from_file(self):
+        in_file = StringIO("foobar")
+        temp_output = tempfile.NamedTemporaryFile()
+
+        storage = get_storage("file://{0}".format(temp_output.name))
+        storage.load_from_file(in_file)
+
+        with open(temp_output.name) as temp_output_fp:
+            self.assertEqual("foobar", temp_output_fp.read())
 
 
 class TestRackspaceStorage(TestCase):
