@@ -127,18 +127,24 @@ class FTPStorage(Storage):
         return filename
 
     def save_to_filename(self, file_path):
+        with open(file_path, "wb") as output_file:
+            self.save_to_file(output_file)
+
+    def save_to_file(self, out_file):
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
 
-        with open(file_path, "wb") as output_file:
-            ftp_client.retrbinary("RETR {0}".format(filename), callback=output_file.write)
+        ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
 
     def load_from_filename(self, file_path):
+        with open(file_path, "rb") as input_file:
+            self.load_from_file(input_file)
+
+    def load_from_file(self, in_file):
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
 
-        with open(file_path, "rb") as input_file:
-            ftp_client.storbinary("STOR {0}".format(filename), input_file)
+        ftp_client.storbinary("STOR {0}".format(filename), in_file)
 
     def delete(self):
         ftp_client = self._connect()
