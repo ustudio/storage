@@ -87,6 +87,23 @@ class TestRackspaceStorage(TestCase):
             self.assertEqual("FOOBAR", output_fp.read())
 
     @mock.patch("pyrax.create_context")
+    def test_rackspace_save_to_file(self, mock_create_context):
+        mock_context = mock_create_context.return_value
+        mock_cloudfiles = mock_context.get_client.return_value
+
+        mock_cloudfiles.fetch_object.return_value = iter(["foo", "bar"])
+
+        out_file = StringIO()
+
+        storage = get_storage("cloudfiles://user:key@container/file")
+        storage.save_to_file(out_file)
+
+        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
+        mock_cloudfiles.fetch_object.assert_called_with("container", "file", chunk_size=4096)
+
+        self.assertEqual("foobar", out_file.getvalue())
+
+    @mock.patch("pyrax.create_context")
     def test_rackspace_load_from_filename(self, mock_create_context):
         mock_cloudfiles = mock_create_context.return_value.get_client.return_value
 
@@ -99,6 +116,18 @@ class TestRackspaceStorage(TestCase):
 
         self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
         mock_cloudfiles.upload_file.assert_called_with("container", temp_input.name, "file")
+
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_load_from_file(self, mock_create_context):
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+
+        mock_input = mock.Mock()
+
+        storage = get_storage("cloudfiles://user:key@container/file")
+        storage.load_from_file(mock_input)
+
+        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
+        mock_cloudfiles.upload_file.assert_called_with("container", mock_input, "file")
 
     @mock.patch("pyrax.create_context")
     def test_rackspace_delete(self, mock_create_context):

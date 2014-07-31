@@ -80,17 +80,27 @@ class CloudFilesStorage(Storage):
         return container_name, object_name
 
     def save_to_filename(self, file_path):
+        with open(file_path, "wb") as output_fp:
+            self.save_to_file(output_fp)
+
+    def save_to_file(self, out_file):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
-        with open(file_path, "wb") as output_fp:
-            for chunk in self._cloudfiles.fetch_object(
-                    container_name, object_name, chunk_size=4096):
-                output_fp.write(chunk)
+
+        for chunk in self._cloudfiles.fetch_object(
+                container_name, object_name, chunk_size=4096):
+            out_file.write(chunk)
+
+    def _upload_file(self, file_or_path):
+        self._authenticate()
+        container_name, object_name = self._get_container_and_object_names()
+        self._cloudfiles.upload_file(container_name, file_or_path, object_name)
 
     def load_from_filename(self, file_path):
-        self._authenticate()
-        container_name, object_name = self._get_container_and_object_names()
-        self._cloudfiles.upload_file(container_name, file_path, object_name)
+        self._upload_file(file_path)
+
+    def load_from_file(self, in_file):
+        self._upload_file(in_file)
 
     def delete(self):
         self._authenticate()
