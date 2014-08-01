@@ -42,10 +42,20 @@ represents a file accessible by the scheme provided to
 Uploads the contents of the file at `filename` to the location
 specified by the URI to `get_storage`.
 
+#### `load_from_file(file_object)` ####
+
+Uploads to the location specified by the URI to `get_storage` by
+reading from the specified file-like-object.
+
 #### `save_to_filename(filename)` ####
 
 Downloads the contents of the file specified by the URI to
 `get_storage` into a local file at `filename`.
+
+#### `save_to_file(file_object)` ####
+
+Downloads the contents of the file specified by the URI to
+`get_storage` by writing into a file-like-object.
 
 #### `delete()` ####
 

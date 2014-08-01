@@ -20,9 +20,17 @@ class Storage(object):
         raise NotImplementedError(
             "{0} does not implement 'save_to_filename'".format(self._class_name()))
 
+    def save_to_file(self, out_file):
+        raise NotImplementedError(
+            "{0} does not implement 'save_to_file'".format(self._class_name()))
+
     def load_from_filename(self, file_path):
         raise NotImplementedError(
             "{0} does not implement 'load_from_filename'".format(self._class_name()))
+
+    def load_from_file(self, in_file):
+        raise NotImplementedError(
+            "{0} does not implement 'load_from_file'".format(self._class_name()))
 
     def delete(self):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
@@ -33,8 +41,18 @@ class LocalStorage(Storage):
     def save_to_filename(self, file_path):
         shutil.copy(self._parsed_storage_uri.path, file_path)
 
+    def save_to_file(self, out_file):
+        with open(self._parsed_storage_uri.path) as in_file:
+            for chunk in in_file:
+                out_file.write(chunk)
+
     def load_from_filename(self, file_path):
         shutil.copy(file_path, self._parsed_storage_uri.path)
+
+    def load_from_file(self, in_file):
+        with open(self._parsed_storage_uri.path, "wb") as out_file:
+            for chunk in in_file:
+                out_file.write(chunk)
 
     def delete(self):
         os.remove(self._parsed_storage_uri.path)
@@ -62,17 +80,27 @@ class CloudFilesStorage(Storage):
         return container_name, object_name
 
     def save_to_filename(self, file_path):
+        with open(file_path, "wb") as output_fp:
+            self.save_to_file(output_fp)
+
+    def save_to_file(self, out_file):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
-        with open(file_path, "wb") as output_fp:
-            for chunk in self._cloudfiles.fetch_object(
-                    container_name, object_name, chunk_size=4096):
-                output_fp.write(chunk)
+
+        for chunk in self._cloudfiles.fetch_object(
+                container_name, object_name, chunk_size=4096):
+            out_file.write(chunk)
+
+    def _upload_file(self, file_or_path):
+        self._authenticate()
+        container_name, object_name = self._get_container_and_object_names()
+        self._cloudfiles.upload_file(container_name, file_or_path, object_name)
 
     def load_from_filename(self, file_path):
-        self._authenticate()
-        container_name, object_name = self._get_container_and_object_names()
-        self._cloudfiles.upload_file(container_name, file_path, object_name)
+        self._upload_file(file_path)
+
+    def load_from_file(self, in_file):
+        self._upload_file(in_file)
 
     def delete(self):
         self._authenticate()
@@ -99,18 +127,24 @@ class FTPStorage(Storage):
         return filename
 
     def save_to_filename(self, file_path):
+        with open(file_path, "wb") as output_file:
+            self.save_to_file(output_file)
+
+    def save_to_file(self, out_file):
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
 
-        with open(file_path, "wb") as output_file:
-            ftp_client.retrbinary("RETR {0}".format(filename), callback=output_file.write)
+        ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
 
     def load_from_filename(self, file_path):
+        with open(file_path, "rb") as input_file:
+            self.load_from_file(input_file)
+
+    def load_from_file(self, in_file):
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
 
-        with open(file_path, "rb") as input_file:
-            ftp_client.storbinary("STOR {0}".format(filename), input_file)
+        ftp_client.storbinary("STOR {0}".format(filename), in_file)
 
     def delete(self):
         ftp_client = self._connect()
