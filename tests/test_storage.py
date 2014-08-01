@@ -315,6 +315,7 @@ class TestFTPSStorage(TestCase):
         mock_ftp_class.assert_called_with()
         mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
         mock_ftp.login.assert_called_with("user", "password")
+        mock_ftp.prot_p.assert_called_with()
 
         mock_ftp.cwd.assert_called_with("some/dir")
         self.assertEqual(1, mock_ftp.retrbinary.call_count)
@@ -354,6 +355,7 @@ class TestFTPSStorage(TestCase):
         mock_ftp_class.assert_called_with()
         mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
         mock_ftp.login.assert_called_with("user", "password")
+        mock_ftp.prot_p.assert_called_with()
 
         mock_ftp.cwd.assert_called_with("some/dir")
 

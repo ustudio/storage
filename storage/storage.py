@@ -28,7 +28,7 @@ class Storage(object):
         raise NotImplementedError(
             "{0} does not implement 'load_from_filename'".format(self._class_name()))
 
-    def load_from_file(self, file_path):
+    def load_from_file(self, in_file):
         raise NotImplementedError(
             "{0} does not implement 'load_from_file'".format(self._class_name()))
 
