@@ -61,6 +61,43 @@ class TestLocalStorage(TestCase):
         with open(temp_output.name) as temp_output_fp:
             self.assertEqual("foobar", temp_output_fp.read())
 
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists")
+    @mock.patch("__builtin__.open")
+    def test_load_from_file_creates_dirs_if_not_present(
+            self, mock_open, mock_exists, mock_makedirs):
+        mock_exists.return_value = False
+        in_file = StringIO("foobar")
+
+        mock_file = mock_open.return_value.__enter__.return_value
+        mock_file.read.side_effect = ["FOOBAR", None]
+
+        out_storage = get_storage("file:///foobar/is/out")
+        out_storage.load_from_file(in_file)
+
+        mock_open.assert_has_calls([
+            mock.call("/foobar/is/out", "wb")
+        ])
+
+        mock_exists.assert_called_with("/foobar/is")
+        mock_makedirs.assert_called_with("/foobar/is")
+        mock_file.write.assert_called_with("foobar")
+        self.assertEqual(1, mock_open.return_value.__exit__.call_count)
+
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists")
+    @mock.patch("__builtin__.open")
+    def test_load_from_file_does_not_create_dirs_if_present(
+            self, mock_open, mock_exists, mock_makedirs):
+        mock_exists.return_value = True
+        in_file = StringIO("foobar")
+
+        out_storage = get_storage("file:///foobar/is/out")
+        out_storage.load_from_file(in_file)
+
+        mock_exists.assert_called_with("/foobar/is")
+        self.assertEqual(0, mock_makedirs.call_count)
+
 
 class TestRackspaceStorage(TestCase):
     def _assert_login_correct(self, mock_create_context, username, password, region, public):
