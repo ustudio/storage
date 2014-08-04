@@ -20,7 +20,8 @@ class TestLocalStorage(TestCase):
         with open(temp_output.name) as temp_output_fp:
             self.assertEqual("FOOBAR", temp_output_fp.read())
 
-    def test_local_storage_load_from_filename(self):
+    @mock.patch("os.makedirs", autospec=True)
+    def test_local_storage_load_from_filename(self, mock_makedirs):
         temp_input = tempfile.NamedTemporaryFile()
         temp_input.write("FOOBAR")
         temp_input.flush()
@@ -29,8 +30,23 @@ class TestLocalStorage(TestCase):
         storage = get_storage("file://%s" % (temp_output.name))
         storage.load_from_filename(temp_input.name)
 
+        self.assertEqual(0, mock_makedirs.call_count)
+
         with open(temp_output.name) as temp_output_fp:
             self.assertEqual("FOOBAR", temp_output_fp.read())
+
+    @mock.patch("shutil.copy", autospec=True)
+    @mock.patch("os.makedirs", autospec=True)
+    @mock.patch("os.path.exists", autospec=True)
+    def test_load_from_file_creates_intermediate_dirs(self, mock_exists, mock_makedirs, mock_copy):
+        mock_exists.return_value = False
+
+        storage = get_storage("file:///foo/bar/file")
+        storage.load_from_filename("input_file")
+
+        mock_exists.assert_called_with("/foo/bar")
+        mock_makedirs.assert_called_with("/foo/bar")
+        mock_copy.assert_called_with("input_file", "/foo/bar/file")
 
     @mock.patch("os.remove", autospec=True)
     def test_local_storage_delete(self, mock_remove):
