@@ -77,6 +77,10 @@ Example:
 file:///home/user/awesome-file.txt
 ```
 
+If the intermediate directories specified in the URI passed to
+`get_storage` do not exist, the file-local storage object will attempt
+to create them when using `load_from_file` or `load_from_filename`.
+
 #### cloudfiles ####
 
 A reference to an Object in a Container in Rackspace CloudFiles. In
@@ -94,6 +98,10 @@ You can force CloudFiles to use the internal ServiceNet network, by
 adding the query parameter `?public=false` to the URI. This saves
 bandwidth if you are accessing CloudFiles from within the same
 datacenter.
+
+Because of the way CloudFiles handles "virtual folders," if the
+filename specified in `get_storage` includes subfolders, they will be
+created automatically if they do not exist.
 
 Note: Currently, the storage library will always connect to the DFW
 region in Rackspace; there is no way to specify a region at this
