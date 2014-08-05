@@ -46,10 +46,20 @@ class LocalStorage(Storage):
             for chunk in in_file:
                 out_file.write(chunk)
 
+    def _ensure_exists(self):
+        dirname = os.path.dirname(self._parsed_storage_uri.path)
+
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
     def load_from_filename(self, file_path):
+        self._ensure_exists()
+
         shutil.copy(file_path, self._parsed_storage_uri.path)
 
     def load_from_file(self, in_file):
+        self._ensure_exists()
+
         with open(self._parsed_storage_uri.path, "wb") as out_file:
             for chunk in in_file:
                 out_file.write(chunk)
