@@ -5,6 +5,16 @@ storage
 
 Python library for accessing files over various file transfer protocols.
 
+## Installation ##
+
+Install via pip:
+
+```sh
+pip install object_storage
+```
+
+The current version is `0.3.0`.
+
 ## Quick Start ##
 
 ```python
