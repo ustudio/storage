@@ -118,7 +118,7 @@ class TestLocalStorage(TestCase):
 class TestRackspaceStorage(TestCase):
     def _assert_login_correct(self, mock_create_context, username, password, region, public):
         mock_context = mock_create_context.return_value
-        mock_create_context.assert_called_with("rackspace", username, password)
+        mock_create_context.assert_called_with("rackspace", username=username, password=password)
         mock_context.authenticate.assert_called_with()
         mock_context.get_client.assert_called_with("cloudfiles", region, public=public)
 
