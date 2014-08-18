@@ -128,7 +128,7 @@ differences:
 the storage library the authetication endpoint to be used.
 - A `tenant_id` must be specified in the query parameters which is used 
 by the storage library when authenicating. (*typically this is something
-like an account or project id.)
+like an account or project id.*)
 - A `region` must be specified in the query parameters which the storage
 library uses when attempting to obtain the appropriate **object_store** client.
 
