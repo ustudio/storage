@@ -118,7 +118,51 @@ region in Rackspace; there is no way to specify a region at this
 time. It is possible that the URI scheme will change when this support
 is added.
 
-#### ftp ####
+#### swift ####
+
+A reference to an Object in a Container in an OpenStack Swift object store.
+This format is similar to the **cloudfiles** format above with the following
+differences:
+
+- An `auth_endpoint` must be specified in the query parameters which tells
+the storage library the authetication endpoint to be used.
+- A `tenant_id` must be specified in the query parameters which is used 
+by the storage library when authenicating.
+- A `region` must be specified in the query parameters which the storage
+library uses when attempting to obtain the appropriate **object_store** client.
+
+Example:
+
+```
+swift://username:password@container/file.txt?region=REG&auth_endpoint=http://identity.svr.com:1234/v2&tenant_id=123456
+```
+
+In addition to the required parameters mentioned above, swift will also
+accept the following optional parameters:
+
+- The `public` param may also be specified just as with **cloudfiles**.
+- The `api_key` param may also be specified as a query parameter and
+will be included when authenticating with the swift authentication endpoint.
+
+### hpcloud ###
+
+An HP Cloud storage type has been defined for use against the HP Helion
+object store. The `hpcloud` scheme can be used when storing files using
+HP Helion, which  is based on OpenStack Swift.
+
+Example:
+
+```
+hpcloud://username:password@container/file?region=region-a.geo-1&tenant_id=PROJECT_ID
+```
+
+When using the `hpcloud` scheme the storage library will use a
+preregistered authentication endpoint.  `region` and `tenant_id` must
+be specified. The `tenant_id` is typicallys the **Project Id**, as
+defined by HP.
+
+
+### ftp ####
 
 A reference to a file on an FTP server. Username and passwords are supported.
 
