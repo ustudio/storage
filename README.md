@@ -120,14 +120,15 @@ is added.
 
 #### swift ####
 
-A reference to an Object in a Container in an OpenStack Swift object store.
-This format is similar to the **cloudfiles** format above with the following
+A reference to an Object in a Container in an **OpenStack Swift** object store.
+This scheme is similar to the **cloudfiles** format above with the following
 differences:
 
 - An `auth_endpoint` must be specified in the query parameters which tells
 the storage library the authetication endpoint to be used.
 - A `tenant_id` must be specified in the query parameters which is used 
-by the storage library when authenicating.
+by the storage library when authenicating. (*typically this is something
+like an account or project id.)
 - A `region` must be specified in the query parameters which the storage
 library uses when attempting to obtain the appropriate **object_store** client.
 
@@ -141,14 +142,15 @@ In addition to the required parameters mentioned above, swift will also
 accept the following optional parameters:
 
 - The `public` param may also be specified just as with **cloudfiles**.
+(see the [cloudfiles](#cloudfiles) section for info on this param.)
 - The `api_key` param may also be specified as a query parameter and
 will be included when authenticating with the swift authentication endpoint.
 
 ### hpcloud ###
 
-An HP Cloud storage type has been defined for use against the HP Helion
+An **HP Cloud** storage type has been defined for use against the **HP Helion**
 object store. The `hpcloud` scheme can be used when storing files using
-HP Helion, which  is based on OpenStack Swift.
+**HP Helion**, which  is based on **OpenStack Swift**.
 
 Example:
 
