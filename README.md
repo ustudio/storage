@@ -84,7 +84,9 @@ in a development environment.
 Example:
 
 ```
+
 file:///home/user/awesome-file.txt
+
 ```
 
 If the intermediate directories specified in the URI passed to
@@ -104,14 +106,13 @@ query parameters in the URI:
 | Query Param     | Description                                                             |
 |:----------------|:------------------------------------------------------------------------|
 | `auth_endpoint` | The authentication endpoint that should be used by the storage library. |
-| `tenant_id`     | The tenant ID to be used during authentication. Typically an account or |
-|                 | project Id.                                                             |
-| `region`        | The region which the storage library will use when obtaining the        |
-|                 | appropriate **object_store** client.                                    |
+| `tenant_id`     | The tenant ID to be used during authentication. Typically an account or project Id.|
+| `region`        | The region which the storage library will use when obtaining the appropriate **object_store** client.                                    |
 
 Example:
 
 ```
+
 swift://username:password@container/file.txt?region=REG&auth_endpoint=http://identity.svr.com:1234/v2&tenant_id=123456
 
 ```
@@ -121,9 +122,8 @@ accept the following optional parameters:
 
 | Query Param     | Description                                                             |
 |:----------------|:------------------------------------------------------------------------|
-| `public`        | Whether or not to use the internal ServiceNet network. This saves       |
-|                 | bandwidth if you are accessing CloudFiles from within the same          |
-|                 | datacenter.  (default: true)                                            |
+| `public`        | Whether or not to use the internal ServiceNet network. This saves bandwidth
+if you are accessing CloudFiles from within the same datacenter.  (default: true)           |
 | `api_key`       | API key to be used during authentication.                               |
 
 
@@ -140,6 +140,7 @@ by Rackspace.
 Example:
 
 ```
+
 cloudfiles://username:apikey@container/awesome-file.txt
 
 ```
@@ -163,6 +164,7 @@ object store. The `hpcloud` scheme can be used when storing files using
 Example:
 
 ```
+
 hpcloud://username:password@container/file?region=region-a.geo-1&tenant_id=PROJECT_ID
 
 ```
@@ -180,6 +182,7 @@ A reference to a file on an FTP server. Username and passwords are supported.
 Example:
 
 ```
+
 ftp://username:password@my-ftp-server/directory/awesome-file.txt
 
 ```
