@@ -122,8 +122,7 @@ accept the following optional parameters:
 
 | Query Param     | Description                                                             |
 |:----------------|:------------------------------------------------------------------------|
-| `public`        | Whether or not to use the internal ServiceNet network. This saves bandwidth
-if you are accessing CloudFiles from within the same datacenter.  (default: true)           |
+| `public`        | Whether or not to use the internal ServiceNet network. This saves bandwidth if you are accessing CloudFiles from within the same datacenter.  (default: true)           |
 | `api_key`       | API key to be used during authentication.                               |
 
 
@@ -149,7 +148,7 @@ Because of the way CloudFiles handles "virtual folders," if the
 filename specified in `get_storage` includes subfolders, they will be
 created automatically if they do not exist.
 
-Note: Currently, the storage library will always connect to the DFW
+**Note**: Currently, the storage library will always connect to the DFW
 region in Rackspace; there is no way to specify a region at this
 time. It is possible that the URI scheme will change when this support
 is added.
@@ -198,7 +197,7 @@ Example:
 ftps://username:password@my-secure-ftp-server/directory/awesome-file.txt
 ```
 
-### `retry` ###
+### retry ###
 
 The `retry` module provides a means for client code to attempt to
 transfer a file multiple times, in case of network or other
@@ -250,3 +249,61 @@ retry.
 
 Currently, no methods in the storage library mark exceptions as
 `do_not_retry`.
+
+### Extending ###
+
+There are two decorators that can be used when extenting the storage library.  
+
+#### `register_storage_protocol` ####
+
+This decorator will register a scheme and its associated class with the storage library. 
+
+```python
+@register_storage_protocol(scheme)
+```
+
+For example, if a new storage class were implemented (*subclassing from* `storage.Storage`),
+a scheme could be registered with the storage library using the `register_storage_protocol`.
+
+```python
+
+@register_storage_protocol("xstorage")
+class XStorage(storage.Storage):
+   ... <implementation> ...
+
+```
+
+This would allow the `XStorage` class to be used by making a call to `get_storage()` using the
+specified scheme (`"xstorage"`)
+
+```python
+
+xs = storage.get_storage("xstorage")
+
+```
+
+#### `register_swift_protocol` ####
+
+This decorator is used for registering OpenStack Swift storage classes.  It is similar to the 
+`register_storage_protocol` decorator but is specific to classes that are subclasses from 
+`storage.SwiftStorage`. 
+
+```python
+@register_swift_protocol(scheme, auth_endpoint)
+```
+
+It accepts two arguments.  The first being the scheme it should be registered under.  The second
+being the authentication endpoint that should be used when authenticating.
+
+```python
+
+@register_swift_protocol(scheme="ystorage",
+                         auth_endpoint="http://identity.svr.com:1234/v1.0/")
+class YStorage(storage.SwiftStorage):
+   pass
+   
+```
+
+This will register the swift based storage protocol under the "ystorage" scheme using the specified
+authentication endpoint.  
+
