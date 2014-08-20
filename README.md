@@ -91,23 +91,58 @@ If the intermediate directories specified in the URI passed to
 `get_storage` do not exist, the file-local storage object will attempt
 to create them when using `load_from_file` or `load_from_filename`.
 
+#### swift ####
+
+A reference to an Object in a Container in an **OpenStack Swift** object store.
+With this scheme, the `host` section of the URI is the Container name, and
+the `path` is the Object. Credentials are specified in the `username`
+and `password` fields.  
+
+In addition, the following parameters are **required** and should be passed as
+query parameters in the URI:
+
+| Query Param     | Description                                                             |
+|:----------------|:------------------------------------------------------------------------|
+| `auth_endpoint` | The authentication endpoint that should be used by the storage library. |
+| `tenant_id`     | The tenant ID to be used during authentication. Typically an account or |
+|                 | project Id.                                                             |
+| `region`        | The region which the storage library will use when obtaining the        |
+|                 | appropriate **object_store** client.                                    |
+
+Example:
+
+```
+swift://username:password@container/file.txt?region=REG&auth_endpoint=http://identity.svr.com:1234/v2&tenant_id=123456
+
+```
+
+In addition to the required parameters mentioned above, swift will also
+accept the following optional parameters:
+
+| Query Param     | Description                                                             |
+|:----------------|:------------------------------------------------------------------------|
+| `public`        | Whether or not to use the internal ServiceNet network. This saves       |
+|                 | bandwidth if you are accessing CloudFiles from within the same          |
+|                 | datacenter.  (default: true)                                            |
+| `api_key`       | API key to be used during authentication.                               |
+
+
 #### cloudfiles ####
 
-A reference to an Object in a Container in Rackspace CloudFiles. In
-this case, the `host` section of the URI is the Container name, and
-the `path` is the Object. Credentials are specified in the `username`
-and `password` fields
+A reference to an Object in a Container in Rackspace CloudFiles. This scheme is similar to
+the [**swift**](#swift) scheme with the following differences:
+
+- The `auth_endpoint` and `tenant_id` need not be specified.  These are automatically determined
+by Rackspace.
+- The `region` is not currently supported and is currently fixed to `DFW`.
+
 
 Example:
 
 ```
 cloudfiles://username:apikey@container/awesome-file.txt
-```
 
-You can force CloudFiles to use the internal ServiceNet network, by
-adding the query parameter `?public=false` to the URI. This saves
-bandwidth if you are accessing CloudFiles from within the same
-datacenter.
+```
 
 Because of the way CloudFiles handles "virtual folders," if the
 filename specified in `get_storage` includes subfolders, they will be
@@ -118,33 +153,6 @@ region in Rackspace; there is no way to specify a region at this
 time. It is possible that the URI scheme will change when this support
 is added.
 
-#### swift ####
-
-A reference to an Object in a Container in an **OpenStack Swift** object store.
-This scheme is similar to the **cloudfiles** format above with the following
-differences:
-
-- An `auth_endpoint` must be specified in the query parameters which tells
-the storage library the authetication endpoint to be used.
-- A `tenant_id` must be specified in the query parameters which is used 
-by the storage library when authenicating. (*typically this is something
-like an account or project id.*)
-- A `region` must be specified in the query parameters which the storage
-library uses when attempting to obtain the appropriate **object_store** client.
-
-Example:
-
-```
-swift://username:password@container/file.txt?region=REG&auth_endpoint=http://identity.svr.com:1234/v2&tenant_id=123456
-```
-
-In addition to the required parameters mentioned above, swift will also
-accept the following optional parameters:
-
-- The `public` param may also be specified just as with **cloudfiles**.
-(see the [cloudfiles](#cloudfiles) section for info on this param.)
-- The `api_key` param may also be specified as a query parameter and
-will be included when authenticating with the swift authentication endpoint.
 
 ### hpcloud ###
 
@@ -156,12 +164,13 @@ Example:
 
 ```
 hpcloud://username:password@container/file?region=region-a.geo-1&tenant_id=PROJECT_ID
+
 ```
 
 When using the `hpcloud` scheme the storage library will use a
-preregistered authentication endpoint.  `region` and `tenant_id` must
-be specified. The `tenant_id` is typicallys the **Project Id**, as
-defined by HP.
+preregistered authentication endpoint.  As with the [**swift**](#swift) scheme, the `region`
+and `tenant_id` parameters must be specified. The `tenant_id` is typically the **Project Id**,
+as defined by HP.
 
 
 ### ftp ####
@@ -172,6 +181,7 @@ Example:
 
 ```
 ftp://username:password@my-ftp-server/directory/awesome-file.txt
+
 ```
 
 #### ftps ####

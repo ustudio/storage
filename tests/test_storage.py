@@ -115,134 +115,6 @@ class TestLocalStorage(TestCase):
         self.assertEqual(0, mock_makedirs.call_count)
 
 
-class TestRackspaceStorage(TestCase):
-    def _assert_login_correct(self, mock_create_context, username, password, region, public):
-        mock_context = mock_create_context.return_value
-        mock_create_context.assert_called_with("rackspace", username=username, password=password)
-        mock_context.authenticate.assert_called_with()
-        mock_context.get_client.assert_called_with("cloudfiles", region, public=public)
-
-    @mock.patch("pyrax.create_context")
-    def test_rackspace_save_to_filename(self, mock_create_context):
-        mock_context = mock_create_context.return_value
-        mock_cloudfiles = mock_context.get_client.return_value
-
-        temp_output = tempfile.NamedTemporaryFile()
-        mock_cloudfiles.fetch_object.return_value = ["FOOBAR", ]
-
-        storage = storagelib.get_storage("cloudfiles://user:key@container/file")
-        storage.save_to_filename(temp_output.name)
-
-        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
-        mock_cloudfiles.fetch_object.assert_called_with("container", "file", chunk_size=4096)
-
-        with open(temp_output.name) as output_fp:
-            self.assertEqual("FOOBAR", output_fp.read())
-
-    @mock.patch("pyrax.create_context")
-    def test_rackspace_save_to_file(self, mock_create_context):
-        mock_context = mock_create_context.return_value
-        mock_cloudfiles = mock_context.get_client.return_value
-
-        mock_cloudfiles.fetch_object.return_value = iter(["foo", "bar"])
-
-        out_file = StringIO()
-
-        storage = storagelib.get_storage("cloudfiles://user:key@container/file")
-        storage.save_to_file(out_file)
-
-        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
-        mock_cloudfiles.fetch_object.assert_called_with("container", "file", chunk_size=4096)
-
-        self.assertEqual("foobar", out_file.getvalue())
-
-    @mock.patch("pyrax.create_context")
-    def test_rackspace_load_from_filename(self, mock_create_context):
-        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
-
-        temp_input = tempfile.NamedTemporaryFile()
-        temp_input.write("FOOBAR")
-        temp_input.flush()
-
-        storage = storagelib.get_storage("cloudfiles://user:key@container/file")
-        storage.load_from_filename(temp_input.name)
-
-        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
-        mock_cloudfiles.upload_file.assert_called_with("container", temp_input.name, "file")
-
-    @mock.patch("pyrax.create_context")
-    def test_rackspace_load_from_file(self, mock_create_context):
-        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
-
-        mock_input = mock.Mock()
-
-        storage = storagelib.get_storage("cloudfiles://user:key@container/file")
-        storage.load_from_file(mock_input)
-
-        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
-        mock_cloudfiles.upload_file.assert_called_with("container", mock_input, "file")
-
-    @mock.patch("pyrax.create_context")
-    def test_rackspace_delete(self, mock_create_context):
-        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
-
-        storage = storagelib.get_storage("cloudfiles://user:key@container/file")
-        storage.delete()
-
-        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=True)
-        mock_cloudfiles.delete_object.assert_called_with("container", "file")
-
-    @mock.patch("pyrax.create_context")
-    def test_rackspace_uses_servicenet_when_requested(self, mock_create_context):
-        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
-
-        storage = storagelib.get_storage("cloudfiles://user:key@container/file?public=False")
-        storage.delete()
-
-        self._assert_login_correct(mock_create_context, "user", "key", "DFW", public=False)
-        mock_cloudfiles.delete_object.assert_called_with("container", "file")
-
-class TestRegisterSwiftProtocol(TestCase):
-
-    def setUp(self):
-        self.scheme = "myscheme"
-        self.auth_endpoint = "http://identity.server.com:1234/v2.0/"
-
-    def test_register_swift_protocol_updates_storage_types(self):
-
-        @storagelib.register_swift_protocol(scheme=self.scheme, auth_endpoint=self.auth_endpoint)
-        class MyStorageClass(storagelib.storage.CloudFilesStorage):
-            pass
-
-        self.assertIn(self.scheme, storagelib.storage._STORAGE_TYPES)
-
-        uri = "{0}://username:password@containter/object?region=region-a".format(self.scheme)
-        store_obj = storagelib.get_storage(uri)
-        self.assertIsInstance(store_obj, storagelib.storage.CloudFilesStorage)
-
-    def test_register_swift_protocol_requires_scheme_and_auth_endpiont(self):
-
-        # 'scheme' is required
-        with self.assertRaises(Exception) as e:
-            @storagelib.register_swift_protocol(scheme=None, auth_endpoint=self.auth_endpoint)
-            class MyStorageClass(storagelib.storage.CloudFilesStorage):
-                pass
-
-        # 'auth_endpoint' is required
-        with self.assertRaises(Exception) as e:
-            @storagelib.register_swift_protocol(scheme=self.scheme, auth_endpoint=None)
-            class MyStorageClass(storagelib.storage.CloudFilesStorage):
-                pass
-
-    def test_register_swift_protocol_only_wraps_cloudfilesstorage_subclasses(self):
-
-        # wrapped class must be an instance of CloudFilesStorage
-        with self.assertRaises(Exception) as e:
-            @storagelib.register_swift_protocol(scheme=self.scheme, auth_endpoint=self.auth_endpoint)
-            class NonStorageClass(object):
-                pass
-
-
 class TestSwiftStorage(TestCase):
 
     def setUp(self):
@@ -290,7 +162,6 @@ class TestSwiftStorage(TestCase):
 
     @mock.patch("pyrax.create_context")
     def test_swift_authenticates_with_partial_uri(self, mock_create_context):
-        #
         mock_context = mock_create_context.return_value
         mock_swift = mock_context.get_client.return_value
 
@@ -321,22 +192,196 @@ class TestSwiftStorage(TestCase):
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
               "region=%(region)s&tenant_id=%(tenant_id)s" % self.params
         storage = storagelib.get_storage(uri)
-        with self.assertRaises(Exception) as e:
+        with self.assertRaises(storagelib.storage.InvalidStorageUri) as e:
             storage.save_to_filename(temp_output.name)
 
         # uri with missing region... should fail.
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
               "auth_endpoint=%(auth_endpoint)s&tenant_id=%(tenant_id)s" % self.params
         storage = storagelib.get_storage(uri)
-        with self.assertRaises(Exception) as e:
+        with self.assertRaises(storagelib.storage.InvalidStorageUri) as e:
             storage.save_to_filename(temp_output.name)
 
         # uri with missing tenant_id... should fail.
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
               "auth_endpoint=%(auth_endpoint)s&region=%(region)s" % self.params
         storage = storagelib.get_storage(uri)
-        with self.assertRaises(Exception) as e:
+        with self.assertRaises(storagelib.storage.InvalidStorageUri) as e:
             storage.save_to_filename(temp_output.name)
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_save_to_filename(self, mock_create_context):
+        mock_context = mock_create_context.return_value
+        mock_swift = mock_context.get_client.return_value
+
+        temp_output = tempfile.NamedTemporaryFile()
+        mock_swift.fetch_object.return_value = ["FOOBAR", ]
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s" % self.params
+        storage = storagelib.get_storage(uri)
+        storage.save_to_filename(temp_output.name)
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+                                   password=self.params["password"], region=self.params["region"],
+                                   tenant_id=self.params["tenant_id"], public=True)
+        mock_swift.fetch_object.assert_called_with(self.params["container"], self.params["file"],
+                                                   chunk_size=4096)
+
+        with open(temp_output.name) as output_fp:
+            self.assertEqual("FOOBAR", output_fp.read())
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_save_to_file(self, mock_create_context):
+        mock_context = mock_create_context.return_value
+        mock_swift = mock_context.get_client.return_value
+
+        mock_swift.fetch_object.return_value = iter(["foo", "bar"])
+
+        out_file = StringIO()
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s" % self.params
+        storage = storagelib.get_storage(uri)
+        storage.save_to_file(out_file)
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+                                   password=self.params["password"], region=self.params["region"],
+                                   tenant_id=self.params["tenant_id"], public=True)
+        mock_swift.fetch_object.assert_called_with(self.params["container"], self.params["file"],
+                                                   chunk_size=4096)
+
+        self.assertEqual("foobar", out_file.getvalue())
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_load_from_filename(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        temp_input = tempfile.NamedTemporaryFile()
+        temp_input.write("FOOBAR")
+        temp_input.flush()
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s" % self.params
+        storage = storagelib.get_storage(uri)
+        storage.load_from_filename(temp_input.name)
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+                                   password=self.params["password"], region=self.params["region"],
+                                   tenant_id=self.params["tenant_id"], public=True)
+        mock_swift.upload_file.assert_called_with(self.params["container"], temp_input.name,
+                                                  self.params["file"])
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_load_from_file(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        mock_input = mock.Mock()
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s" % self.params
+        storage = storagelib.get_storage(uri)
+        storage.load_from_file(mock_input)
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+                                   password=self.params["password"], region=self.params["region"],
+                                   tenant_id=self.params["tenant_id"], public=True)
+        mock_swift.upload_file.assert_called_with(self.params["container"], mock_input,
+                                                  self.params["file"])
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_delete(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s" % self.params
+        storage = storagelib.get_storage(uri)
+        storage.delete()
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+                                   password=self.params["password"], region=self.params["region"],
+                                   tenant_id=self.params["tenant_id"], public=True)
+        mock_swift.delete_object.assert_called_with(self.params["container"], self.params["file"])
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_uses_servicenet_when_requested(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s&public=False" % self.params
+        storage = storagelib.get_storage(uri)
+        storage.delete()
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+                                   password=self.params["password"], region=self.params["region"],
+                                   tenant_id=self.params["tenant_id"], public=False)
+        mock_swift.delete_object.assert_called_with(self.params["container"], self.params["file"])
+
+
+class TestRegisterSwiftProtocol(TestCase):
+
+    def setUp(self):
+        self.scheme = "myscheme"
+        self.auth_endpoint = "http://identity.server.com:1234/v2.0/"
+
+    def test_register_swift_protocol_updates_storage_types(self):
+
+        @storagelib.register_swift_protocol(scheme=self.scheme, auth_endpoint=self.auth_endpoint)
+        class MyStorageClass(storagelib.storage.SwiftStorage):
+            pass
+
+        self.assertIn(self.scheme, storagelib.storage._STORAGE_TYPES)
+
+        uri = "{0}://username:password@containter/object?region=region-a".format(self.scheme)
+        store_obj = storagelib.get_storage(uri)
+        self.assertIsInstance(store_obj, MyStorageClass)
+
+    def test_register_swift_protocol_only_wraps_swiftstorage_subclasses(self):
+
+        # wrapped class must be an instance of SwiftStorage
+        with self.assertRaises(Exception) as e:
+            @storagelib.register_swift_protocol(scheme=self.scheme,
+                                                auth_endpoint=self.auth_endpoint)
+            class NonStorageClass(object):
+                pass
+
+
+class TestRackspaceStorage(TestCase):
+
+    def setUp(self):
+        self.params = {
+            "username": "user",
+            "password": "password",
+            "container": "container",
+            "file": "file",
+            "region": "DFW",
+            "api_key": "0987654321",
+            "public": True
+        }
+
+    def _assert_login_correct(self, mock_create_context, username, password, region, public):
+        mock_context = mock_create_context.return_value
+        mock_create_context.assert_called_with("rackspace", username=username, password=password)
+        mock_context.authenticate.assert_called_with()
+        mock_context.get_client.assert_called_with("cloudfiles", region, public=public)
+
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_authenticate(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        uri = "cloudfiles://%(username)s:%(api_key)s@%(container)s/%(file)s" % self.params
+        storage = storagelib.get_storage(uri)
+        storage.delete()
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+                                   password=self.params["api_key"], region=self.params["region"],
+                                   public=True)
 
 
 class TestHPCloudStorage(TestCase):
