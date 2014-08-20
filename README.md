@@ -256,12 +256,7 @@ There are two decorators that can be used when extenting the storage library.
 
 #### `register_storage_protocol` ####
 
-This decorator will register a scheme and its associated class with the storage library. 
-
-```python
-@register_storage_protocol(scheme)
-```
-
+This class decorator will register a scheme and its associated class with the storage library. 
 For example, if a new storage class were implemented (*subclassing from* `storage.Storage`),
 a scheme could be registered with the storage library using the `register_storage_protocol`.
 
@@ -278,22 +273,17 @@ specified scheme (`"xstorage"`)
 
 ```python
 
-xs = storage.get_storage("xstorage")
+xs = storage.get_storage("xstorage://some/xstorage/path")
 
 ```
 
 #### `register_swift_protocol` ####
 
-This decorator is used for registering OpenStack Swift storage classes.  It is similar to the 
+This class decorator is used for registering OpenStack Swift storage classes.  It is similar to the 
 `register_storage_protocol` decorator but is specific to classes that are subclasses from 
-`storage.SwiftStorage`. 
-
-```python
-@register_swift_protocol(scheme, auth_endpoint)
-```
-
-It accepts two arguments.  The first being the scheme it should be registered under.  The second
-being the authentication endpoint that should be used when authenticating.
+`storage.SwiftStorage`. It accepts two arguments. The first being the scheme it should be
+registered under. The second being the authentication endpoint that should be used when
+authenticating.
 
 ```python
 
@@ -307,3 +297,8 @@ class YStorage(storage.SwiftStorage):
 This will register the swift based storage protocol under the "ystorage" scheme using the specified
 authentication endpoint.  
 
+```python
+
+ys = storage.get_storage("ystorage://user:pass@container/obj?region=REG&tenant_id=1234")
+
+```
