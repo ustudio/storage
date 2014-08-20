@@ -5,6 +5,24 @@ from unittest import TestCase
 from StringIO import StringIO
 
 
+class TestRegisterStorageProtocol(TestCase):
+
+    def setUp(self):
+        self.scheme = "myscheme"
+
+    def test_register_storage_protocol_updates_storage_types(self):
+
+        @storagelib.register_storage_protocol(scheme=self.scheme)
+        class MyStorageClass(storagelib.storage.Storage):
+            pass
+
+        self.assertIn(self.scheme, storagelib.storage._STORAGE_TYPES)
+
+        uri = "{0}://some/uri/path".format(self.scheme)
+        store_obj = storagelib.get_storage(uri)
+        self.assertIsInstance(store_obj, MyStorageClass)
+
+
 class TestLocalStorage(TestCase):
 
     def test_local_storage_save_to_filename(self):
