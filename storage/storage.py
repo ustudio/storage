@@ -1,10 +1,24 @@
 import ftplib
+import functools
 import os
 import os.path
 import shutil
 import urlparse
 
-urlparse.uses_query.append("cloudfiles")
+_STORAGE_TYPES = {}         # maintains supported storage protocols
+
+
+def register_storage_protocol(scheme):
+    """Register a storage protocol with the storage library by associating
+    a scheme with the specified storage class (aClass)."""
+
+    def decorate_storage_protocol(aClass):
+
+        _STORAGE_TYPES[scheme] = aClass
+        urlparse.uses_query.append(scheme)
+        return aClass
+
+    return decorate_storage_protocol
 
 
 class Storage(object):
@@ -36,6 +50,7 @@ class Storage(object):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
 
 
+@register_storage_protocol("file")
 class LocalStorage(Storage):
 
     def save_to_filename(self, file_path):
@@ -71,18 +86,61 @@ class LocalStorage(Storage):
 import pyrax
 
 
-class CloudFilesStorage(Storage):
+class InvalidStorageUri(RuntimeError):
+    """Invalid storage URI was specified."""
+    pass
+
+@register_storage_protocol("swift")
+class SwiftStorage(Storage):
+    """SwiftStorage is a storage object based on OpenStack Swift object_store.
+
+    The URI for working with Swift storage has the following format:
+
+      swift://username:password@container/object?auth_endpoint=URL&region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(SwiftStorage, self).__init__(*args, **kwargs)
+        self.username = None
+        self.password = None
+        self.auth_endpoint = None
+        self.region = None
+        self.api_key = None
+        self.tenant_id = None
+        self.public = True
 
     def _authenticate(self):
         auth, _ = self._parsed_storage_uri.netloc.split("@")
-        username, password = auth.split(":", 1)
+        self.username, self.password = auth.split(":", 1)
 
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
-        public = query.get("public", ["True"])[0].lower() != "false"
+        self.public = query.get("public", ["True"])[0].lower() != "false"
+        self.api_key = query.get("api_key", [None])[0]
+        self.tenant_id = query.get("tenant_id", [None])[0]
+        self.region = query.get("region", [None])[0]
+        auth_endpoint = query.get("auth_endpoint", [None])[0]
+        if auth_endpoint:
+            self.auth_endpoint = auth_endpoint
 
-        context = pyrax.create_context("rackspace", username=username, password=password)
+        # minimum set of required params
+        if not self.username:
+            raise InvalidStorageUri("username is required.")
+        if not self.password:
+            raise InvalidStorageUri("password is required.")
+        if not self.auth_endpoint:
+            raise InvalidStorageUri("auth_endpoint is required.")
+        if not self.region:
+            raise InvalidStorageUri("region is required.")
+        if not self.tenant_id:
+            raise InvalidStorageUri("tenant_id is required.")
+
+        context = pyrax.create_context(id_type="pyrax.base_identity.BaseIdentity",
+                                       username=self.username, password=self.password,
+                                       api_key=self.api_key, tenant_id=self.tenant_id)
+        context.auth_endpoint = self.auth_endpoint
         context.authenticate()
-        self._cloudfiles = context.get_client("cloudfiles", "DFW", public=public)
+        self._cloudfiles = context.get_client("swift", self.region, public=self.public)
 
     def _get_container_and_object_names(self):
         _, container_name = self._parsed_storage_uri.netloc.split("@")
@@ -118,6 +176,64 @@ class CloudFilesStorage(Storage):
         self._cloudfiles.delete_object(container_name, object_name)
 
 
+def register_swift_protocol(scheme, auth_endpoint):
+    """Register a Swift based storage protocol under the specified scheme."""
+
+    def decorate_swift_protocol(aClass):
+
+        if not issubclass(aClass, SwiftStorage):
+            raise Exception("'{0}' must subclass from SwiftStorage".format(aClass))
+
+        @register_storage_protocol(scheme)
+        class SwiftWrapper(aClass):
+            __doc__ = aClass.__doc__
+
+            def __init__(self, *args, **kwargs):
+                super(SwiftWrapper, self).__init__(*args, **kwargs)
+                self.auth_endpoint = auth_endpoint
+
+        functools.update_wrapper(SwiftWrapper, aClass, ('__name__', '__module__'), ())
+        return SwiftWrapper
+    return decorate_swift_protocol
+
+
+@register_swift_protocol(scheme="cloudfiles",
+                         auth_endpoint=None)
+class CloudFilesStorage(SwiftStorage):
+    """Rackspace Cloudfiles storage.
+
+    The URI for working with Rackspace Cloudfiles based storage has the following format:
+
+      cloudfiles://username:key@container/object[?public={True|False}]
+
+    """
+
+    def _authenticate(self):
+        auth, _ = self._parsed_storage_uri.netloc.split("@")
+        username, password = auth.split(":", 1)
+
+        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        public = query.get("public", ["True"])[0].lower() != "false"
+
+        context = pyrax.create_context("rackspace", username=username, password=password)
+        context.authenticate()
+        self._cloudfiles = context.get_client("cloudfiles", "DFW", public=public)
+
+
+@register_swift_protocol(scheme="hpcloud",
+                         auth_endpoint="https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/")
+class HPCloudStorage(SwiftStorage):
+    """HP Cloud (Helion) Swift storage.
+
+    The URI for working with HP Cloud Storage has the following format:
+
+      hpcloud://username:password@container/object?region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
+
+    """
+    pass
+
+
+@register_storage_protocol("ftp")
 class FTPStorage(Storage):
     def _connect(self):
         username = self._parsed_storage_uri.username
@@ -162,6 +278,7 @@ class FTPStorage(Storage):
         ftp_client.delete(filename)
 
 
+@register_storage_protocol("ftps")
 class FTPSStorage(FTPStorage):
     def _connect(self):
         username = self._parsed_storage_uri.username
@@ -175,14 +292,6 @@ class FTPSStorage(FTPStorage):
         ftp_client.prot_p()
 
         return ftp_client
-
-
-_STORAGE_TYPES = {
-    "file": LocalStorage,
-    "cloudfiles": CloudFilesStorage,
-    "ftp": FTPStorage,
-    "ftps": FTPSStorage
-}
 
 
 def get_storage(storage_uri):
