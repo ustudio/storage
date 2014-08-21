@@ -8,7 +8,7 @@ os-networksv2-python-novaclient-ext==0.21
 os-virtual-interfacesv2-python-novaclient-ext==0.15
 pbr==0.10.0
 prettytable==0.7.2
-pyrax==1.9.0
+pyrax==1.9.2
 python-novaclient==2.18.1
 pytz==2014.4
 rackspace-auth-openstack==1.3
