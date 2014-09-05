@@ -5,6 +5,9 @@ from unittest import TestCase
 from StringIO import StringIO
 
 
+EXPECTED_CHUNK_SIZE = 32 * 1024 * 1024 * 1024
+
+
 class TestRegisterStorageProtocol(TestCase):
 
     def setUp(self):
@@ -176,7 +179,8 @@ class TestSwiftStorage(TestCase):
                                    public=True, tenant_id=self.params["tenant_id"],
                                    api_key=self.params["api_key"])
         mock_swift.fetch_object.assert_called_with(self.params["container"],
-                                                   self.params["file"], chunk_size=4096)
+                                                   self.params["file"],
+                                                   chunk_size=EXPECTED_CHUNK_SIZE)
 
     @mock.patch("pyrax.create_context")
     def test_swift_authenticates_with_partial_uri(self, mock_create_context):
@@ -196,7 +200,8 @@ class TestSwiftStorage(TestCase):
                                    password=self.params["password"], region=self.params["region"],
                                    public=True, tenant_id=self.params["tenant_id"])
         mock_swift.fetch_object.assert_called_with(self.params["container"],
-                                                   self.params["file"], chunk_size=4096)
+                                                   self.params["file"],
+                                                   chunk_size=EXPECTED_CHUNK_SIZE)
 
     @mock.patch("pyrax.create_context")
     def test_swift_authenticate_fails_with_missing_params(self, mock_create_context):
@@ -210,21 +215,21 @@ class TestSwiftStorage(TestCase):
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
               "region=%(region)s&tenant_id=%(tenant_id)s" % self.params
         storage = storagelib.get_storage(uri)
-        with self.assertRaises(storagelib.storage.InvalidStorageUri) as e:
+        with self.assertRaises(storagelib.storage.InvalidStorageUri):
             storage.save_to_filename(temp_output.name)
 
         # uri with missing region... should fail.
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
               "auth_endpoint=%(auth_endpoint)s&tenant_id=%(tenant_id)s" % self.params
         storage = storagelib.get_storage(uri)
-        with self.assertRaises(storagelib.storage.InvalidStorageUri) as e:
+        with self.assertRaises(storagelib.storage.InvalidStorageUri):
             storage.save_to_filename(temp_output.name)
 
         # uri with missing tenant_id... should fail.
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
               "auth_endpoint=%(auth_endpoint)s&region=%(region)s" % self.params
         storage = storagelib.get_storage(uri)
-        with self.assertRaises(storagelib.storage.InvalidStorageUri) as e:
+        with self.assertRaises(storagelib.storage.InvalidStorageUri):
             storage.save_to_filename(temp_output.name)
 
     @mock.patch("pyrax.create_context")
@@ -245,7 +250,7 @@ class TestSwiftStorage(TestCase):
                                    password=self.params["password"], region=self.params["region"],
                                    tenant_id=self.params["tenant_id"], public=True)
         mock_swift.fetch_object.assert_called_with(self.params["container"], self.params["file"],
-                                                   chunk_size=4096)
+                                                   chunk_size=EXPECTED_CHUNK_SIZE)
 
         with open(temp_output.name) as output_fp:
             self.assertEqual("FOOBAR", output_fp.read())
@@ -269,7 +274,7 @@ class TestSwiftStorage(TestCase):
                                    password=self.params["password"], region=self.params["region"],
                                    tenant_id=self.params["tenant_id"], public=True)
         mock_swift.fetch_object.assert_called_with(self.params["container"], self.params["file"],
-                                                   chunk_size=4096)
+                                                   chunk_size=EXPECTED_CHUNK_SIZE)
 
         self.assertEqual("foobar", out_file.getvalue())
 
@@ -363,7 +368,7 @@ class TestRegisterSwiftProtocol(TestCase):
     def test_register_swift_protocol_only_wraps_swiftstorage_subclasses(self):
 
         # wrapped class must be an instance of SwiftStorage
-        with self.assertRaises(Exception) as e:
+        with self.assertRaises(Exception):
             @storagelib.register_swift_protocol(scheme=self.scheme,
                                                 auth_endpoint=self.auth_endpoint)
             class NonStorageClass(object):
@@ -391,8 +396,6 @@ class TestRackspaceStorage(TestCase):
 
     @mock.patch("pyrax.create_context")
     def test_rackspace_authenticate(self, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
         uri = "cloudfiles://%(username)s:%(api_key)s@%(container)s/%(file)s" % self.params
         storage = storagelib.get_storage(uri)
         storage.delete()
