@@ -5,7 +5,7 @@ from unittest import TestCase
 from StringIO import StringIO
 
 
-EXPECTED_CHUNK_SIZE = 32 * 1024 * 1024 * 1024
+EXPECTED_CHUNK_SIZE = 32 * 1024 * 1024
 
 
 class TestRegisterStorageProtocol(TestCase):

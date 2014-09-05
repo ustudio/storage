@@ -6,7 +6,7 @@ import shutil
 import urlparse
 
 _STORAGE_TYPES = {}         # maintains supported storage protocols
-_LARGE_CHUNK = 32 * 1024 * 1024 * 1024
+_LARGE_CHUNK = 32 * 1024 * 1024
 
 
 def register_storage_protocol(scheme):
