@@ -6,6 +6,7 @@ import shutil
 import urlparse
 
 _STORAGE_TYPES = {}         # maintains supported storage protocols
+_LARGE_CHUNK = 32 * 1024 * 1024 * 1024
 
 
 def register_storage_protocol(scheme):
@@ -90,13 +91,15 @@ class InvalidStorageUri(RuntimeError):
     """Invalid storage URI was specified."""
     pass
 
+
 @register_storage_protocol("swift")
 class SwiftStorage(Storage):
     """SwiftStorage is a storage object based on OpenStack Swift object_store.
 
     The URI for working with Swift storage has the following format:
 
-      swift://username:password@container/object?auth_endpoint=URL&region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
+      swift://username:password@container/object?
+      auth_endpoint=URL&region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
 
     """
 
@@ -156,7 +159,7 @@ class SwiftStorage(Storage):
         container_name, object_name = self._get_container_and_object_names()
 
         for chunk in self._cloudfiles.fetch_object(
-                container_name, object_name, chunk_size=4096):
+                container_name, object_name, chunk_size=_LARGE_CHUNK):
             out_file.write(chunk)
 
     def _upload_file(self, file_or_path):
@@ -220,14 +223,15 @@ class CloudFilesStorage(SwiftStorage):
         self._cloudfiles = context.get_client("cloudfiles", "DFW", public=public)
 
 
-@register_swift_protocol(scheme="hpcloud",
-                         auth_endpoint="https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/")
+@register_swift_protocol(
+    scheme="hpcloud", auth_endpoint="https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/")
 class HPCloudStorage(SwiftStorage):
     """HP Cloud (Helion) Swift storage.
 
     The URI for working with HP Cloud Storage has the following format:
 
-      hpcloud://username:password@container/object?region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
+      hpcloud://username:password@container/object?
+      region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
 
     """
     pass
