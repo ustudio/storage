@@ -217,10 +217,11 @@ class CloudFilesStorage(SwiftStorage):
 
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
         public = query.get("public", ["True"])[0].lower() != "false"
+        region = query.get("region", ["DFW"])[0]
 
         context = pyrax.create_context("rackspace", username=username, password=password)
         context.authenticate()
-        self._cloudfiles = context.get_client("cloudfiles", "DFW", public=public)
+        self._cloudfiles = context.get_client("cloudfiles", region, public=public)
 
 
 @register_swift_protocol(
