@@ -78,7 +78,7 @@ specifying them in the scheme/protocol section of the URI:
 
 #### file ####
 
-A reference to a local file. This is primarily useful for runing code
+A reference to a local file. This is primarily useful for running code
 in a development environment.
 
 Example:
@@ -209,7 +209,7 @@ No guarantees are made as to the idempotency of the operations. For
 example, if your FTP server handles file-naming conflicts by writing
 duplicate files to a different location, and the operation retries
 because of a network failure *after* some or all of the file has been
-transfered, the second attempt might be stored at a different
+transferred, the second attempt might be stored at a different
 location.
 
 In general, this is not a problem as long as the remote servers are
@@ -253,7 +253,7 @@ Currently, no methods in the storage library mark exceptions as
 
 ### Extending ###
 
-There are two decorators that can be used when extenting the storage library.
+There are two decorators that can be used when extending the storage library.
 
 #### `register_storage_protocol` ####
 
