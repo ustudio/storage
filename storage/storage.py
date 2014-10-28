@@ -1,5 +1,6 @@
 import ftplib
 import functools
+import mimetypes
 import os
 import os.path
 import shutil
@@ -165,7 +166,11 @@ class SwiftStorage(Storage):
     def _upload_file(self, file_or_path):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
-        self._cloudfiles.upload_file(container_name, file_or_path, object_name)
+        kwargs = {}
+        mimetype = mimetypes.guess_type(object_name)[0]
+        if mimetype is not None:
+            kwargs["content_type"] = mimetype
+        self._cloudfiles.upload_file(container_name, file_or_path, object_name, **kwargs)
 
     def load_from_filename(self, file_path):
         self._upload_file(file_path)

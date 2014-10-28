@@ -299,6 +299,24 @@ class TestSwiftStorage(TestCase):
                                                   self.params["file"])
 
     @mock.patch("pyrax.create_context")
+    def test_swift_load_from_filename_provides_content_type(self, mock_create_context):
+        self.params["file"] = "foobar.mp4"
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        temp_input = tempfile.NamedTemporaryFile()
+        temp_input.write("FOOBAR")
+        temp_input.flush()
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s" % self.params
+
+        storage = storagelib.get_storage(uri)
+        storage.load_from_filename(temp_input.name)
+        mock_swift.upload_file.assert_called_with(self.params["container"], temp_input.name,
+                                                  self.params["file"], content_type="video/mp4")
+
+    @mock.patch("pyrax.create_context")
     def test_swift_load_from_file(self, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
