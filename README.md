@@ -160,7 +160,7 @@ accept the following optional parameters:
 |:----------------|:------------------------------------------------------------------------|
 | `public`        | Whether or not to use the internal ServiceNet network. This saves bandwidth if you are accessing CloudFiles from within the same datacenter.  (default: true)           |
 | `api_key`       | API key to be used during authentication.                               |
-| `temp_url_key`  | Key to be used when retrieving a temp url to the storage object from the **Swift** object store (see `get_temp_url()`|
+| `temp_url_key`  | Key to be used when retrieving a temp url to the storage object from the **Swift** object store (see `get_temp_url()`)|
 
 
 #### cloudfiles ####
