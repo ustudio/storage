@@ -71,6 +71,22 @@ Downloads the contents of the file specified by the URI to
 
 Deletes the file specified by the URI to `get_storage`
 
+#### `get_temp_url(seconds=60, key=None)` ####
+
+Returns a temp URL to the file specified by the URI to `get_storage`.
+This works for swift based protocols (e.g. cloudfiles, hpcloud) as
+well as for the local file storage.
+
+For swift (**OpenStack**) based protocols (**Cloudfiles, Hpcloud**),
+this will return a time-limited temporary URL which can be used to GET
+the object directly from the container in the object store. By default
+the URL will only be valid for 60 seconds, but a different timeout
+can be specified by using the `seconds=` parameter.  Note, that the
+container must already have a temp url key set for the container.
+
+For local file storage, the call will simply return the same URI
+that was passed to `get_storage`.  All params are ignored.
+
 ### Supported Protocols ###
 
 The following protocols are supported, and can be selected by
@@ -85,13 +101,31 @@ Example:
 
 ```
 
-file:///home/user/awesome-file.txt
+file:///home/user/awesome-file.txt[?temp_url_base=<ENCODED-URL>]
 
 ```
 
 If the intermediate directories specified in the URI passed to
 `get_storage` do not exist, the file-local storage object will attempt
 to create them when using `load_from_file` or `load_from_filename`.
+
+If a `temp_url_base=` is included in the URI specified to `get_storage`, `get_temp_url` will
+return a URL that that joins the `temp_url_base` with the object name.
+
+For example, if a `temp_url_base` of (`http://hostname/some/path/`) is included in the URI:
+
+```
+file:///home/user/awesome-file.txt?temp_url_base=http%3A%2F%2Fhostname%2Fsome%2Fpath%2F
+```
+
+then a call to `get_temp_url` will return:
+
+```
+http://hostname/some/path/awesome-file.txt
+```
+
+For local storage objects both the `seconds=` and `key=` params are ignored.
+
 
 #### swift ####
 
@@ -124,6 +158,7 @@ accept the following optional parameters:
 |:----------------|:------------------------------------------------------------------------|
 | `public`        | Whether or not to use the internal ServiceNet network. This saves bandwidth if you are accessing CloudFiles from within the same datacenter.  (default: true)           |
 | `api_key`       | API key to be used during authentication.                               |
+| `temp_url_key`  | Key to be used when retrieving a temp url to the storage object from the **Swift** object store (see `get_temp_url()`|
 
 
 #### cloudfiles ####
@@ -183,7 +218,7 @@ Example:
 
 ```
 
-ftp://username:password@my-ftp-server/directory/awesome-file.txt
+ftp://username:password@my-ftp-server/directory/awesome-file.txt[?temp_url_base=<ENCODED-URL>]
 
 ```
 
@@ -195,7 +230,7 @@ A reference to a file on an FTP server, served using the FTPS
 Example:
 
 ```
-ftps://username:password@my-secure-ftp-server/directory/awesome-file.txt
+ftps://username:password@my-secure-ftp-server/directory/awesome-file.txt[?temp_url_base=<ENCODED-URL>]
 ```
 
 ### retry ###

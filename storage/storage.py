@@ -51,9 +51,23 @@ class Storage(object):
     def delete(self):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
 
+    def get_temp_url(self, seconds=60, key=None):
+        raise NotImplementedError("{0} does not implement 'get_temp_url'".format(self._class_name()))
+
 
 @register_storage_protocol("file")
 class LocalStorage(Storage):
+    """LocalStorage is a local file storage object.
+
+    The URI for working with local file storage has the following format:
+
+      file:///some/path/to/a/file.txt?[temp_url_base=<URL-ENCODED-URL>]
+
+    """
+    def __init__(self, storage_uri):
+        super(LocalStorage, self).__init__(storage_uri)
+        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        self._temp_url_base = query.get("temp_url_base", [None])[0]
 
     def save_to_filename(self, file_path):
         shutil.copy(self._parsed_storage_uri.path, file_path)
@@ -84,6 +98,33 @@ class LocalStorage(Storage):
     def delete(self):
         os.remove(self._parsed_storage_uri.path)
 
+    def get_temp_url(self, seconds=60, key=None):
+        """
+        Return a temporary URL allowing access to the storage object.
+
+        If a temp_url_base is specified in the storage URI, then a call to get_temp_url() will
+        return the temp_url_base joined with the object name.
+
+        For example, if "http://www.someserver.com:1234/path/to/" were passed (urlencoded) as the
+        temp_url_base query parameter of the storage URI:
+
+          file://some/path/to/a/file.txt?temp_url_base=http%3A%2F%2Fwww.someserver.com%3A1234%2Fpath%2Fto%2
+
+        then a call to get_temp_url() would yield:
+
+          http://www.someserver.com:1234/path/to/file.txt
+
+
+        :param seconds:  ignored for local storage
+        :param key:      ignored for local storage
+        :return:
+        """
+        temp_url = None
+        if self._temp_url_base is not None:
+            temp_url = urlparse.urljoin(self._temp_url_base,
+                self._parsed_storage_uri.path.split('/')[-1])
+        return temp_url
+
 
 import pyrax
 
@@ -101,6 +142,7 @@ class SwiftStorage(Storage):
 
       swift://username:password@container/object?
       auth_endpoint=URL&region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
+      [&temp_url_key=TEMPURLKEY]
 
     """
 
@@ -113,6 +155,7 @@ class SwiftStorage(Storage):
         self.api_key = None
         self.tenant_id = None
         self.public = True
+        self.temp_url_key = None
 
     def _authenticate(self):
         auth, _ = self._parsed_storage_uri.netloc.split("@")
@@ -123,9 +166,8 @@ class SwiftStorage(Storage):
         self.api_key = query.get("api_key", [None])[0]
         self.tenant_id = query.get("tenant_id", [None])[0]
         self.region = query.get("region", [None])[0]
-        auth_endpoint = query.get("auth_endpoint", [None])[0]
-        if auth_endpoint:
-            self.auth_endpoint = auth_endpoint
+        self.auth_endpoint = query.get("auth_endpoint", [None])[0]
+        self.temp_url_key = query.get("temp_url_key", [None])[0]
 
         # minimum set of required params
         if not self.username:
@@ -183,6 +225,13 @@ class SwiftStorage(Storage):
         container_name, object_name = self._get_container_and_object_names()
         self._cloudfiles.delete_object(container_name, object_name)
 
+    def get_temp_url(self, seconds=60, key=None):
+        self._authenticate()
+        container_name, object_name = self._get_container_and_object_names()
+        temp_url_key = key if key is not None else self.temp_url_key
+
+        return self._cloudfiles.get_temp_url(container_name, object_name, seconds=seconds,
+            method="GET", key=temp_url_key)
 
 def register_swift_protocol(scheme, auth_endpoint):
     """Register a Swift based storage protocol under the specified scheme."""
@@ -245,15 +294,29 @@ class HPCloudStorage(SwiftStorage):
 
 @register_storage_protocol("ftp")
 class FTPStorage(Storage):
-    def _connect(self):
-        username = self._parsed_storage_uri.username
-        password = self._parsed_storage_uri.password
-        hostname = self._parsed_storage_uri.hostname
-        port = 21
+    """FTP storage.
 
+    The URI for working with FTP storage has the following format:
+
+      ftp://username:password@hostname/path/to/file.txt[?temp_url_base=<URL-ENCODED-URL>]
+
+    If the ftp storage has access via HTTP, then a temp_url_base can be specified
+    that will allow get_temp_url() to return access to that object via HTTP.
+    """
+
+    def __init__(self, storage_uri):
+        super(FTPStorage, self).__init__(storage_uri)
+        self._username = self._parsed_storage_uri.username
+        self._password = self._parsed_storage_uri.password
+        self._hostname = self._parsed_storage_uri.hostname
+        self._port = 21
+        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        self._temp_url_base = query.get("temp_url_base", [None])[0]
+
+    def _connect(self):
         ftp_client = ftplib.FTP()
-        ftp_client.connect(hostname, port=port)
-        ftp_client.login(username, password)
+        ftp_client.connect(self._hostname, port=self._port)
+        ftp_client.login(self._username, self._password)
 
         return ftp_client
 
@@ -287,18 +350,41 @@ class FTPStorage(Storage):
         filename = self._cd_to_file(ftp_client)
         ftp_client.delete(filename)
 
+    def get_temp_url(self, seconds=60, key=None):
+        """
+        Return a temporary URL allowing access to the storage object.
+
+        If a temp_url_base is specified in the storage URI, then a call to get_temp_url() will
+        return the temp_url_base joined with the object name.
+
+        For example, if "http://www.someserver.com:1234/path/to/" were passed (urlencoded) as the
+        temp_url_base query parameter of the storage URI:
+
+          ftp://username:password@hostname/some/path/to/a/file.txt?temp_url_base=http%3A%2F%2Fwww
+          .someserver.com%3A1234%2Fpath%2Fto%2
+
+        then a call to get_temp_url() would yield:
+
+          http://www.someserver.com:1234/path/to/file.txt
+
+
+        :param seconds:  ignored for ftp storage
+        :param key:      ignored for ftp storage
+        :return:
+        """
+        temp_url = None
+        if self._temp_url_base is not None:
+            temp_url = urlparse.urljoin(self._temp_url_base,
+                self._parsed_storage_uri.path.split('/')[-1])
+        return temp_url
+
 
 @register_storage_protocol("ftps")
 class FTPSStorage(FTPStorage):
     def _connect(self):
-        username = self._parsed_storage_uri.username
-        password = self._parsed_storage_uri.password
-        hostname = self._parsed_storage_uri.hostname
-        port = 21
-
         ftp_client = ftplib.FTP_TLS()
-        ftp_client.connect(hostname, port=port)
-        ftp_client.login(username, password)
+        ftp_client.connect(self._hostname, port=self._port)
+        ftp_client.login(self._username, self._password)
         ftp_client.prot_p()
 
         return ftp_client
