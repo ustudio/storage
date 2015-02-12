@@ -73,19 +73,21 @@ Deletes the file specified by the URI to `get_storage`
 
 #### `get_temp_url(seconds=60, key=None)` ####
 
-Returns a temp URL to the file specified by the URI to `get_storage`.
-This works for swift based protocols (e.g. cloudfiles, hpcloud) as
-well as for the local file storage.
+Returns a temp URL to the object specified by the URI to `get_storage`.
+This works for **swift** based protocols (e.g. **cloudfiles, hpcloud**) as
+well as for both local file storage objects and ftp storage objects.
 
-For swift (**OpenStack**) based protocols (**Cloudfiles, Hpcloud**),
-this will return a time-limited temporary URL which can be used to GET
-the object directly from the container in the object store. By default
-the URL will only be valid for 60 seconds, but a different timeout
-can be specified by using the `seconds=` parameter.  Note, that the
-container must already have a temp url key set for the container.
+For **swift** based protocols, this will return a time-limited temporary
+URL which can be used to GET the object directly from the container in the
+object store. By default the URL will only be valid for 60 seconds, but a
+different timeout can be specified by using the `seconds=` parameter.
+Note, that the container must already have a temp url key set for the container.
+If it does not have a temp url key, an exception will be raised.
 
-For local file storage, the call will simply return the same URI
-that was passed to `get_storage`.  All params are ignored.
+For local file storage, the call will return a URL formed by joining the `temp_url_base=`
+that was included in the URI that was passed to `get_storage` with the object name. If no
+`temp_url_base=` query param was included in the storage URI, `get_temp_url` will return
+`None` instead. (*see (file)[file] below*)
 
 ### Supported Protocols ###
 
