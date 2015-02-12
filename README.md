@@ -87,7 +87,7 @@ If it does not have a temp url key, an exception will be raised.
 For local file storage, the call will return a URL formed by joining the `temp_url_base=`
 that was included in the URI that was passed to `get_storage` with the object name. If no
 `temp_url_base=` query param was included in the storage URI, `get_temp_url` will return
-`None` instead. (*see (file)[file] below*)
+`None` instead. (*see* [**file**](#file) *below*)
 
 ### Supported Protocols ###
 
