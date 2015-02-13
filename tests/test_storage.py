@@ -1,6 +1,9 @@
 import mock
+import os.path
 import storage as storagelib
+from storage.storage import DownloadUrlBaseUndefinedError
 import tempfile
+import urllib
 from unittest import TestCase
 from StringIO import StringIO
 
@@ -135,6 +138,67 @@ class TestLocalStorage(TestCase):
         mock_exists.assert_called_with("/foobar/is")
         self.assertEqual(0, mock_makedirs.call_count)
 
+    def test_local_storage_get_download_url(self):
+        temp_input = tempfile.NamedTemporaryFile()
+        temp_input.write("FOOBAR")
+        temp_input.flush()
+
+        download_url_base = "http://host:123/path/to/"
+        download_url_base_encoded = urllib.quote_plus(download_url_base)
+
+        storage_uri = "file://{fpath}?download_url_base={download_url_base}".format(
+            fpath=temp_input.name,
+            download_url_base=download_url_base_encoded)
+
+        out_storage = storagelib.get_storage(storage_uri)
+        temp_url = out_storage.get_download_url()
+
+        self.assertEqual("http://host:123/path/to/{}".format(os.path.basename(temp_input.name)),
+            temp_url)
+
+    def test_local_storage_get_download_url_ignores_args(self):
+        temp_input = tempfile.NamedTemporaryFile()
+        temp_input.write("FOOBAR")
+        temp_input.flush()
+
+        download_url_base = "http://host:123/path/to/"
+        download_url_base_encoded = urllib.quote_plus(download_url_base)
+
+        storage_uri = "file://{fpath}?download_url_base={download_url_base}".format(
+            fpath=temp_input.name,
+            download_url_base=download_url_base_encoded)
+
+        out_storage = storagelib.get_storage(storage_uri)
+        temp_url = out_storage.get_download_url(seconds=900)
+
+        self.assertEqual("http://host:123/path/to/{}".format(os.path.basename(temp_input.name)),
+            temp_url)
+
+        temp_url = out_storage.get_download_url(key="secret")
+
+        self.assertEqual("http://host:123/path/to/{}".format(os.path.basename(temp_input.name)),
+            temp_url)
+
+    def test_local_storage_get_download_url_returns_none_on_empty_base(self):
+        temp_input = tempfile.NamedTemporaryFile()
+        temp_input.write("FOOBAR")
+        temp_input.flush()
+
+        # blank download_url_base
+        storage_uri = "file://{fpath}?download_url_base=".format(fpath=temp_input.name)
+
+        out_storage = storagelib.get_storage(storage_uri)
+
+        with self.assertRaises(DownloadUrlBaseUndefinedError):
+            temp_url = out_storage.get_download_url()
+
+        # no download_url_base
+        storage_uri = "file://{fpath}".format(fpath=temp_input.name)
+        out_storage = storagelib.get_storage(storage_uri)
+
+        with self.assertRaises(DownloadUrlBaseUndefinedError):
+            temp_url = out_storage.get_download_url()
+
 
 class TestSwiftStorage(TestCase):
 
@@ -148,7 +212,8 @@ class TestSwiftStorage(TestCase):
             "tenant_id": "1234567890",
             "auth_endpoint": "http://identity.server.com:1234/v2/",
             "api_key": "0987654321",
-            "public": True
+            "public": True,
+            "download_url_key": "super_secret_key"
         }
 
     def _assert_login_correct(self, mock_create_context, username=None, password=None, region=None,
@@ -170,7 +235,7 @@ class TestSwiftStorage(TestCase):
 
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
               "auth_endpoint=%(auth_endpoint)s&region=%(region)s&api_key=%(api_key)s" \
-              "&tenant_id=%(tenant_id)s" % self.params
+              "&tenant_id=%(tenant_id)s&download_url_key=%(download_url_key)s" % self.params
         storage = storagelib.get_storage(uri)
         storage.save_to_filename(temp_output.name)
 
@@ -363,6 +428,72 @@ class TestSwiftStorage(TestCase):
                                    password=self.params["password"], region=self.params["region"],
                                    tenant_id=self.params["tenant_id"], public=False)
         mock_swift.delete_object.assert_called_with(self.params["container"], self.params["file"])
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_get_download_url(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s&download_url_key=%(download_url_key)s" % self.params
+        storage = storagelib.get_storage(uri)
+        storage.get_download_url()
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+            password=self.params["password"], region=self.params["region"],
+            tenant_id=self.params["tenant_id"], public=True)
+        mock_swift.get_download_url.assert_called_with(self.params["container"], self.params["file"],
+            seconds=60, method="GET", key="super_secret_key")
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_get_download_url_without_temp_url_key(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s" % self.params
+        storage = storagelib.get_storage(uri)
+        storage.get_download_url()
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+            password=self.params["password"], region=self.params["region"],
+            tenant_id=self.params["tenant_id"], public=True)
+        mock_swift.get_download_url.assert_called_with(self.params["container"], self.params["file"],
+            seconds=60, method="GET", key=None)
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_get_download_url_with_override(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s&download_url_key=%(download_url_key)s" % self.params
+        storage = storagelib.get_storage(uri)
+
+        storage.get_download_url(key="NOT-THE-URI-KEY")
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+            password=self.params["password"], region=self.params["region"],
+            tenant_id=self.params["tenant_id"], public=True)
+        mock_swift.get_download_url.assert_called_with(self.params["container"], self.params["file"],
+            seconds=60, method="GET", key="NOT-THE-URI-KEY")
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_get_download_url_with_non_default_expiration(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
+              "&tenant_id=%(tenant_id)s" % self.params
+        storage = storagelib.get_storage(uri)
+        storage.get_download_url(seconds=10*60)
+
+        self._assert_login_correct(mock_create_context, username=self.params["username"],
+            password=self.params["password"], region=self.params["region"],
+            tenant_id=self.params["tenant_id"], public=True)
+        mock_swift.get_download_url.assert_called_with(self.params["container"], self.params["file"],
+            seconds=600, method="GET", key=None)
+
 
 
 class TestRegisterSwiftProtocol(TestCase):
@@ -573,6 +704,34 @@ class TestFTPStorage(TestCase):
 
         mock_ftp.cwd.assert_called_with("some/dir")
         mock_ftp.delete.assert_called_with("file")
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_get_download_url(self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+
+        download_url_base = urllib.quote_plus("http://hostname/path/to/")
+
+        ftpuri = "ftp://user:password@ftp.foo.com/some/dir/file.txt?download_url_base={0}".format(
+            download_url_base)
+
+        storage = storagelib.get_storage(ftpuri)
+        temp_url = storage.get_download_url()
+
+        self.assertFalse(mock_ftp_class.called)
+        self.assertEqual(temp_url, "http://hostname/path/to/file.txt")
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_get_download_url_returns_none_with_empty_base(self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+
+        ftpuri = "ftp://user:password@ftp.foo.com/some/dir/file.txt"
+
+        storage = storagelib.get_storage(ftpuri)
+
+        with self.assertRaises(DownloadUrlBaseUndefinedError):
+            temp_url = storage.get_download_url()
+
+        self.assertFalse(mock_ftp_class.called)
 
 
 class TestFTPSStorage(TestCase):
