@@ -128,19 +128,19 @@ class LocalStorage(Storage):
         :return:        the download url that can be used to access the storage object
         :raises:        DownloadUrlBaseUndefinedError
         """
-        return generate_download_url_from_base(self._download_url_base,
+        return _generate_download_url_from_base(self._download_url_base,
                 self._parsed_storage_uri.path.split('/')[-1])
 
 
-def generate_download_url_from_base(base, object):
-    """Generate a download url by joining the base with the storage object.
+def _generate_download_url_from_base(base, object_name):
+    """Generate a download url by joining the base with the storage object_name.
 
     If the base is not defined, raise an exception.
     """
     if base is None:
         raise DownloadUrlBaseUndefinedError("The storage uri has no download_url_base defined.")
 
-    return urlparse.urljoin(base, object)
+    return urlparse.urljoin(base, object_name)
 
 
 import pyrax
@@ -389,7 +389,7 @@ class FTPStorage(Storage):
         :return:        the download url that can be used to access the storage object
         :raises:        DownloadUrlBaseUndefinedError
         """
-        return generate_download_url_from_base(self._download_url_base,
+        return _generate_download_url_from_base(self._download_url_base,
             self._parsed_storage_uri.path.split('/')[-1])
 
 
