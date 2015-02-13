@@ -23,6 +23,14 @@ def register_storage_protocol(scheme):
     return decorate_storage_protocol
 
 
+class DownloadUrlBaseUndefinedError(Exception):
+    """Exception raised when a download url has been requested and
+    no download_url_base has been defined for the storage object.
+
+    This exception is used with local file storage and FTP file storage objects.
+    """
+    pass
+
 class Storage(object):
 
     def __init__(self, storage_uri):
@@ -115,15 +123,24 @@ class LocalStorage(Storage):
           http://www.someserver.com:1234/path/to/file.txt
 
 
-        :param seconds:  ignored for local storage
-        :param key:      ignored for local storage
-        :return:
+        :param seconds: ignored for local storage
+        :param key:     ignored for local storage
+        :return:        the download url that can be used to access the storage object
+        :raises:        DownloadUrlBaseUndefinedError
         """
-        temp_url = None
-        if self._download_url_base is not None:
-            temp_url = urlparse.urljoin(self._download_url_base,
+        return generate_download_url_from_base(self._download_url_base,
                 self._parsed_storage_uri.path.split('/')[-1])
-        return temp_url
+
+
+def generate_download_url_from_base(base, object):
+    """Generate a download url by joining the base with the storage object.
+
+    If the base is not defined, raise an exception.
+    """
+    if base is None:
+        raise DownloadUrlBaseUndefinedError("The storage uri has no download_url_base defined.")
+
+    return urlparse.urljoin(base, object)
 
 
 import pyrax
@@ -132,7 +149,6 @@ import pyrax
 class InvalidStorageUri(RuntimeError):
     """Invalid storage URI was specified."""
     pass
-
 
 @register_storage_protocol("swift")
 class SwiftStorage(Storage):
@@ -368,15 +384,13 @@ class FTPStorage(Storage):
           http://www.someserver.com:1234/path/to/file.txt
 
 
-        :param seconds:  ignored for ftp storage
-        :param key:      ignored for ftp storage
-        :return:
+        :param seconds: ignored for ftp storage
+        :param key:     ignored for ftp storage
+        :return:        the download url that can be used to access the storage object
+        :raises:        DownloadUrlBaseUndefinedError
         """
-        temp_url = None
-        if self._download_url_base is not None:
-            temp_url = urlparse.urljoin(self._download_url_base,
-                self._parsed_storage_uri.path.split('/')[-1])
-        return temp_url
+        return generate_download_url_from_base(self._download_url_base,
+            self._parsed_storage_uri.path.split('/')[-1])
 
 
 @register_storage_protocol("ftps")

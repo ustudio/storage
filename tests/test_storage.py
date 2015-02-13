@@ -1,6 +1,7 @@
 import mock
 import os.path
 import storage as storagelib
+from storage.storage import DownloadUrlBaseUndefinedError
 import tempfile
 import urllib
 from unittest import TestCase
@@ -187,16 +188,16 @@ class TestLocalStorage(TestCase):
         storage_uri = "file://{fpath}?download_url_base=".format(fpath=temp_input.name)
 
         out_storage = storagelib.get_storage(storage_uri)
-        temp_url = out_storage.get_download_url()
 
-        self.assertIsNone(temp_url)
+        with self.assertRaises(DownloadUrlBaseUndefinedError):
+            temp_url = out_storage.get_download_url()
 
         # no download_url_base
         storage_uri = "file://{fpath}".format(fpath=temp_input.name)
         out_storage = storagelib.get_storage(storage_uri)
-        temp_url = out_storage.get_download_url()
 
-        self.assertIsNone(temp_url)
+        with self.assertRaises(DownloadUrlBaseUndefinedError):
+            temp_url = out_storage.get_download_url()
 
 
 class TestSwiftStorage(TestCase):
@@ -726,10 +727,11 @@ class TestFTPStorage(TestCase):
         ftpuri = "ftp://user:password@ftp.foo.com/some/dir/file.txt"
 
         storage = storagelib.get_storage(ftpuri)
-        temp_url = storage.get_download_url()
+
+        with self.assertRaises(DownloadUrlBaseUndefinedError):
+            temp_url = storage.get_download_url()
 
         self.assertFalse(mock_ftp_class.called)
-        self.assertIsNone(temp_url)
 
 
 class TestFTPSStorage(TestCase):

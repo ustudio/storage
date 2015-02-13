@@ -80,13 +80,13 @@ well as for both local file storage objects and ftp storage objects.
 For **swift** based protocols, this will return a time-limited temporary
 URL which can be used to GET the object directly from the container in the
 object store. By default the URL will only be valid for 60 seconds, but a
-different timeout can be specified by using the `seconds=` parameter.
+different timeout can be specified by using the `seconds` parameter.
 Note, that the container must already have a temp url key set for the container.
 If it does not have a temp url key, an exception will be raised.
 
-For local file storage, the call will return a URL formed by joining the `download_url_base=`
-that was included in the URI that was passed to `get_storage` with the object name. If no
-`download_url_base=` query param was included in the storage URI, `get_download_url` will return
+For local file storage, the call will return a URL formed by joining the `download_url_base`
+(included in the URI that was passed to `get_storage`) with the object name. If no
+`download_url_base` query param was included in the storage URI, `get_download_url` will return
 `None` instead. (*see* [**file**](#file) *below*)
 
 ### Supported Protocols ###
@@ -111,7 +111,7 @@ If the intermediate directories specified in the URI passed to
 `get_storage` do not exist, the file-local storage object will attempt
 to create them when using `load_from_file` or `load_from_filename`.
 
-If a `download_url_base=` is included in the URI specified to `get_storage`, `get_download_url` will
+If a `download_url_base` is included in the URI specified to `get_storage`, `get_download_url` will
 return a URL that that joins the `download_url_base` with the object name.
 
 For example, if a `download_url_base` of (`http://hostname/some/path/`) is included in the URI:
@@ -126,7 +126,7 @@ then a call to `get_download_url` will return:
 http://hostname/some/path/awesome-file.txt
 ```
 
-For local storage objects both the `seconds=` and `key=` params are ignored.
+For local storage objects both the `seconds` and `key` parameters to `get_download_url` are ignored.
 
 
 #### swift ####
