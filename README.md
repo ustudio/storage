@@ -71,9 +71,9 @@ Downloads the contents of the file specified by the URI to
 
 Deletes the file specified by the URI to `get_storage`
 
-#### `get_temp_url(seconds=60, key=None)` ####
+#### `get_download_url(seconds=60, key=None)` ####
 
-Returns a temp URL to the object specified by the URI to `get_storage`.
+Returns a download URL to the object specified by the URI to `get_storage`.
 This works for **swift** based protocols (e.g. **cloudfiles, hpcloud**) as
 well as for both local file storage objects and ftp storage objects.
 
@@ -84,9 +84,9 @@ different timeout can be specified by using the `seconds=` parameter.
 Note, that the container must already have a temp url key set for the container.
 If it does not have a temp url key, an exception will be raised.
 
-For local file storage, the call will return a URL formed by joining the `temp_url_base=`
+For local file storage, the call will return a URL formed by joining the `download_url_base=`
 that was included in the URI that was passed to `get_storage` with the object name. If no
-`temp_url_base=` query param was included in the storage URI, `get_temp_url` will return
+`download_url_base=` query param was included in the storage URI, `get_download_url` will return
 `None` instead. (*see* [**file**](#file) *below*)
 
 ### Supported Protocols ###
@@ -103,7 +103,7 @@ Example:
 
 ```
 
-file:///home/user/awesome-file.txt[?temp_url_base=<ENCODED-URL>]
+file:///home/user/awesome-file.txt[?download_url_base=<ENCODED-URL>]
 
 ```
 
@@ -111,16 +111,16 @@ If the intermediate directories specified in the URI passed to
 `get_storage` do not exist, the file-local storage object will attempt
 to create them when using `load_from_file` or `load_from_filename`.
 
-If a `temp_url_base=` is included in the URI specified to `get_storage`, `get_temp_url` will
-return a URL that that joins the `temp_url_base` with the object name.
+If a `download_url_base=` is included in the URI specified to `get_storage`, `get_download_url` will
+return a URL that that joins the `download_url_base` with the object name.
 
-For example, if a `temp_url_base` of (`http://hostname/some/path/`) is included in the URI:
+For example, if a `download_url_base` of (`http://hostname/some/path/`) is included in the URI:
 
 ```
-file:///home/user/awesome-file.txt?temp_url_base=http%3A%2F%2Fhostname%2Fsome%2Fpath%2F
+file:///home/user/awesome-file.txt?download_url_base=http%3A%2F%2Fhostname%2Fsome%2Fpath%2F
 ```
 
-then a call to `get_temp_url` will return:
+then a call to `get_download_url` will return:
 
 ```
 http://hostname/some/path/awesome-file.txt
@@ -160,7 +160,7 @@ accept the following optional parameters:
 |:----------------|:------------------------------------------------------------------------|
 | `public`        | Whether or not to use the internal ServiceNet network. This saves bandwidth if you are accessing CloudFiles from within the same datacenter.  (default: true)           |
 | `api_key`       | API key to be used during authentication.                               |
-| `temp_url_key`  | Key to be used when retrieving a temp url to the storage object from the **Swift** object store (see `get_temp_url()`)|
+| `temp_url_key`  | Key to be used when retrieving a temp download url to the storage object from the **Swift** object store (see `get_download_url()`)|
 
 
 #### cloudfiles ####
@@ -220,7 +220,7 @@ Example:
 
 ```
 
-ftp://username:password@my-ftp-server/directory/awesome-file.txt[?temp_url_base=<ENCODED-URL>]
+ftp://username:password@my-ftp-server/directory/awesome-file.txt[?download_url_base=<ENCODED-URL>]
 
 ```
 
@@ -232,7 +232,7 @@ A reference to a file on an FTP server, served using the FTPS
 Example:
 
 ```
-ftps://username:password@my-secure-ftp-server/directory/awesome-file.txt[?temp_url_base=<ENCODED-URL>]
+ftps://username:password@my-secure-ftp-server/directory/awesome-file.txt[?download_url_base=<ENCODED-URL>]
 ```
 
 ### retry ###

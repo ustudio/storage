@@ -51,8 +51,8 @@ class Storage(object):
     def delete(self):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
 
-    def get_temp_url(self, seconds=60, key=None):
-        raise NotImplementedError("{0} does not implement 'get_temp_url'".format(self._class_name()))
+    def get_download_url(self, seconds=60, key=None):
+        raise NotImplementedError("{0} does not implement 'get_download_url'".format(self._class_name()))
 
 
 @register_storage_protocol("file")
@@ -61,13 +61,13 @@ class LocalStorage(Storage):
 
     The URI for working with local file storage has the following format:
 
-      file:///some/path/to/a/file.txt?[temp_url_base=<URL-ENCODED-URL>]
+      file:///some/path/to/a/file.txt?[download_url_base=<URL-ENCODED-URL>]
 
     """
     def __init__(self, storage_uri):
         super(LocalStorage, self).__init__(storage_uri)
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
-        self._temp_url_base = query.get("temp_url_base", [None])[0]
+        self._download_url_base = query.get("download_url_base", [None])[0]
 
     def save_to_filename(self, file_path):
         shutil.copy(self._parsed_storage_uri.path, file_path)
@@ -98,19 +98,19 @@ class LocalStorage(Storage):
     def delete(self):
         os.remove(self._parsed_storage_uri.path)
 
-    def get_temp_url(self, seconds=60, key=None):
+    def get_download_url(self, seconds=60, key=None):
         """
         Return a temporary URL allowing access to the storage object.
 
-        If a temp_url_base is specified in the storage URI, then a call to get_temp_url() will
-        return the temp_url_base joined with the object name.
+        If a download_url_base is specified in the storage URI, then a call to get_download_url() will
+        return the download_url_base joined with the object name.
 
         For example, if "http://www.someserver.com:1234/path/to/" were passed (urlencoded) as the
-        temp_url_base query parameter of the storage URI:
+        download_url_base query parameter of the storage URI:
 
-          file://some/path/to/a/file.txt?temp_url_base=http%3A%2F%2Fwww.someserver.com%3A1234%2Fpath%2Fto%2
+          file://some/path/to/a/file.txt?download_url_base=http%3A%2F%2Fwww.someserver.com%3A1234%2Fpath%2Fto%2
 
-        then a call to get_temp_url() would yield:
+        then a call to get_download_url() would yield:
 
           http://www.someserver.com:1234/path/to/file.txt
 
@@ -120,8 +120,8 @@ class LocalStorage(Storage):
         :return:
         """
         temp_url = None
-        if self._temp_url_base is not None:
-            temp_url = urlparse.urljoin(self._temp_url_base,
+        if self._download_url_base is not None:
+            temp_url = urlparse.urljoin(self._download_url_base,
                 self._parsed_storage_uri.path.split('/')[-1])
         return temp_url
 
@@ -142,7 +142,7 @@ class SwiftStorage(Storage):
 
       swift://username:password@container/object?
       auth_endpoint=URL&region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
-      [&temp_url_key=TEMPURLKEY]
+      [&download_url_key=TEMPURLKEY]
 
     """
 
@@ -155,7 +155,7 @@ class SwiftStorage(Storage):
         self.api_key = None
         self.tenant_id = None
         self.public = True
-        self.temp_url_key = None
+        self.download_url_key = None
 
     def _authenticate(self):
         auth, _ = self._parsed_storage_uri.netloc.split("@")
@@ -167,7 +167,7 @@ class SwiftStorage(Storage):
         self.tenant_id = query.get("tenant_id", [None])[0]
         self.region = query.get("region", [None])[0]
         self.auth_endpoint = query.get("auth_endpoint", [None])[0]
-        self.temp_url_key = query.get("temp_url_key", [None])[0]
+        self.download_url_key = query.get("download_url_key", [None])[0]
 
         # minimum set of required params
         if not self.username:
@@ -225,12 +225,12 @@ class SwiftStorage(Storage):
         container_name, object_name = self._get_container_and_object_names()
         self._cloudfiles.delete_object(container_name, object_name)
 
-    def get_temp_url(self, seconds=60, key=None):
+    def get_download_url(self, seconds=60, key=None):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
-        temp_url_key = key if key is not None else self.temp_url_key
+        temp_url_key = key if key is not None else self.download_url_key
 
-        return self._cloudfiles.get_temp_url(container_name, object_name, seconds=seconds,
+        return self._cloudfiles.get_download_url(container_name, object_name, seconds=seconds,
             method="GET", key=temp_url_key)
 
 def register_swift_protocol(scheme, auth_endpoint):
@@ -298,10 +298,10 @@ class FTPStorage(Storage):
 
     The URI for working with FTP storage has the following format:
 
-      ftp://username:password@hostname/path/to/file.txt[?temp_url_base=<URL-ENCODED-URL>]
+      ftp://username:password@hostname/path/to/file.txt[?download_url_base=<URL-ENCODED-URL>]
 
-    If the ftp storage has access via HTTP, then a temp_url_base can be specified
-    that will allow get_temp_url() to return access to that object via HTTP.
+    If the ftp storage has access via HTTP, then a download_url_base can be specified
+    that will allow get_download_url() to return access to that object via HTTP.
     """
 
     def __init__(self, storage_uri):
@@ -311,7 +311,7 @@ class FTPStorage(Storage):
         self._hostname = self._parsed_storage_uri.hostname
         self._port = 21
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
-        self._temp_url_base = query.get("temp_url_base", [None])[0]
+        self._download_url_base = query.get("download_url_base", [None])[0]
 
     def _connect(self):
         ftp_client = ftplib.FTP()
@@ -350,20 +350,20 @@ class FTPStorage(Storage):
         filename = self._cd_to_file(ftp_client)
         ftp_client.delete(filename)
 
-    def get_temp_url(self, seconds=60, key=None):
+    def get_download_url(self, seconds=60, key=None):
         """
         Return a temporary URL allowing access to the storage object.
 
-        If a temp_url_base is specified in the storage URI, then a call to get_temp_url() will
-        return the temp_url_base joined with the object name.
+        If a download_url_base is specified in the storage URI, then a call to get_download_url() will
+        return the download_url_base joined with the object name.
 
         For example, if "http://www.someserver.com:1234/path/to/" were passed (urlencoded) as the
-        temp_url_base query parameter of the storage URI:
+        download_url_base query parameter of the storage URI:
 
-          ftp://username:password@hostname/some/path/to/a/file.txt?temp_url_base=http%3A%2F%2Fwww
+          ftp://username:password@hostname/some/path/to/a/file.txt?download_url_base=http%3A%2F%2Fwww
           .someserver.com%3A1234%2Fpath%2Fto%2
 
-        then a call to get_temp_url() would yield:
+        then a call to get_download_url() would yield:
 
           http://www.someserver.com:1234/path/to/file.txt
 
@@ -373,8 +373,8 @@ class FTPStorage(Storage):
         :return:
         """
         temp_url = None
-        if self._temp_url_base is not None:
-            temp_url = urlparse.urljoin(self._temp_url_base,
+        if self._download_url_base is not None:
+            temp_url = urlparse.urljoin(self._download_url_base,
                 self._parsed_storage_uri.path.split('/')[-1])
         return temp_url
 
