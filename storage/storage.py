@@ -246,7 +246,7 @@ class SwiftStorage(Storage):
         container_name, object_name = self._get_container_and_object_names()
         temp_url_key = key if key is not None else self.download_url_key
 
-        return self._cloudfiles.get_download_url(container_name, object_name, seconds=seconds,
+        return self._cloudfiles.get_temp_url(container_name, object_name, seconds=seconds,
             method="GET", key=temp_url_key)
 
 def register_swift_protocol(scheme, auth_endpoint):
