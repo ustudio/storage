@@ -442,7 +442,7 @@ class TestSwiftStorage(TestCase):
         self._assert_login_correct(mock_create_context, username=self.params["username"],
             password=self.params["password"], region=self.params["region"],
             tenant_id=self.params["tenant_id"], public=True)
-        mock_swift.get_download_url.assert_called_with(self.params["container"], self.params["file"],
+        mock_swift.get_temp_url.assert_called_with(self.params["container"], self.params["file"],
             seconds=60, method="GET", key="super_secret_key")
 
     @mock.patch("pyrax.create_context")
@@ -458,7 +458,7 @@ class TestSwiftStorage(TestCase):
         self._assert_login_correct(mock_create_context, username=self.params["username"],
             password=self.params["password"], region=self.params["region"],
             tenant_id=self.params["tenant_id"], public=True)
-        mock_swift.get_download_url.assert_called_with(self.params["container"], self.params["file"],
+        mock_swift.get_temp_url.assert_called_with(self.params["container"], self.params["file"],
             seconds=60, method="GET", key=None)
 
     @mock.patch("pyrax.create_context")
@@ -475,7 +475,7 @@ class TestSwiftStorage(TestCase):
         self._assert_login_correct(mock_create_context, username=self.params["username"],
             password=self.params["password"], region=self.params["region"],
             tenant_id=self.params["tenant_id"], public=True)
-        mock_swift.get_download_url.assert_called_with(self.params["container"], self.params["file"],
+        mock_swift.get_temp_url.assert_called_with(self.params["container"], self.params["file"],
             seconds=60, method="GET", key="NOT-THE-URI-KEY")
 
     @mock.patch("pyrax.create_context")
@@ -491,7 +491,7 @@ class TestSwiftStorage(TestCase):
         self._assert_login_correct(mock_create_context, username=self.params["username"],
             password=self.params["password"], region=self.params["region"],
             tenant_id=self.params["tenant_id"], public=True)
-        mock_swift.get_download_url.assert_called_with(self.params["container"], self.params["file"],
+        mock_swift.get_temp_url.assert_called_with(self.params["container"], self.params["file"],
             seconds=600, method="GET", key=None)
 
 
