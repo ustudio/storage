@@ -494,6 +494,30 @@ class TestSwiftStorage(TestCase):
         mock_swift.get_temp_url.assert_called_with(self.params["container"], self.params["file"],
             seconds=600, method="GET", key=None)
 
+    @mock.patch("pyrax.create_context")
+    def test_swift_get_download_url_encodes_object_names_with_spaces(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        updated_params = self.params.copy()
+        updated_params["file"] = "filename with spaces.txt"
+
+        uri = "swift://{username}:{password}@{container}/{file}?" \
+            "auth_endpoint={auth_endpoint}&region={region}" \
+            "&tenant_id={tenant_id}".format(**updated_params)
+
+        mock_swift.get_temp_url.return_value = "http://cloudfiles.com/path/to/{file}" \
+            "?param1=12345&param2=67890".format(**updated_params)
+
+        storage = storagelib.get_storage(uri)
+        download_url = storage.get_download_url()
+
+        mock_swift.get_temp_url.assert_called_with(
+            updated_params["container"], updated_params["file"],
+            seconds=60, method="GET", key=None)
+
+        self.assertEqual(
+            download_url,
+            "http://cloudfiles.com/path/to/filename%20with%20spaces.txt?param1=12345&param2=67890")
 
 
 class TestRegisterSwiftProtocol(TestCase):

@@ -13,7 +13,7 @@ Install via pip:
 pip install object_storage
 ```
 
-The current version is `0.5.1`.
+The current version is `0.5.2`.
 
 ## Quick Start ##
 
@@ -86,8 +86,8 @@ If it does not have a temp url key, an exception will be raised.
 
 For local file storage, the call will return a URL formed by joining the `download_url_base`
 (included in the URI that was passed to `get_storage`) with the object name. If no
-`download_url_base` query param was included in the storage URI, `get_download_url` will return
-`None` instead. (*see* [**file**](#file) *below*)
+`download_url_base` query param was included in the storage URI, `get_download_url`
+will raise a `DownloadUrlBaseUndefinedError` exception. (*see* [**file**](#file) *below*)
 
 ### Supported Protocols ###
 

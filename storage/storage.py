@@ -4,6 +4,7 @@ import mimetypes
 import os
 import os.path
 import shutil
+import urllib
 import urlparse
 
 _STORAGE_TYPES = {}         # maintains supported storage protocols
@@ -246,8 +247,13 @@ class SwiftStorage(Storage):
         container_name, object_name = self._get_container_and_object_names()
         temp_url_key = key if key is not None else self.download_url_key
 
-        return self._cloudfiles.get_temp_url(container_name, object_name, seconds=seconds,
-            method="GET", key=temp_url_key)
+        download_url = self._cloudfiles.get_temp_url(
+            container_name, object_name, seconds=seconds, method="GET", key=temp_url_key)
+
+        parsed_url = urlparse.urlparse(download_url)
+        parsed_url = parsed_url._replace(path=urllib.quote(parsed_url.path))
+
+        return urlparse.urlunparse(parsed_url)
 
 def register_swift_protocol(scheme, auth_endpoint):
     """Register a Swift based storage protocol under the specified scheme."""
