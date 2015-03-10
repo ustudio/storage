@@ -538,6 +538,22 @@ class TestRegisterSwiftProtocol(TestCase):
         store_obj = storagelib.get_storage(uri)
         self.assertIsInstance(store_obj, MyStorageClass)
 
+    @mock.patch("pyrax.create_context")
+    def test_register_allows_override_of_auth_url(self, mock_create_context):
+        @storagelib.register_swift_protocol(scheme=self.scheme, auth_endpoint=self.auth_endpoint)
+        class MyStorageClass(storagelib.storage.SwiftStorage):
+            pass
+
+        uri = "{0}://username:password@container/object?region=region-a&tenant_id=tennant".format(
+            self.scheme)
+
+        storage = storagelib.get_storage(uri)
+
+        storage._authenticate()
+
+        self.assertEqual(
+            self.auth_endpoint, mock_create_context.return_value.auth_endpoint)
+
     def test_register_swift_protocol_only_wraps_swiftstorage_subclasses(self):
 
         # wrapped class must be an instance of SwiftStorage
@@ -601,7 +617,6 @@ class TestHPCloudStorage(TestCase):
             "file": "file",
             "region": "region",
             "tenant_id": "1234567890",
-            "auth_endpoint": "http://identity.server.com:1234/v2/",
             "api_key": "0987654321",
             "public": True
         }
@@ -617,6 +632,19 @@ class TestHPCloudStorage(TestCase):
         storage = storagelib.get_storage(uri)
 
         self.assertIsInstance(storage, storagelib.storage.HPCloudStorage)
+
+    @mock.patch("pyrax.create_context")
+    def test_hp_cloud_uses_default_auth_endpoint(self, mock_create_context):
+        uri = "hpcloud://%(username)s:%(password)s@%(container)s/%(file)s?" \
+              "region=%(region)s&api_key=%(api_key)s&tenant_id=%(tenant_id)s" % self.params
+
+        storage = storagelib.get_storage(uri)
+
+        storage._authenticate()
+
+        self.assertEqual(
+            "https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/",
+            mock_create_context.return_value.auth_endpoint)
 
 
 class TestFTPStorage(TestCase):
