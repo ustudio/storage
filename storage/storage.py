@@ -32,6 +32,7 @@ class DownloadUrlBaseUndefinedError(Exception):
     """
     pass
 
+
 class Storage(object):
 
     def __init__(self, storage_uri):
@@ -151,6 +152,7 @@ class InvalidStorageUri(RuntimeError):
     """Invalid storage URI was specified."""
     pass
 
+
 @register_storage_protocol("swift")
 class SwiftStorage(Storage):
     """SwiftStorage is a storage object based on OpenStack Swift object_store.
@@ -165,45 +167,44 @@ class SwiftStorage(Storage):
 
     def __init__(self, *args, **kwargs):
         super(SwiftStorage, self).__init__(*args, **kwargs)
-        self.username = None
-        self.password = None
         self.auth_endpoint = None
-        self.region = None
-        self.api_key = None
-        self.tenant_id = None
-        self.public = True
-        self.download_url_key = None
 
     def _authenticate(self):
         auth, _ = self._parsed_storage_uri.netloc.split("@")
-        self.username, self.password = auth.split(":", 1)
+        username, password = auth.split(":", 1)
 
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
-        self.public = query.get("public", ["True"])[0].lower() != "false"
-        self.api_key = query.get("api_key", [None])[0]
-        self.tenant_id = query.get("tenant_id", [None])[0]
-        self.region = query.get("region", [None])[0]
-        self.auth_endpoint = query.get("auth_endpoint", [None])[0]
+        public = query.get("public", ["True"])[0].lower() != "false"
+        api_key = query.get("api_key", [None])[0]
+        tenant_id = query.get("tenant_id", [None])[0]
+        region = query.get("region", [None])[0]
+        auth_endpoint = query.get("auth_endpoint", [None])[0]
+
+        # This is the only auth parameter that's saved for later
         self.download_url_key = query.get("download_url_key", [None])[0]
 
-        # minimum set of required params
-        if not self.username:
-            raise InvalidStorageUri("username is required.")
-        if not self.password:
-            raise InvalidStorageUri("password is required.")
-        if not self.auth_endpoint:
+        if auth_endpoint is None:
+            auth_endpoint = self.auth_endpoint
+
+        if not auth_endpoint:
             raise InvalidStorageUri("auth_endpoint is required.")
-        if not self.region:
+
+        # minimum set of required params
+        if not username:
+            raise InvalidStorageUri("username is required.")
+        if not password:
+            raise InvalidStorageUri("password is required.")
+        if not region:
             raise InvalidStorageUri("region is required.")
-        if not self.tenant_id:
+        if not tenant_id:
             raise InvalidStorageUri("tenant_id is required.")
 
         context = pyrax.create_context(id_type="pyrax.base_identity.BaseIdentity",
-                                       username=self.username, password=self.password,
-                                       api_key=self.api_key, tenant_id=self.tenant_id)
-        context.auth_endpoint = self.auth_endpoint
+                                       username=username, password=password,
+                                       api_key=api_key, tenant_id=tenant_id)
+        context.auth_endpoint = auth_endpoint
         context.authenticate()
-        self._cloudfiles = context.get_client("swift", self.region, public=self.public)
+        self._cloudfiles = context.get_client("swift", region, public=public)
 
     def _get_container_and_object_names(self):
         _, container_name = self._parsed_storage_uri.netloc.split("@")
@@ -254,6 +255,7 @@ class SwiftStorage(Storage):
         parsed_url = parsed_url._replace(path=urllib.quote(parsed_url.path))
 
         return urlparse.urlunparse(parsed_url)
+
 
 def register_swift_protocol(scheme, auth_endpoint):
     """Register a Swift based storage protocol under the specified scheme."""
