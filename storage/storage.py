@@ -418,8 +418,8 @@ class FTPSStorage(FTPStorage):
 class S3Storage(Storage):
     def __init__(self, storage_uri):
         super(S3Storage, self).__init__(storage_uri)
-        self._access_key = self._parsed_storage_uri.username
-        self._access_secret = self._parsed_storage_uri.password
+        self._access_key = urllib.unquote(self._parsed_storage_uri.username)
+        self._access_secret = urllib.unquote(self._parsed_storage_uri.password)
         self._bucket = self._parsed_storage_uri.hostname
         self._keyname = self._parsed_storage_uri.path.replace("/", "", 1)
 

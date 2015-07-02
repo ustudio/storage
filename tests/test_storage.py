@@ -908,6 +908,21 @@ class TestFTPSStorage(TestCase):
 
 class TestS3Storage(TestCase):
     @mock.patch("boto3.session.Session", autospec=True)
+    def test_handles_urlencoded_keys(self, mock_session_class):
+        encoded_key = urllib.quote("access/key", safe="")
+        encoded_secret = urllib.quote("access/secret", safe="")
+
+        storage = storagelib.get_storage(
+            "s3://{0}:{1}@bucket/some/file?region=US_EAST".format(encoded_key, encoded_secret))
+
+        storage._connect()
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access/key",
+            aws_secret_access_key="access/secret",
+            region_name="US_EAST")
+
+    @mock.patch("boto3.session.Session", autospec=True)
     def test_load_from_file(self, mock_session_class):
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
