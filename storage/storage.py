@@ -446,7 +446,7 @@ class S3Storage(Storage):
         out_file.write(response["Body"].read())
 
     def load_from_filename(self, file_path):
-        with open(file_path) as in_file:
+        with open(file_path, "rb") as in_file:
             self.load_from_file(in_file)
 
     def load_from_file(self, in_file):

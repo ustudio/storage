@@ -954,7 +954,7 @@ class TestS3Storage(TestCase):
 
         mock_s3.Bucket.assert_called_with("bucket")
 
-        mock_open.assert_called_with("source/file")
+        mock_open.assert_called_with("source/file", "rb")
 
         mock_bucket.put_object.assert_called_with(Key="some/file", Body=mock_file)
 
