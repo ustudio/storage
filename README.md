@@ -13,7 +13,7 @@ Install via pip:
 pip install object_storage
 ```
 
-The current version is `0.5.3`.
+The current version is `0.6.0`.
 
 ## Quick Start ##
 
@@ -211,6 +211,27 @@ preregistered authentication endpoint.  As with the [**swift**](#swift) scheme, 
 and `tenant_id` parameters must be specified. The `tenant_id` is typically the **Project Id**,
 as defined by HP.
 
+
+### Amazon S3 ###
+
+A reference to an object in an Amazon S3 bucket.  The `s3` scheme can be used when storing
+files using the Amazon S3 service.
+
+A `region` parameter is not required, but can be specified.
+
+**NOTE:** Chunked transfer encoding is only used for
+`save_to_filename` and `load_from_filename`. If you use `save_to_file`
+or `load_from_file`, the entire contents of the file will be loaded
+into memory.
+
+Example:
+
+```
+
+s3://aws_access_key_id:aws_secret_access_key@bucket/path/to/file[?region=us-west-2]
+
+
+```
 
 ### ftp ####
 

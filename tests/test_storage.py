@@ -153,8 +153,8 @@ class TestLocalStorage(TestCase):
         out_storage = storagelib.get_storage(storage_uri)
         temp_url = out_storage.get_download_url()
 
-        self.assertEqual("http://host:123/path/to/{}".format(os.path.basename(temp_input.name)),
-            temp_url)
+        self.assertEqual(
+            "http://host:123/path/to/{}".format(os.path.basename(temp_input.name)), temp_url)
 
     def test_local_storage_get_download_url_ignores_args(self):
         temp_input = tempfile.NamedTemporaryFile()
@@ -171,13 +171,13 @@ class TestLocalStorage(TestCase):
         out_storage = storagelib.get_storage(storage_uri)
         temp_url = out_storage.get_download_url(seconds=900)
 
-        self.assertEqual("http://host:123/path/to/{}".format(os.path.basename(temp_input.name)),
-            temp_url)
+        self.assertEqual(
+            "http://host:123/path/to/{}".format(os.path.basename(temp_input.name)), temp_url)
 
         temp_url = out_storage.get_download_url(key="secret")
 
-        self.assertEqual("http://host:123/path/to/{}".format(os.path.basename(temp_input.name)),
-            temp_url)
+        self.assertEqual(
+            "http://host:123/path/to/{}".format(os.path.basename(temp_input.name)), temp_url)
 
     def test_local_storage_get_download_url_returns_none_on_empty_base(self):
         temp_input = tempfile.NamedTemporaryFile()
@@ -190,14 +190,14 @@ class TestLocalStorage(TestCase):
         out_storage = storagelib.get_storage(storage_uri)
 
         with self.assertRaises(DownloadUrlBaseUndefinedError):
-            temp_url = out_storage.get_download_url()
+            out_storage.get_download_url()
 
         # no download_url_base
         storage_uri = "file://{fpath}".format(fpath=temp_input.name)
         out_storage = storagelib.get_storage(storage_uri)
 
         with self.assertRaises(DownloadUrlBaseUndefinedError):
-            temp_url = out_storage.get_download_url()
+            out_storage.get_download_url()
 
 
 class TestSwiftStorage(TestCase):
@@ -439,10 +439,12 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.get_download_url()
 
-        self._assert_login_correct(mock_create_context, username=self.params["username"],
+        self._assert_login_correct(
+            mock_create_context, username=self.params["username"],
             password=self.params["password"], region=self.params["region"],
             tenant_id=self.params["tenant_id"], public=True)
-        mock_swift.get_temp_url.assert_called_with(self.params["container"], self.params["file"],
+        mock_swift.get_temp_url.assert_called_with(
+            self.params["container"], self.params["file"],
             seconds=60, method="GET", key="super_secret_key")
 
     @mock.patch("pyrax.create_context")
@@ -455,10 +457,12 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.get_download_url()
 
-        self._assert_login_correct(mock_create_context, username=self.params["username"],
+        self._assert_login_correct(
+            mock_create_context, username=self.params["username"],
             password=self.params["password"], region=self.params["region"],
             tenant_id=self.params["tenant_id"], public=True)
-        mock_swift.get_temp_url.assert_called_with(self.params["container"], self.params["file"],
+        mock_swift.get_temp_url.assert_called_with(
+            self.params["container"], self.params["file"],
             seconds=60, method="GET", key=None)
 
     @mock.patch("pyrax.create_context")
@@ -472,10 +476,12 @@ class TestSwiftStorage(TestCase):
 
         storage.get_download_url(key="NOT-THE-URI-KEY")
 
-        self._assert_login_correct(mock_create_context, username=self.params["username"],
+        self._assert_login_correct(
+            mock_create_context, username=self.params["username"],
             password=self.params["password"], region=self.params["region"],
             tenant_id=self.params["tenant_id"], public=True)
-        mock_swift.get_temp_url.assert_called_with(self.params["container"], self.params["file"],
+        mock_swift.get_temp_url.assert_called_with(
+            self.params["container"], self.params["file"],
             seconds=60, method="GET", key="NOT-THE-URI-KEY")
 
     @mock.patch("pyrax.create_context")
@@ -486,12 +492,14 @@ class TestSwiftStorage(TestCase):
               "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
               "&tenant_id=%(tenant_id)s" % self.params
         storage = storagelib.get_storage(uri)
-        storage.get_download_url(seconds=10*60)
+        storage.get_download_url(seconds=10 * 60)
 
-        self._assert_login_correct(mock_create_context, username=self.params["username"],
+        self._assert_login_correct(
+            mock_create_context, username=self.params["username"],
             password=self.params["password"], region=self.params["region"],
             tenant_id=self.params["tenant_id"], public=True)
-        mock_swift.get_temp_url.assert_called_with(self.params["container"], self.params["file"],
+        mock_swift.get_temp_url.assert_called_with(
+            self.params["container"], self.params["file"],
             seconds=600, method="GET", key=None)
 
     @mock.patch("pyrax.create_context")
@@ -759,8 +767,6 @@ class TestFTPStorage(TestCase):
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_get_download_url(self, mock_ftp_class):
-        mock_ftp = mock_ftp_class.return_value
-
         download_url_base = urllib.quote_plus("http://hostname/path/to/")
 
         ftpuri = "ftp://user:password@ftp.foo.com/some/dir/file.txt?download_url_base={0}".format(
@@ -774,14 +780,12 @@ class TestFTPStorage(TestCase):
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_get_download_url_returns_none_with_empty_base(self, mock_ftp_class):
-        mock_ftp = mock_ftp_class.return_value
-
         ftpuri = "ftp://user:password@ftp.foo.com/some/dir/file.txt"
 
         storage = storagelib.get_storage(ftpuri)
 
         with self.assertRaises(DownloadUrlBaseUndefinedError):
-            temp_url = storage.get_download_url()
+            storage.get_download_url()
 
         self.assertFalse(mock_ftp_class.called)
 
@@ -900,3 +904,134 @@ class TestFTPSStorage(TestCase):
 
         mock_ftp.cwd.assert_called_with("some/dir")
         mock_ftp.delete.assert_called_with("file")
+
+
+class TestS3Storage(TestCase):
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_handles_urlencoded_keys(self, mock_session_class):
+        encoded_key = urllib.quote("access/key", safe="")
+        encoded_secret = urllib.quote("access/secret", safe="")
+
+        storage = storagelib.get_storage(
+            "s3://{0}:{1}@bucket/some/file?region=US_EAST".format(encoded_key, encoded_secret))
+
+        storage._connect()
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access/key",
+            aws_secret_access_key="access/secret",
+            region_name="US_EAST")
+
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_load_from_file(self, mock_session_class):
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_file = mock.Mock()
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        storage.load_from_file(mock_file)
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST")
+
+        mock_session.client.assert_called_with("s3")
+
+        mock_s3.put_object.assert_called_with(Bucket="bucket", Key="some/file", Body=mock_file)
+
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_load_from_filename(self, mock_session_class, mock_transfer_class):
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+        mock_transfer = mock_transfer_class.return_value
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        storage.load_from_filename("source/file")
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST")
+
+        mock_session.client.assert_called_with("s3")
+
+        mock_transfer_class.assert_called_with(mock_s3)
+
+        mock_transfer.upload_file.assert_called_with("source/file", "bucket", "some/file")
+
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_save_to_file(self, mock_session_class):
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_body = mock.Mock()
+        mock_body.read.return_value = b"some file contents"
+        mock_s3.get_object.return_value = {
+            "Body": mock_body
+        }
+
+        mock_file = mock.Mock()
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        storage.save_to_file(mock_file)
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST")
+
+        mock_session.client.assert_called_with("s3")
+
+        mock_s3.get_object.assert_called_with(Bucket="bucket", Key="some/file")
+        mock_file.write.assert_called_with(b"some file contents")
+
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_save_to_filename(self, mock_session_class, mock_transfer_class):
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_transfer = mock_transfer_class.return_value
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        storage.save_to_filename("destination/file")
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST")
+
+        mock_session.client.assert_called_with("s3")
+
+        mock_transfer_class.assert_called_with(mock_s3)
+        mock_transfer.download_file.assert_called_with("bucket", "some/file", "destination/file")
+
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_delete(self, mock_session_class):
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        storage.delete()
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST")
+
+        mock_session.client.assert_called_with("s3")
+
+        mock_s3.delete_object.assert_called_with(Bucket="bucket", Key="some/file")

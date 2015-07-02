@@ -1,3 +1,5 @@
+import boto3
+import boto3.s3.transfer
 import ftplib
 import functools
 import mimetypes
@@ -130,8 +132,8 @@ class LocalStorage(Storage):
         :return:        the download url that can be used to access the storage object
         :raises:        DownloadUrlBaseUndefinedError
         """
-        return _generate_download_url_from_base(self._download_url_base,
-                self._parsed_storage_uri.path.split('/')[-1])
+        return _generate_download_url_from_base(
+            self._download_url_base, self._parsed_storage_uri.path.split('/')[-1])
 
 
 def _generate_download_url_from_base(base, object_name):
@@ -397,8 +399,8 @@ class FTPStorage(Storage):
         :return:        the download url that can be used to access the storage object
         :raises:        DownloadUrlBaseUndefinedError
         """
-        return _generate_download_url_from_base(self._download_url_base,
-            self._parsed_storage_uri.path.split('/')[-1])
+        return _generate_download_url_from_base(
+            self._download_url_base, self._parsed_storage_uri.path.split('/')[-1])
 
 
 @register_storage_protocol("ftps")
@@ -410,6 +412,59 @@ class FTPSStorage(FTPStorage):
         ftp_client.prot_p()
 
         return ftp_client
+
+
+@register_storage_protocol("s3")
+class S3Storage(Storage):
+    def __init__(self, storage_uri):
+        super(S3Storage, self).__init__(storage_uri)
+        self._access_key = urllib.unquote(self._parsed_storage_uri.username)
+        self._access_secret = urllib.unquote(self._parsed_storage_uri.password)
+        self._bucket = self._parsed_storage_uri.hostname
+        self._keyname = self._parsed_storage_uri.path.replace("/", "", 1)
+
+        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        self._region = query.get("region", [None])[0]
+
+    def _connect(self):
+        aws_session = boto3.session.Session(
+            aws_access_key_id=self._access_key,
+            aws_secret_access_key=self._access_secret,
+            region_name=self._region)
+
+        return aws_session.client("s3")
+
+    def save_to_filename(self, file_path):
+        client = self._connect()
+
+        transfer = boto3.s3.transfer.S3Transfer(client)
+        transfer.download_file(self._bucket, self._keyname, file_path)
+
+    def save_to_file(self, out_file):
+        client = self._connect()
+
+        response = client.get_object(Bucket=self._bucket, Key=self._keyname)
+        out_file.write(response["Body"].read())
+
+    def load_from_filename(self, file_path):
+        client = self._connect()
+
+        transfer = boto3.s3.transfer.S3Transfer(client)
+        transfer.upload_file(file_path, self._bucket, self._keyname)
+
+    def load_from_file(self, in_file):
+        client = self._connect()
+
+        client.put_object(Bucket=self._bucket, Key=self._keyname, Body=in_file)
+
+    def delete(self):
+        client = self._connect()
+
+        client.delete_object(Bucket=self._bucket, Key=self._keyname)
+
+    def get_download_url(self, seconds=60, key=None):
+        raise NotImplementedError(
+            "{0} does not implement 'get_download_url'".format(self._class_name()))
 
 
 def get_storage(storage_uri):
