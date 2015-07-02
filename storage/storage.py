@@ -435,7 +435,7 @@ class S3Storage(Storage):
         return s3.Bucket(self._bucket)
 
     def save_to_filename(self, file_path):
-        with open(file_path) as out_file:
+        with open(file_path, "wb") as out_file:
             self.save_to_file(out_file)
 
     def save_to_file(self, out_file):
