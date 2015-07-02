@@ -215,12 +215,14 @@ as defined by HP.
 ### Amazon S3 ###
 
 A reference to an object in an Amazon S3 bucket.  The `s3` scheme can be used when storing
-files using the Amazon S3 service. 
+files using the Amazon S3 service.
 
 A `region` parameter is not required, but can be specified.
 
-**NOTE:** Currently the storage library does not do chunked downloading of a file so it should
-not be used with large files.
+**NOTE:** Chunked transfer encoding is only used for
+`save_to_filename` and `load_from_filename`. If you use `save_to_file`
+or `load_from_file`, the entire contents of the file will be loaded
+into memory.
 
 Example:
 
