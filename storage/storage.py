@@ -130,8 +130,8 @@ class LocalStorage(Storage):
         :return:        the download url that can be used to access the storage object
         :raises:        DownloadUrlBaseUndefinedError
         """
-        return _generate_download_url_from_base(self._download_url_base,
-                self._parsed_storage_uri.path.split('/')[-1])
+        return _generate_download_url_from_base(
+            self._download_url_base, self._parsed_storage_uri.path.split('/')[-1])
 
 
 def _generate_download_url_from_base(base, object_name):
@@ -397,8 +397,8 @@ class FTPStorage(Storage):
         :return:        the download url that can be used to access the storage object
         :raises:        DownloadUrlBaseUndefinedError
         """
-        return _generate_download_url_from_base(self._download_url_base,
-            self._parsed_storage_uri.path.split('/')[-1])
+        return _generate_download_url_from_base(
+            self._download_url_base, self._parsed_storage_uri.path.split('/')[-1])
 
 
 @register_storage_protocol("ftps")
