@@ -1,4 +1,5 @@
 import boto3
+import boto3.s3.transfer
 import ftplib
 import functools
 import mimetypes
@@ -434,8 +435,10 @@ class S3Storage(Storage):
         return aws_session.client("s3")
 
     def save_to_filename(self, file_path):
-        with open(file_path, "wb") as out_file:
-            self.save_to_file(out_file)
+        client = self._connect()
+
+        transfer = boto3.s3.transfer.S3Transfer(client)
+        transfer.download_file(self._bucket, self._keyname, file_path)
 
     def save_to_file(self, out_file):
         client = self._connect()
@@ -444,8 +447,10 @@ class S3Storage(Storage):
         out_file.write(response["Body"].read())
 
     def load_from_filename(self, file_path):
-        with open(file_path, "rb") as in_file:
-            self.load_from_file(in_file)
+        client = self._connect()
+
+        transfer = boto3.s3.transfer.S3Transfer(client)
+        transfer.upload_file(file_path, self._bucket, self._keyname)
 
     def load_from_file(self, in_file):
         client = self._connect()

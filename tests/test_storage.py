@@ -928,13 +928,12 @@ class TestS3Storage(TestCase):
 
         mock_s3.put_object.assert_called_with(Bucket="bucket", Key="some/file", Body=mock_file)
 
-    @mock.patch("__builtin__.open", autospec=True)
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_load_from_filename(self, mock_session_class, mock_open):
+    def test_load_from_filename(self, mock_session_class, mock_transfer_class):
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
-
-        mock_file = mock_open.return_value.__enter__.return_value
+        mock_transfer = mock_transfer_class.return_value
 
         storage = storagelib.get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
@@ -948,9 +947,9 @@ class TestS3Storage(TestCase):
 
         mock_session.client.assert_called_with("s3")
 
-        mock_open.assert_called_with("source/file", "rb")
+        mock_transfer_class.assert_called_with(mock_s3)
 
-        mock_s3.put_object.assert_called_with(Bucket="bucket", Key="some/file", Body=mock_file)
+        mock_transfer.upload_file.assert_called_with("source/file", "bucket", "some/file")
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_save_to_file(self, mock_session_class):
@@ -980,19 +979,13 @@ class TestS3Storage(TestCase):
         mock_s3.get_object.assert_called_with(Bucket="bucket", Key="some/file")
         mock_file.write.assert_called_with(b"some file contents")
 
-    @mock.patch("__builtin__.open", autospec=True)
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_save_to_filename(self, mock_session_class, mock_open):
+    def test_save_to_filename(self, mock_session_class, mock_transfer_class):
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
 
-        mock_body = mock.Mock()
-        mock_body.read.return_value = b"some file contents"
-        mock_s3.get_object.return_value = {
-            "Body": mock_body
-        }
-
-        mock_file = mock_open.return_value.__enter__.return_value
+        mock_transfer = mock_transfer_class.return_value
 
         storage = storagelib.get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
@@ -1006,10 +999,8 @@ class TestS3Storage(TestCase):
 
         mock_session.client.assert_called_with("s3")
 
-        mock_s3.get_object.assert_called_with(Bucket="bucket", Key="some/file")
-
-        mock_open.assert_called_with("destination/file", "wb")
-        mock_file.write.assert_called_with(b"some file contents")
+        mock_transfer_class.assert_called_with(mock_s3)
+        mock_transfer.download_file.assert_called_with("bucket", "some/file", "destination/file")
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_delete(self, mock_session_class):
