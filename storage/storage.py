@@ -455,7 +455,10 @@ class S3Storage(Storage):
         bucket.put_object(Key=self._keyname, Body=in_file)
 
     def delete(self):
-        raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
+        bucket = self._connect()
+        obj = bucket.Object(self._keyname)
+
+        obj.delete()
 
     def get_download_url(self, seconds=60, key=None):
         raise NotImplementedError("{0} does not implement 'get_download_url'".format(self._class_name()))
