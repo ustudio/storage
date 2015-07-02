@@ -217,11 +217,16 @@ as defined by HP.
 A reference to an object in an Amazon S3 bucket.  The `s3` scheme can be used when storing
 files using the Amazon S3 service. 
 
+A `region` parameter is not required, but can be specified.
+
+**NOTE:** Currently the storage library does not do chunked downloading of a file so it should
+not be used with large files.
+
 Example:
 
 ```
 
-s3://aws_access_key_id:aws_secret_access_key@bucket/path/to/file
+s3://aws_access_key_id:aws_secret_access_key@bucket/path/to/file[?region=us-west-2]
 
 
 ```
