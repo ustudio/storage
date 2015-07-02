@@ -904,3 +904,56 @@ class TestFTPSStorage(TestCase):
 
         mock_ftp.cwd.assert_called_with("some/dir")
         mock_ftp.delete.assert_called_with("file")
+
+
+class TestS3Storage(TestCase):
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_load_from_file(self, mock_session_class):
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.resource.return_value
+        mock_bucket = mock_s3.Bucket.return_value
+
+        mock_file = mock.Mock()
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        storage.load_from_file(mock_file)
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST")
+
+        mock_session.resource.assert_called_with("s3")
+
+        mock_s3.Bucket.assert_called_with("bucket")
+
+        mock_bucket.put_object.assert_called_with(Key="some/file", Body=mock_file)
+
+    @mock.patch("__builtin__.open", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_load_from_filename(self, mock_session_class, mock_open):
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.resource.return_value
+        mock_bucket = mock_s3.Bucket.return_value
+
+        mock_file = mock_open.return_value.__enter__.return_value
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        storage.load_from_filename("source/file")
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST")
+
+        mock_session.resource.assert_called_with("s3")
+
+        mock_s3.Bucket.assert_called_with("bucket")
+
+        mock_open.assert_called_with("source/file")
+
+        mock_bucket.put_object.assert_called_with(Key="some/file", Body=mock_file)

@@ -1,3 +1,4 @@
+import boto3
 import ftplib
 import functools
 import mimetypes
@@ -410,6 +411,51 @@ class FTPSStorage(FTPStorage):
         ftp_client.prot_p()
 
         return ftp_client
+
+
+@register_storage_protocol("s3")
+class S3Storage(Storage):
+    def __init__(self, storage_uri):
+        super(S3Storage, self).__init__(storage_uri)
+        self._access_key = self._parsed_storage_uri.username
+        self._access_secret = self._parsed_storage_uri.password
+        self._bucket = self._parsed_storage_uri.hostname
+        self._keyname = self._parsed_storage_uri.path.replace("/", "", 1)
+
+        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        self._region = query.get("region", [None])[0]
+
+    def _connect(self):
+        aws_session = boto3.session.Session(
+            aws_access_key_id=self._access_key,
+            aws_secret_access_key=self._access_secret,
+            region_name=self._region)
+
+        s3 = aws_session.resource("s3")
+        return s3.Bucket(self._bucket)
+
+    def save_to_filename(self, file_path):
+        raise NotImplementedError(
+            "{0} does not implement 'save_to_filename'".format(self._class_name()))
+
+    def save_to_file(self, out_file):
+        raise NotImplementedError(
+            "{0} does not implement 'save_to_file'".format(self._class_name()))
+
+    def load_from_filename(self, file_path):
+        with open(file_path) as in_file:
+            self.load_from_file(in_file)
+
+    def load_from_file(self, in_file):
+        bucket = self._connect()
+
+        bucket.put_object(Key=self._keyname, Body=in_file)
+
+    def delete(self):
+        raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
+
+    def get_download_url(self, seconds=60, key=None):
+        raise NotImplementedError("{0} does not implement 'get_download_url'".format(self._class_name()))
 
 
 def get_storage(storage_uri):
