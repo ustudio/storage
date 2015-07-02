@@ -431,18 +431,16 @@ class S3Storage(Storage):
             aws_secret_access_key=self._access_secret,
             region_name=self._region)
 
-        s3 = aws_session.resource("s3")
-        return s3.Bucket(self._bucket)
+        return aws_session.client("s3")
 
     def save_to_filename(self, file_path):
         with open(file_path, "wb") as out_file:
             self.save_to_file(out_file)
 
     def save_to_file(self, out_file):
-        bucket = self._connect()
-        obj = bucket.Object(self._keyname)
+        client = self._connect()
 
-        response = obj.get()
+        response = client.get_object(Bucket=self._bucket, Key=self._keyname)
         out_file.write(response["Body"].read())
 
     def load_from_filename(self, file_path):
@@ -450,18 +448,18 @@ class S3Storage(Storage):
             self.load_from_file(in_file)
 
     def load_from_file(self, in_file):
-        bucket = self._connect()
+        client = self._connect()
 
-        bucket.put_object(Key=self._keyname, Body=in_file)
+        client.put_object(Bucket=self._bucket, Key=self._keyname, Body=in_file)
 
     def delete(self):
-        bucket = self._connect()
-        obj = bucket.Object(self._keyname)
+        client = self._connect()
 
-        obj.delete()
+        client.delete_object(Bucket=self._bucket, Key=self._keyname)
 
     def get_download_url(self, seconds=60, key=None):
-        raise NotImplementedError("{0} does not implement 'get_download_url'".format(self._class_name()))
+        raise NotImplementedError(
+            "{0} does not implement 'get_download_url'".format(self._class_name()))
 
 
 def get_storage(storage_uri):
