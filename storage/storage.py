@@ -435,12 +435,15 @@ class S3Storage(Storage):
         return s3.Bucket(self._bucket)
 
     def save_to_filename(self, file_path):
-        raise NotImplementedError(
-            "{0} does not implement 'save_to_filename'".format(self._class_name()))
+        with open(file_path) as out_file:
+            self.save_to_file(out_file)
 
     def save_to_file(self, out_file):
-        raise NotImplementedError(
-            "{0} does not implement 'save_to_file'".format(self._class_name()))
+        bucket = self._connect()
+        obj = bucket.Object(self._keyname)
+
+        response = obj.get()
+        out_file.write(response["Body"].read())
 
     def load_from_filename(self, file_path):
         with open(file_path) as in_file:
