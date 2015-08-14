@@ -462,9 +462,15 @@ class S3Storage(Storage):
 
         client.delete_object(Bucket=self._bucket, Key=self._keyname)
 
-    def get_download_url(self, seconds=60, key=None):
-        raise NotImplementedError(
-            "{0} does not implement 'get_download_url'".format(self._class_name()))
+    def get_download_url(self, expires_in=60, http_method=None):
+        client = self._connect()
+
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self._bucket, "Key": self._keyname},
+            ExpiresIn=expires_in,
+            HttpMethod=http_method
+        )
 
 
 def get_storage(storage_uri):
