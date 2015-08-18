@@ -1037,7 +1037,7 @@ class TestS3Storage(TestCase):
         mock_s3.delete_object.assert_called_with(Bucket="bucket", Key="some/file")
 
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_get_download_url(self, mock_session_class):
+    def test_get_download_url_calls_boto_generate_presigned_url_with_correct_data(self, mock_session_class):
         mock_session = mock_session_class.return_value
         url = "s3://access_key:access_secret@some_bucket/"
         key = "some/file"
@@ -1052,9 +1052,32 @@ class TestS3Storage(TestCase):
             aws_secret_access_key="access_secret",
             region_name="US_EAST"
         )
+
         mock_session.client.return_value.generate_presigned_url.assert_called_with(
             "get_object",
             Params={"Bucket": "some_bucket", "Key": "some/file"},
-            ExpiresIn=60,
-            HttpMethod=None
+            ExpiresIn=60
+        )
+
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_get_download_url_calls_boto_generate_presigned_url_custom_expiration(self, mock_session_class):
+        mock_session = mock_session_class.return_value
+        url = "s3://access_key:access_secret@some_bucket/"
+        key = "some/file"
+        mock_session.client.return_value.generate_presigned_url.return_value = "".join(
+            ["http://fake.url/", key])
+
+        storage = storagelib.get_storage("".join([url, key, "?region=US_EAST"]))
+        storage.get_download_url(seconds=1000)
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST"
+        )
+
+        mock_session.client.return_value.generate_presigned_url.assert_called_with(
+            "get_object",
+            Params={"Bucket": "some_bucket", "Key": "some/file"},
+            ExpiresIn=1000
         )
