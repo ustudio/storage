@@ -421,8 +421,7 @@ class S3Storage(Storage):
         self._access_key = urllib.unquote(self._parsed_storage_uri.username)
         self._access_secret = urllib.unquote(self._parsed_storage_uri.password)
         self._bucket = self._parsed_storage_uri.hostname
-        self._keyname = self._parsed_storage_uri.path.replace("/", "", 1)
-
+        self._keyname = self._parsed_storage_uri.path.split("/")[-1]
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
         self._region = query.get("region", [None])[0]
 
@@ -444,7 +443,12 @@ class S3Storage(Storage):
         client = self._connect()
 
         response = client.get_object(Bucket=self._bucket, Key=self._keyname)
-        out_file.write(response["Body"].read())
+
+        while True:
+            chunk = response["Body"].read(_LARGE_CHUNK)
+            out_file.write(chunk)
+            if not chunk:
+                break
 
     def load_from_filename(self, file_path):
         client = self._connect()

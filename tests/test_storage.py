@@ -1,4 +1,5 @@
 import mock
+import sys
 import os.path
 import storage as storagelib
 from storage.storage import DownloadUrlBaseUndefinedError
@@ -907,6 +908,12 @@ class TestFTPSStorage(TestCase):
 
 
 class TestS3Storage(TestCase):
+    def test_s3storage_init_sets_correct_keyname(self):
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        self.assertEqual("file", storage._keyname)
+
     @mock.patch("boto3.session.Session", autospec=True)
     def test_handles_urlencoded_keys(self, mock_session_class):
         encoded_key = urllib.quote("access/key", safe="")
@@ -941,7 +948,7 @@ class TestS3Storage(TestCase):
 
         mock_session.client.assert_called_with("s3")
 
-        mock_s3.put_object.assert_called_with(Bucket="bucket", Key="some/file", Body=mock_file)
+        mock_s3.put_object.assert_called_with(Bucket="bucket", Key="file", Body=mock_file)
 
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
@@ -964,7 +971,7 @@ class TestS3Storage(TestCase):
 
         mock_transfer_class.assert_called_with(mock_s3)
 
-        mock_transfer.upload_file.assert_called_with("source/file", "bucket", "some/file")
+        mock_transfer.upload_file.assert_called_with("source/file", "bucket", "file")
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_save_to_file(self, mock_session_class):
@@ -972,7 +979,7 @@ class TestS3Storage(TestCase):
         mock_s3 = mock_session.client.return_value
 
         mock_body = mock.Mock()
-        mock_body.read.return_value = b"some file contents"
+        mock_body.read.side_effect = [b"some", b"file", b"contents", None]
         mock_s3.get_object.return_value = {
             "Body": mock_body
         }
@@ -981,7 +988,6 @@ class TestS3Storage(TestCase):
 
         storage = storagelib.get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
-
         storage.save_to_file(mock_file)
 
         mock_session_class.assert_called_with(
@@ -990,9 +996,12 @@ class TestS3Storage(TestCase):
             region_name="US_EAST")
 
         mock_session.client.assert_called_with("s3")
-
-        mock_s3.get_object.assert_called_with(Bucket="bucket", Key="some/file")
-        mock_file.write.assert_called_with(b"some file contents")
+        mock_s3.get_object.assert_called_with(Bucket="bucket", Key="file")
+        mock_file.write.assert_has_calls([
+            mock.call(b"some"),
+            mock.call(b"file"),
+            mock.call(b"contents")
+        ], any_order=False)
 
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
@@ -1015,7 +1024,7 @@ class TestS3Storage(TestCase):
         mock_session.client.assert_called_with("s3")
 
         mock_transfer_class.assert_called_with(mock_s3)
-        mock_transfer.download_file.assert_called_with("bucket", "some/file", "destination/file")
+        mock_transfer.download_file.assert_called_with("bucket", "file", "destination/file")
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_delete(self, mock_session_class):
@@ -1034,7 +1043,7 @@ class TestS3Storage(TestCase):
 
         mock_session.client.assert_called_with("s3")
 
-        mock_s3.delete_object.assert_called_with(Bucket="bucket", Key="some/file")
+        mock_s3.delete_object.assert_called_with(Bucket="bucket", Key="file")
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_get_download_url_calls_boto_generate_presigned_url_with_correct_data(self, mock_session_class):
@@ -1055,7 +1064,7 @@ class TestS3Storage(TestCase):
 
         mock_session.client.return_value.generate_presigned_url.assert_called_with(
             "get_object",
-            Params={"Bucket": "some_bucket", "Key": "some/file"},
+            Params={"Bucket": "some_bucket", "Key": "file"},
             ExpiresIn=60
         )
 
@@ -1078,6 +1087,6 @@ class TestS3Storage(TestCase):
 
         mock_session.client.return_value.generate_presigned_url.assert_called_with(
             "get_object",
-            Params={"Bucket": "some_bucket", "Key": "some/file"},
+            Params={"Bucket": "some_bucket", "Key": "file"},
             ExpiresIn=1000
         )
