@@ -1,5 +1,4 @@
 import mock
-import sys
 import os.path
 import storage as storagelib
 from storage.storage import DownloadUrlBaseUndefinedError
