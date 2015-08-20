@@ -10,6 +10,8 @@ from StringIO import StringIO
 
 EXPECTED_CHUNK_SIZE = 32 * 1024 * 1024
 
+class ClientError(Exception):
+    pass
 
 class TestRegisterStorageProtocol(TestCase):
 
@@ -1001,6 +1003,62 @@ class TestS3Storage(TestCase):
             mock.call(b"file"),
             mock.call(b"contents")
         ], any_order=False)
+
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_save_to_file_catches_reading_from_stream_exception(self, mock_session_class):
+        # def raise_exception():
+        #     raise Exception
+
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_body = mock.Mock()
+        mock_body.read.side_effect = [b"some", Exception, b"file", b"contents", None]
+        mock_s3.get_object.return_value = {
+            "Body": mock_body
+        }
+
+        mock_file = mock.Mock()
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        storage.save_to_file(mock_file)
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST")
+
+        mock_session.client.assert_called_with("s3")
+        mock_s3.get_object.assert_called_with(Bucket="bucket", Key="some/file")
+        mock_file.write.assert_has_calls([
+            mock.call(b"some"),
+            mock.call(b"file"),
+            mock.call(b"contents")
+        ], any_order=False)
+
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_save_to_file_get_object_catches_client_exception(self, mock_session_class):
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_body = mock.Mock()
+        mock_body.read.side_effect = [b"some", b"file", b"contents", None]
+        mock_s3.get_object.side_effect = ClientError()
+
+        mock_file = mock.Mock()
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        with self.assertRaises(ClientError):
+            storage.save_to_file(mock_file)
+
+            mock_session_class.assert_called_with(
+                aws_access_key_id="access_key",
+                aws_secret_access_key="access_secret",
+                region_name="US_EAST")
 
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)

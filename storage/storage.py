@@ -1,5 +1,7 @@
 import boto3
+import boto3.exceptions
 import boto3.s3.transfer
+from botocore.exceptions import ClientError
 import ftplib
 import functools
 import mimetypes
@@ -442,13 +444,20 @@ class S3Storage(Storage):
     def save_to_file(self, out_file):
         client = self._connect()
 
-        response = client.get_object(Bucket=self._bucket, Key=self._keyname)
-
-        while True:
-            chunk = response["Body"].read(_LARGE_CHUNK)
-            out_file.write(chunk)
-            if not chunk:
-                break
+        try:
+            response = client.get_object(Bucket=self._bucket, Key=self._keyname)
+            while True:
+                try:
+                    chunk = response["Body"].read(_LARGE_CHUNK)
+                    out_file.write(chunk)
+                    if not chunk:
+                        break
+                except Exception:
+                    pass
+        except ClientError:
+            pass
+            # Not sure what to do here
+            # print "Something went wrong"
 
     def load_from_filename(self, file_path):
         client = self._connect()
