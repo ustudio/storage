@@ -455,9 +455,8 @@ class S3Storage(Storage):
                 except Exception:
                     pass
         except ClientError:
-            pass
             # Not sure what to do here
-            # print "Something went wrong"
+            pass
 
     def load_from_filename(self, file_path):
         client = self._connect()
