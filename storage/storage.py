@@ -421,7 +421,7 @@ class S3Storage(Storage):
         self._access_key = urllib.unquote(self._parsed_storage_uri.username)
         self._access_secret = urllib.unquote(self._parsed_storage_uri.password)
         self._bucket = self._parsed_storage_uri.hostname
-        self._keyname = self._parsed_storage_uri.path.split("/")[-1]
+        self._keyname = self._parsed_storage_uri.path.replace("/", "", 1)
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
         self._region = query.get("region", [None])[0]
 
