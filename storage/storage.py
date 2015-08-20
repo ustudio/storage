@@ -466,7 +466,7 @@ class S3Storage(Storage):
 
         client.delete_object(Bucket=self._bucket, Key=self._keyname)
 
-    def get_download_url(self, seconds=60):
+    def get_download_url(self, seconds=60, key=None):
         client = self._connect()
 
         return client.generate_presigned_url(
