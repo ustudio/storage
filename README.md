@@ -74,14 +74,13 @@ Deletes the file specified by the URI to `get_storage`
 #### `get_download_url(seconds=60, key=None)` ####
 
 Returns a download URL to the object specified by the URI to `get_storage`.
-This works for **swift** based protocols (e.g. **cloudfiles, hpcloud**) as
-well as for both local file storage objects and ftp storage objects.
 
-For **swift** based protocols, this will return a time-limited temporary
+For **swift** and **s3** based protocols, this will return a time-limited temporary
 URL which can be used to GET the object directly from the container in the
 object store. By default the URL will only be valid for 60 seconds, but a
 different timeout can be specified by using the `seconds` parameter.
-Note, that the container must already have a temp url key set for the container.
+
+Note that for **swift** based protocols the container must already have a temp url key set for the container.
 If it does not have a temp url key, an exception will be raised.
 
 For local file storage, the call will return a URL formed by joining the `download_url_base`
