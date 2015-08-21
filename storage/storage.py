@@ -422,7 +422,6 @@ class S3Storage(Storage):
         self._access_secret = urllib.unquote(self._parsed_storage_uri.password)
         self._bucket = self._parsed_storage_uri.hostname
         self._keyname = self._parsed_storage_uri.path.replace("/", "", 1)
-
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
         self._region = query.get("region", [None])[0]
 
@@ -444,7 +443,12 @@ class S3Storage(Storage):
         client = self._connect()
 
         response = client.get_object(Bucket=self._bucket, Key=self._keyname)
-        out_file.write(response["Body"].read())
+
+        while True:
+            chunk = response["Body"].read(_LARGE_CHUNK)
+            out_file.write(chunk)
+            if not chunk:
+                break
 
     def load_from_filename(self, file_path):
         client = self._connect()
@@ -463,8 +467,13 @@ class S3Storage(Storage):
         client.delete_object(Bucket=self._bucket, Key=self._keyname)
 
     def get_download_url(self, seconds=60, key=None):
-        raise NotImplementedError(
-            "{0} does not implement 'get_download_url'".format(self._class_name()))
+        client = self._connect()
+
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self._bucket, "Key": self._keyname},
+            ExpiresIn=seconds
+        )
 
 
 def get_storage(storage_uri):
