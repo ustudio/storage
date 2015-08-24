@@ -80,8 +80,8 @@ URL which can be used to GET the object directly from the container in the
 object store. By default the URL will only be valid for 60 seconds, but a
 different timeout can be specified by using the `seconds` parameter.
 
-Note that for **swift** based protocols the container must already have a temp url key set for the container.
-If it does not have a temp url key, an exception will be raised.
+Note that for **swift** based protocols the container must already have a temp url key
+set for the container. If it does not have a temp url key, an exception will be raised.
 
 For local file storage, the call will return a URL formed by joining the `download_url_base`
 (included in the URI that was passed to `get_storage`) with the object name. If no
