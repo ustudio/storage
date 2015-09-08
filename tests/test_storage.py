@@ -614,6 +614,66 @@ class TestRackspaceStorage(TestCase):
             mock_create_context, username="username", password="apikey", region="ORD",
             public=True)
 
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_get_download_url_sets_default_exp_time(self, mock_create_context):
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+        mock_cloudfiles.get_temp_url.return_value = "http://fake.download.url"
+        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?region=ORD".format(
+            username="username", api_key="apikey", container="container", file="file.txt")
+
+        storage = storagelib.get_storage(uri)
+        download_url = storage.get_download_url()
+
+        self._assert_login_correct(
+            mock_create_context, username="username", password="apikey", region="ORD",
+            public=True)
+
+        mock_cloudfiles.get_temp_url.assert_called_with(
+            "container", "file.txt", seconds=60, method="GET")
+        self.assertEqual("http://fake.download.url", download_url)
+
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_get_download_url_sets_custom_exp_time(self, mock_create_context):
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+        mock_cloudfiles.get_temp_url.return_value = "http://fake.download.url"
+        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?region=ORD".format(
+            username="username", api_key="apikey", container="container", file="file.txt")
+
+        storage = storagelib.get_storage(uri)
+        download_url = storage.get_download_url(seconds=3000)
+
+        self._assert_login_correct(
+            mock_create_context, username="username", password="apikey", region="ORD",
+            public=True)
+
+        mock_cloudfiles.get_temp_url.assert_called_with(
+            "container", "file.txt", seconds=3000, method="GET")
+        self.assertEqual("http://fake.download.url", download_url)
+
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_get_download_url_returns_url(self, mock_create_context):
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+        mock_cloudfiles.get_temp_url.return_value = "http://fake.download.url"
+        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?region=ORD".format(
+            username="username", api_key="apikey", container="container", file="file.txt")
+
+        storage = storagelib.get_storage(uri)
+        download_url = storage.get_download_url()
+
+        self.assertEqual("http://fake.download.url", download_url)
+
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_get_download_url_returns_urlencoded_response(self, mock_create_context):
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+        mock_cloudfiles.get_temp_url.return_value = "http://fake.download.url/with spaces in name"
+        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?region=ORD".format(
+            username="username", api_key="apikey", container="container", file="file.txt")
+
+        storage = storagelib.get_storage(uri)
+        download_url = storage.get_download_url()
+
+        self.assertEqual("http://fake.download.url/with%20spaces%20in%20name", download_url)
+
 
 class TestHPCloudStorage(TestCase):
 
