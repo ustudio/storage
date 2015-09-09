@@ -587,6 +587,20 @@ class TestRackspaceStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.delete()
 
+        self.assertEqual(None, storage.download_url_key)
+        self._assert_login_correct(
+            mock_create_context, username="username", password="apikey", region="DFW", public=True)
+
+    @mock.patch("pyrax.create_context")
+    def test_rackspace_authenticate_with_download_url_key(self, mock_create_context):
+        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?download_url_key={key}".format(
+            username="username", api_key="apikey", container="container", file="file.txt",
+            key="super_secret_key")
+
+        storage = storagelib.get_storage(uri)
+        storage.delete()
+
+        self.assertEqual("super_secret_key", storage.download_url_key)
         self._assert_login_correct(
             mock_create_context, username="username", password="apikey", region="DFW", public=True)
 
