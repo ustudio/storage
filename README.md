@@ -190,27 +190,6 @@ region in Rackspace; there is no way to specify a region at this
 time. It is possible that the URI scheme will change when this support
 is added.
 
-
-### hpcloud ###
-
-An **HP Cloud** storage type has been defined for use against the **HP Helion**
-object store. The `hpcloud` scheme can be used when storing files using
-**HP Helion**, which  is based on **OpenStack Swift**.
-
-Example:
-
-```
-
-hpcloud://username:password@container/file?region=region-a.geo-1&tenant_id=PROJECT_ID
-
-```
-
-When using the `hpcloud` scheme the storage library will use a
-preregistered authentication endpoint.  As with the [**swift**](#swift) scheme, the `region`
-and `tenant_id` parameters must be specified. The `tenant_id` is typically the **Project Id**,
-as defined by HP.
-
-
 ### Amazon S3 ###
 
 A reference to an object in an Amazon S3 bucket.  The `s3` scheme can be used when storing
