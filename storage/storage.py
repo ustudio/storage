@@ -90,6 +90,7 @@ class InvalidStorageUri(RuntimeError):
     """Invalid storage URI was specified."""
     pass
 
+
 @register_storage_protocol("swift")
 class SwiftStorage(Storage):
     """SwiftStorage is a storage object based on OpenStack Swift object_store.
@@ -218,19 +219,6 @@ class CloudFilesStorage(SwiftStorage):
         context = pyrax.create_context("rackspace", username=username, password=password)
         context.authenticate()
         self._cloudfiles = context.get_client("cloudfiles", "DFW", public=public)
-
-
-@register_swift_protocol(scheme="hpcloud",
-                         auth_endpoint="https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/")
-class HPCloudStorage(SwiftStorage):
-    """HP Cloud (Helion) Swift storage.
-
-    The URI for working with HP Cloud Storage has the following format:
-
-      hpcloud://username:password@container/object?region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
-
-    """
-    pass
 
 
 @register_storage_protocol("ftp")

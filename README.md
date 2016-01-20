@@ -98,7 +98,7 @@ to create them when using `load_from_file` or `load_from_filename`.
 A reference to an Object in a Container in an **OpenStack Swift** object store.
 With this scheme, the `host` section of the URI is the Container name, and
 the `path` is the Object. Credentials are specified in the `username`
-and `password` fields.  
+and `password` fields.
 
 In addition, the following parameters are **required** and should be passed as
 query parameters in the URI:
@@ -152,27 +152,6 @@ created automatically if they do not exist.
 region in Rackspace; there is no way to specify a region at this
 time. It is possible that the URI scheme will change when this support
 is added.
-
-
-### hpcloud ###
-
-An **HP Cloud** storage type has been defined for use against the **HP Helion**
-object store. The `hpcloud` scheme can be used when storing files using
-**HP Helion**, which  is based on **OpenStack Swift**.
-
-Example:
-
-```
-
-hpcloud://username:password@container/file?region=region-a.geo-1&tenant_id=PROJECT_ID
-
-```
-
-When using the `hpcloud` scheme the storage library will use a
-preregistered authentication endpoint.  As with the [**swift**](#swift) scheme, the `region`
-and `tenant_id` parameters must be specified. The `tenant_id` is typically the **Project Id**,
-as defined by HP.
-
 
 ### ftp ####
 
@@ -252,11 +231,11 @@ Currently, no methods in the storage library mark exceptions as
 
 ### Extending ###
 
-There are two decorators that can be used when extenting the storage library.  
+There are two decorators that can be used when extenting the storage library.
 
 #### `register_storage_protocol` ####
 
-This class decorator will register a scheme and its associated class with the storage library. 
+This class decorator will register a scheme and its associated class with the storage library.
 For example, if a new storage class were implemented (*subclassing from* `storage.Storage`),
 a scheme could be registered with the storage library using the `register_storage_protocol`.
 
@@ -279,8 +258,8 @@ xs = storage.get_storage("xstorage://some/xstorage/path")
 
 #### `register_swift_protocol` ####
 
-This class decorator is used for registering OpenStack Swift storage classes.  It is similar to the 
-`register_storage_protocol` decorator but is specific to classes that are subclasses from 
+This class decorator is used for registering OpenStack Swift storage classes.  It is similar to the
+`register_storage_protocol` decorator but is specific to classes that are subclasses from
 `storage.SwiftStorage`. It accepts two arguments. The first being the scheme it should be
 registered under. The second being the authentication endpoint that should be used when
 authenticating.
@@ -291,11 +270,11 @@ authenticating.
                          auth_endpoint="http://identity.svr.com:1234/v1.0/")
 class YStorage(storage.SwiftStorage):
    pass
-   
+
 ```
 
 This will register the swift based storage protocol under the "ystorage" scheme using the specified
-authentication endpoint.  
+authentication endpoint.
 
 ```python
 

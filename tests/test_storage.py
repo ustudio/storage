@@ -402,34 +402,6 @@ class TestRackspaceStorage(TestCase):
                                    public=True)
 
 
-class TestHPCloudStorage(TestCase):
-
-    def setUp(self):
-        self.params = {
-            "username": "user",
-            "password": "password",
-            "container": "container",
-            "file": "file",
-            "region": "region",
-            "tenant_id": "1234567890",
-            "auth_endpoint": "http://identity.server.com:1234/v2/",
-            "api_key": "0987654321",
-            "public": True
-        }
-
-    def test_hpcloud_scheme(self):
-        # make sure "hpcloud" scheme is register appropriately
-        self.assertIn("hpcloud", storagelib.storage._STORAGE_TYPES)
-
-        # use uri without specifying auth_endpoint
-        uri = "hpcloud://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "region=%(region)s&api_key=%(api_key)s&tenant_id=%(tenant_id)s" % self.params
-
-        storage = storagelib.get_storage(uri)
-
-        self.assertIsInstance(storage, storagelib.storage.HPCloudStorage)
-
-
 class TestFTPStorage(TestCase):
     @mock.patch("ftplib.FTP", autospec=True)
     def test_save_to_filename(self, mock_ftp_class):
