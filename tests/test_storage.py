@@ -629,46 +629,6 @@ class TestRackspaceStorage(TestCase):
             public=True)
 
 
-class TestHPCloudStorage(TestCase):
-
-    def setUp(self):
-        self.params = {
-            "username": "user",
-            "password": "password",
-            "container": "container",
-            "file": "file",
-            "region": "region",
-            "tenant_id": "1234567890",
-            "api_key": "0987654321",
-            "public": True
-        }
-
-    def test_hpcloud_scheme(self):
-        # make sure "hpcloud" scheme is register appropriately
-        self.assertIn("hpcloud", storagelib.storage._STORAGE_TYPES)
-
-        # use uri without specifying auth_endpoint
-        uri = "hpcloud://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "region=%(region)s&api_key=%(api_key)s&tenant_id=%(tenant_id)s" % self.params
-
-        storage = storagelib.get_storage(uri)
-
-        self.assertIsInstance(storage, storagelib.storage.HPCloudStorage)
-
-    @mock.patch("pyrax.create_context")
-    def test_hp_cloud_uses_default_auth_endpoint(self, mock_create_context):
-        uri = "hpcloud://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "region=%(region)s&api_key=%(api_key)s&tenant_id=%(tenant_id)s" % self.params
-
-        storage = storagelib.get_storage(uri)
-
-        storage._authenticate()
-
-        self.assertEqual(
-            "https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/",
-            mock_create_context.return_value.auth_endpoint)
-
-
 class TestFTPStorage(TestCase):
     @mock.patch("ftplib.FTP", autospec=True)
     def test_save_to_filename(self, mock_ftp_class):

@@ -305,20 +305,6 @@ class CloudFilesStorage(SwiftStorage):
         self._cloudfiles = context.get_client("cloudfiles", region, public=public)
 
 
-@register_swift_protocol(
-    scheme="hpcloud", auth_endpoint="https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/")
-class HPCloudStorage(SwiftStorage):
-    """HP Cloud (Helion) Swift storage.
-
-    The URI for working with HP Cloud Storage has the following format:
-
-      hpcloud://username:password@container/object?
-      region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
-
-    """
-    pass
-
-
 @register_storage_protocol("ftp")
 class FTPStorage(Storage):
     """FTP storage.
