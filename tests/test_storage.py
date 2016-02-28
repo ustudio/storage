@@ -688,6 +688,35 @@ class TestFTPStorage(TestCase):
         self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
 
         self.assertEqual("foobar", out_file.getvalue())
+        
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_save_to_file_with_specific_port(self, mock_ftp_class):
+        out_file = StringIO()
+
+        mock_results = ["foo", "bar"]
+
+        def mock_retrbinary(command, callback):
+            for chunk in mock_results:
+                callback(chunk)
+
+            return "226"
+
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.retrbinary.side_effect = mock_retrbinary
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com:12345/some/dir/file")
+
+        storage.save_to_file(out_file)
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=12345)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.cwd.assert_called_with("some/dir")
+        self.assertEqual(1, mock_ftp.retrbinary.call_count)
+        self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
+
+        self.assertEqual("foobar", out_file.getvalue())
 
     @mock.patch("__builtin__.open", autospec=True)
     @mock.patch("ftplib.FTP", autospec=True)
@@ -700,6 +729,25 @@ class TestFTPStorage(TestCase):
 
         mock_ftp_class.assert_called_with()
         mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.cwd.assert_called_with("some/dir")
+
+        mock_open.assert_called_with("some_file", "rb")
+        mock_ftp.storbinary.assert_called_with(
+            "STOR file", mock_open.return_value.__enter__.return_value)
+            
+    @mock.patch("__builtin__.open", autospec=True)
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_load_from_filename_with_specific_port(self, mock_ftp_class, mock_open):
+        mock_ftp = mock_ftp_class.return_value
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com:12345/some/dir/file")
+
+        storage.load_from_filename("some_file")
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=12345)
         mock_ftp.login.assert_called_with("user", "password")
 
         mock_ftp.cwd.assert_called_with("some/dir")
