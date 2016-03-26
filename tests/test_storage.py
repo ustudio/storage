@@ -688,7 +688,7 @@ class TestFTPStorage(TestCase):
         self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
 
         self.assertEqual("foobar", out_file.getvalue())
-        
+ 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_save_to_file_with_specific_port(self, mock_ftp_class):
         out_file = StringIO()
@@ -736,7 +736,7 @@ class TestFTPStorage(TestCase):
         mock_open.assert_called_with("some_file", "rb")
         mock_ftp.storbinary.assert_called_with(
             "STOR file", mock_open.return_value.__enter__.return_value)
-            
+ 
     @mock.patch("__builtin__.open", autospec=True)
     @mock.patch("ftplib.FTP", autospec=True)
     def test_load_from_filename_with_specific_port(self, mock_ftp_class, mock_open):
