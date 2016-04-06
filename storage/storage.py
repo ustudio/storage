@@ -52,6 +52,10 @@ class Storage(object):
         raise NotImplementedError(
             "{0} does not implement 'save_to_file'".format(self._class_name()))
 
+    def save_directory(self, directory_path):
+        raise NotImplementedError(
+            "{0} does not implement 'save_directory'".format(self._class_name()))
+
     def load_from_filename(self, file_path):
         raise NotImplementedError(
             "{0} does not implement 'load_from_filename'".format(self._class_name()))
@@ -59,6 +63,10 @@ class Storage(object):
     def load_from_file(self, in_file):
         raise NotImplementedError(
             "{0} does not implement 'load_from_file'".format(self._class_name()))
+
+    def load_directory(self, directory_path):
+        raise NotImplementedError(
+            "{0} does not implement 'load_directory'".format(self._class_name()))
 
     def delete(self):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
@@ -89,6 +97,9 @@ class LocalStorage(Storage):
             for chunk in in_file:
                 out_file.write(chunk)
 
+    def save_directory(self, directory_path):
+        shutil.copytree(self._parsed_storage_uri.path, directory_path)
+
     def _ensure_exists(self):
         dirname = os.path.dirname(self._parsed_storage_uri.path)
 
@@ -106,6 +117,10 @@ class LocalStorage(Storage):
         with open(self._parsed_storage_uri.path, "wb") as out_file:
             for chunk in in_file:
                 out_file.write(chunk)
+
+    def load_directory(self, directory_path):
+        self._ensure_exists()
+        shutil.copytree(directory_path, self._parsed_storage_uri.path)
 
     def delete(self):
         os.remove(self._parsed_storage_uri.path)

@@ -59,6 +59,97 @@ class TestLocalStorage(TestCase):
         with open(temp_output.name) as temp_output_fp:
             self.assertEqual("FOOBAR", temp_output_fp.read())
 
+    def test_local_storage_save_directory(self):
+        temp_directory = tempfile.mkdtemp()
+
+        temp_input_one = tempfile.NamedTemporaryFile(dir=temp_directory)
+        temp_input_one.write("FOO")
+        temp_input_one.flush()
+
+        temp_input_two = tempfile.NamedTemporaryFile(dir=temp_directory)
+        temp_input_two.write("BAR")
+        temp_input_two.flush()
+
+        nested_temp_directory = tempfile.mkdtemp(dir=temp_directory)
+
+        nested_temp_input = tempfile.NamedTemporaryFile(dir=nested_temp_directory)
+        nested_temp_input.write("FOOBAR")
+        nested_temp_input.flush()
+
+        storage = storagelib.get_storage("file://{0}".format(temp_directory))
+
+        temp_output_dir = tempfile.mkdtemp()
+        destination_directory_path = os.path.join(temp_output_dir, "tmp")
+        storage.save_directory(destination_directory_path)
+
+        nested_temp_directory_name = nested_temp_directory.split("/").pop()
+        destination_input_one_path = os.path.join(
+            temp_output_dir, destination_directory_path, temp_input_one.name)
+        destination_input_two_path = os.path.join(
+            temp_output_dir, destination_directory_path, temp_input_two.name)
+        nested_temp_input_path = os.path.join(
+            temp_output_dir, destination_directory_path, nested_temp_directory_name,
+            nested_temp_input.name)
+
+        self.assertTrue(os.path.exists(destination_input_one_path))
+        self.assertTrue(os.path.exists(destination_input_two_path))
+        self.assertTrue(os.path.exists(nested_temp_input_path))
+
+        with open(destination_input_one_path) as temp_output_fp:
+            self.assertEqual("FOO", temp_output_fp.read())
+
+        with open(destination_input_two_path) as temp_output_fp:
+            self.assertEqual("BAR", temp_output_fp.read())
+
+        with open(nested_temp_input_path) as temp_output_fp:
+            self.assertEqual("FOOBAR", temp_output_fp.read())
+
+    def test_local_storage_load_directory(self):
+        temp_directory = tempfile.mkdtemp()
+
+        temp_input_one = tempfile.NamedTemporaryFile(dir=temp_directory)
+        temp_input_one.write("FOO")
+        temp_input_one.flush()
+
+        temp_input_two = tempfile.NamedTemporaryFile(dir=temp_directory)
+        temp_input_two.write("BAR")
+        temp_input_two.flush()
+
+        nested_temp_directory = tempfile.mkdtemp(dir=temp_directory)
+
+        nested_temp_input = tempfile.NamedTemporaryFile(dir=nested_temp_directory)
+        nested_temp_input.write("FOOBAR")
+        nested_temp_input.flush()
+
+        temp_output_dir = tempfile.mkdtemp()
+        storage = storagelib.get_storage("file://{0}/{1}".format(temp_output_dir, "tmp"))
+
+        storage.load_directory(temp_directory)
+
+        nested_temp_directory_name = nested_temp_directory.split("/").pop()
+        destination_directory_path = os.path.join(
+            temp_output_dir, "tmp")
+        destination_input_one_path = os.path.join(
+            temp_output_dir, destination_directory_path, temp_input_one.name)
+        destination_input_two_path = os.path.join(
+            temp_output_dir, destination_directory_path, temp_input_two.name)
+        nested_temp_input_path = os.path.join(
+            temp_output_dir, destination_directory_path, nested_temp_directory_name,
+            nested_temp_input.name)
+
+        self.assertTrue(os.path.exists(destination_input_one_path))
+        self.assertTrue(os.path.exists(destination_input_two_path))
+        self.assertTrue(os.path.exists(nested_temp_input_path))
+
+        with open(destination_input_one_path) as temp_output_fp:
+            self.assertEqual("FOO", temp_output_fp.read())
+
+        with open(destination_input_two_path) as temp_output_fp:
+            self.assertEqual("BAR", temp_output_fp.read())
+
+        with open(nested_temp_input_path) as temp_output_fp:
+            self.assertEqual("FOOBAR", temp_output_fp.read())
+
     @mock.patch("shutil.copy", autospec=True)
     @mock.patch("os.makedirs", autospec=True)
     @mock.patch("os.path.exists", autospec=True)
