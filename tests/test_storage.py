@@ -341,7 +341,7 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.save_to_filename(temp_output.name)
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, api_key=True)
         mock_swift.fetch_object.assert_called_with(
             self.params["container"], self.params["file"], chunk_size=EXPECTED_CHUNK_SIZE)
 
@@ -436,6 +436,28 @@ class TestSwiftStorage(TestCase):
         self.assertEqual("foobar", out_file.getvalue())
 
     @mock.patch("pyrax.create_context")
+    def test_swift_save_directory(self, mock_create_context):
+        expected_files = ["a", "a/0.jpg", "a/b", "a/b/c", "a/b/c/1.mp4"]
+        mock_context = mock_create_context.return_value
+        mock_swift = mock_context.get_client.return_value
+
+        mock_swift.list_container_objects.return_value = expected_files
+
+        uri = "swift://{username}:{password}@{container}/{file}?" \
+              "auth_endpoint={auth_endpoint}&region={region}" \
+              "&tenant_id={tenant_id}".format(**self.params)
+
+        storagelib.get_storage(uri).save_directory("/tmp/cat/pants")
+
+        self._assert_default_login_correct(mock_create_context)
+        mock_swift.list_container_objects.assert_called_with(
+            self.params["container"], prefix=self.params["file"])
+
+        for file in expected_files:
+            mock_swift.download_object.assert_any_call(
+                self.params["container"], file, structure=True)
+
+    @mock.patch("pyrax.create_context")
     def test_swift_load_from_filename(self, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
@@ -489,6 +511,21 @@ class TestSwiftStorage(TestCase):
         self._assert_default_login_correct(mock_create_context)
         mock_swift.upload_file.assert_called_with(
             self.params["container"], mock_input, self.params["file"])
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_load_directory(self, mock_create_context):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        uri = "swift://{username}:{password}@{container}/{file}?" \
+              "auth_endpoint={auth_endpoint}&region={region}" \
+              "&tenant_id={tenant_id}".format(**self.params)
+
+        storage = storagelib.get_storage(uri)
+        storage.load_directory("/tmp/foo/bar")
+
+        self._assert_default_login_correct(mock_create_context)
+        mock_swift.upload_folder.assert_called_with(
+            "/tmp/foo/bar", container=self.params["container"])
 
     @mock.patch("pyrax.create_context")
     def test_swift_delete(self, mock_create_context):

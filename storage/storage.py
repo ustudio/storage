@@ -242,6 +242,15 @@ class SwiftStorage(Storage):
                 container_name, object_name, chunk_size=_LARGE_CHUNK):
             out_file.write(chunk)
 
+    def save_directory(self, destination_directory):
+        self._authenticate()
+        container_name, prefix = self._get_container_and_object_names()
+
+        files = self._cloudfiles.list_container_objects(container_name, prefix=prefix)
+
+        for file in files:
+            self._cloudfiles.download_object(container_name, file, structure=True)
+
     def _upload_file(self, file_or_path):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
@@ -256,6 +265,11 @@ class SwiftStorage(Storage):
 
     def load_from_file(self, in_file):
         self._upload_file(in_file)
+
+    def load_directory(self, directory):
+        self._authenticate()
+        container_name, object_name = self._get_container_and_object_names()
+        self._cloudfiles.upload_folder(directory, container=container_name)
 
     def delete(self):
         self._authenticate()
