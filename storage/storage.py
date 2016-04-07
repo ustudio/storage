@@ -72,7 +72,8 @@ class Storage(object):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
 
     def get_download_url(self, seconds=60, key=None):
-        raise NotImplementedError("{0} does not implement 'get_download_url'".format(self._class_name()))
+        raise NotImplementedError(
+            "{0} does not implement 'get_download_url'".format(self._class_name()))
 
 
 @register_storage_protocol("file")
@@ -84,6 +85,7 @@ class LocalStorage(Storage):
       file:///some/path/to/a/file.txt?[download_url_base=<URL-ENCODED-URL>]
 
     """
+
     def __init__(self, storage_uri):
         super(LocalStorage, self).__init__(storage_uri)
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
