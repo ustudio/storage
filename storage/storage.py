@@ -322,7 +322,7 @@ class FTPStorage(Storage):
         self._username = self._parsed_storage_uri.username
         self._password = self._parsed_storage_uri.password
         self._hostname = self._parsed_storage_uri.hostname
-        self._port = 21
+        self._port = self._parsed_storage_uri.port if self._parsed_storage_uri.port is not None else 21
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
         self._download_url_base = query.get("download_url_base", [None])[0]
 
