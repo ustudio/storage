@@ -468,6 +468,23 @@ class S3Storage(Storage):
             if not chunk:
                 break
 
+    def save_directory(self, directory_path):
+        client = self._connect()
+        directory_prefix = "{}/".format(self._keyname)
+        dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
+        dir_contents = dir_object["Contents"]
+
+        for file in dir_contents:
+            file_key = file["Key"]
+            file_key = file_key[len(self._keyname):]
+            if not file_key.endswith("/"):
+                file_path = file_key.rsplit('/', 1)[0]
+                if not os.path.exists(file_path):
+                    os.makedirs(directory_path + file_path)
+
+                client.download_file(
+                    self._bucket, file["Key"], directory_path + file_key)
+
     def load_from_filename(self, file_path):
         client = self._connect()
 

@@ -1110,6 +1110,70 @@ class TestS3Storage(TestCase):
         mock_transfer_class.assert_called_with(mock_s3)
         mock_transfer.download_file.assert_called_with("bucket", "some/file", "destination/file")
 
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists")
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_save_to_directory(
+            self, mock_session_class, mock_transfer_class, mock_path_exists, mock_makedirs):
+        mock_session = mock_session_class.return_value
+        mock_s3_client = mock_session.client.return_value
+        mock_s3_client.list_objects.return_value = {
+            "Contents": [
+                {
+                    "Key": "directory/"
+                },
+                {
+                    "Key": "directory/b/"
+                },
+                {
+                    "Key": "directory/b/c.txt"
+                },
+                {
+                    "Key": "directory/e.txt"
+                },
+                {
+                    "Key": "directory/e/f/d.txt"
+                },
+                {
+                    "Key": "directory/g.txt"
+                }
+            ]
+        }
+
+        mock_path_exists.return_value = False
+        path_mock_path_exists_calls = []
+
+        def mock_path_exists_side_effect(path):
+            if any(path in x for x in path_mock_path_exists_calls):
+                return True
+            else:
+                path_mock_path_exists_calls.append(path)
+                return False
+
+        mock_path_exists.side_effect = mock_path_exists_side_effect
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/directory?region=US_EAST")
+
+        storage.save_directory("save_directory")
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST")
+
+        mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
+        mock_makedirs.assert_has_calls(
+            [mock.call("save_directory/b"), mock.call("save_directory/e/f")])
+        mock_session.client.assert_called_with("s3")
+
+        mock_s3_client.download_file.assert_has_calls([
+            mock.call("bucket", "directory/b/c.txt", "save_directory/b/c.txt"),
+            mock.call("bucket", "directory/e.txt", "save_directory/e.txt"),
+            mock.call("bucket", "directory/e/f/d.txt", "save_directory/e/f/d.txt"),
+            mock.call("bucket", "directory/g.txt", "save_directory/g.txt")])
+
     @mock.patch("boto3.session.Session", autospec=True)
     def test_delete(self, mock_session_class):
         mock_session = mock_session_class.return_value
