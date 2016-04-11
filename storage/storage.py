@@ -52,9 +52,9 @@ class Storage(object):
         raise NotImplementedError(
             "{0} does not implement 'save_to_file'".format(self._class_name()))
 
-    def save_directory(self, directory_path):
+    def save_to_directory(self, directory_path):
         raise NotImplementedError(
-            "{0} does not implement 'save_directory'".format(self._class_name()))
+            "{0} does not implement 'save_to_directory'".format(self._class_name()))
 
     def load_from_filename(self, file_path):
         raise NotImplementedError(
@@ -64,9 +64,9 @@ class Storage(object):
         raise NotImplementedError(
             "{0} does not implement 'load_from_file'".format(self._class_name()))
 
-    def load_directory(self, directory_path):
+    def load_from_directory(self, directory_path):
         raise NotImplementedError(
-            "{0} does not implement 'load_directory'".format(self._class_name()))
+            "{0} does not implement 'load_from_directory'".format(self._class_name()))
 
     def delete(self):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
@@ -99,7 +99,7 @@ class LocalStorage(Storage):
             for chunk in in_file:
                 out_file.write(chunk)
 
-    def save_directory(self, directory_path):
+    def save_to_directory(self, directory_path):
         shutil.copytree(self._parsed_storage_uri.path, directory_path)
 
     def _ensure_exists(self):
@@ -120,7 +120,7 @@ class LocalStorage(Storage):
             for chunk in in_file:
                 out_file.write(chunk)
 
-    def load_directory(self, directory_path):
+    def load_from_directory(self, directory_path):
         self._ensure_exists()
         shutil.copytree(directory_path, self._parsed_storage_uri.path)
 
@@ -131,8 +131,8 @@ class LocalStorage(Storage):
         """
         Return a temporary URL allowing access to the storage object.
 
-        If a download_url_base is specified in the storage URI, then a call to get_download_url() will
-        return the download_url_base joined with the object name.
+        If a download_url_base is specified in the storage URI, then a call to get_download_url()
+        will return the download_url_base joined with the object name.
 
         For example, if "http://www.someserver.com:1234/path/to/" were passed (urlencoded) as the
         download_url_base query parameter of the storage URI:
@@ -242,7 +242,7 @@ class SwiftStorage(Storage):
                 container_name, object_name, chunk_size=_LARGE_CHUNK):
             out_file.write(chunk)
 
-    def save_directory(self, destination_directory):
+    def save_to_directory(self, destination_directory):
         self._authenticate()
         container_name, prefix = self._get_container_and_object_names()
 
@@ -266,7 +266,7 @@ class SwiftStorage(Storage):
     def load_from_file(self, in_file):
         self._upload_file(in_file)
 
-    def load_directory(self, directory):
+    def load_from_directory(self, directory):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
         self._cloudfiles.upload_folder(directory, container=container_name)
@@ -398,8 +398,8 @@ class FTPStorage(Storage):
         """
         Return a temporary URL allowing access to the storage object.
 
-        If a download_url_base is specified in the storage URI, then a call to get_download_url() will
-        return the download_url_base joined with the object name.
+        If a download_url_base is specified in the storage URI, then a call to get_download_url()
+        will return the download_url_base joined with the object name.
 
         For example, if "http://www.someserver.com:1234/path/to/" were passed (urlencoded) as the
         download_url_base query parameter of the storage URI:
@@ -468,7 +468,7 @@ class S3Storage(Storage):
             if not chunk:
                 break
 
-    def save_directory(self, directory_path):
+    def save_to_directory(self, directory_path):
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
         dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
@@ -495,6 +495,15 @@ class S3Storage(Storage):
         client = self._connect()
 
         client.put_object(Bucket=self._bucket, Key=self._keyname, Body=in_file)
+
+    def load_from_directory(self, directory_path):
+        client = self._connect()
+
+        for root, dirs, files in os.walk(directory_path):
+            for file in files:
+                upload_path = "{0}/".format(self._keyname) + \
+                    os.path.join(root, file)[len(directory_path) + 1:]
+                client.upload_file(os.path.join(root, file), self._bucket, upload_path)
 
     def delete(self):
         client = self._connect()

@@ -59,7 +59,7 @@ class TestLocalStorage(TestCase):
         with open(temp_output.name) as temp_output_fp:
             self.assertEqual("FOOBAR", temp_output_fp.read())
 
-    def test_local_storage_save_directory(self):
+    def test_local_storage_save_to_directory(self):
         temp_directory = tempfile.mkdtemp()
 
         temp_input_one = tempfile.NamedTemporaryFile(dir=temp_directory)
@@ -80,7 +80,7 @@ class TestLocalStorage(TestCase):
 
         temp_output_dir = tempfile.mkdtemp()
         destination_directory_path = os.path.join(temp_output_dir, "tmp")
-        storage.save_directory(destination_directory_path)
+        storage.save_to_directory(destination_directory_path)
 
         nested_temp_directory_name = nested_temp_directory.split("/").pop()
         destination_input_one_path = os.path.join(
@@ -104,7 +104,7 @@ class TestLocalStorage(TestCase):
         with open(nested_temp_input_path) as temp_output_fp:
             self.assertEqual("FOOBAR", temp_output_fp.read())
 
-    def test_local_storage_load_directory(self):
+    def test_local_storage_load_from_directory(self):
         temp_directory = tempfile.mkdtemp()
 
         temp_input_one = tempfile.NamedTemporaryFile(dir=temp_directory)
@@ -124,7 +124,7 @@ class TestLocalStorage(TestCase):
         temp_output_dir = tempfile.mkdtemp()
         storage = storagelib.get_storage("file://{0}/{1}".format(temp_output_dir, "tmp"))
 
-        storage.load_directory(temp_directory)
+        storage.load_from_directory(temp_directory)
 
         nested_temp_directory_name = nested_temp_directory.split("/").pop()
         destination_directory_path = os.path.join(
@@ -436,7 +436,7 @@ class TestSwiftStorage(TestCase):
         self.assertEqual("foobar", out_file.getvalue())
 
     @mock.patch("pyrax.create_context")
-    def test_swift_save_directory(self, mock_create_context):
+    def test_swift_save_to_directory(self, mock_create_context):
         expected_files = ["a", "a/0.jpg", "a/b", "a/b/c", "a/b/c/1.mp4"]
         mock_context = mock_create_context.return_value
         mock_swift = mock_context.get_client.return_value
@@ -447,7 +447,7 @@ class TestSwiftStorage(TestCase):
               "auth_endpoint={auth_endpoint}&region={region}" \
               "&tenant_id={tenant_id}".format(**self.params)
 
-        storagelib.get_storage(uri).save_directory("/tmp/cat/pants")
+        storagelib.get_storage(uri).save_to_directory("/tmp/cat/pants")
 
         self._assert_default_login_correct(mock_create_context)
         mock_swift.list_container_objects.assert_called_with(
@@ -513,7 +513,7 @@ class TestSwiftStorage(TestCase):
             self.params["container"], mock_input, self.params["file"])
 
     @mock.patch("pyrax.create_context")
-    def test_swift_load_directory(self, mock_create_context):
+    def test_swift_load_from_directory(self, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
         uri = "swift://{username}:{password}@{container}/{file}?" \
@@ -521,7 +521,7 @@ class TestSwiftStorage(TestCase):
               "&tenant_id={tenant_id}".format(**self.params)
 
         storage = storagelib.get_storage(uri)
-        storage.load_directory("/tmp/foo/bar")
+        storage.load_from_directory("/tmp/foo/bar")
 
         self._assert_default_login_correct(mock_create_context)
         mock_swift.upload_folder.assert_called_with(
@@ -1156,7 +1156,7 @@ class TestS3Storage(TestCase):
         storage = storagelib.get_storage(
             "s3://access_key:access_secret@bucket/directory?region=US_EAST")
 
-        storage.save_directory("save_directory")
+        storage.save_to_directory("save_to_directory")
 
         mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
@@ -1165,14 +1165,51 @@ class TestS3Storage(TestCase):
 
         mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
         mock_makedirs.assert_has_calls(
-            [mock.call("save_directory/b"), mock.call("save_directory/e/f")])
+            [mock.call("save_to_directory/b"), mock.call("save_to_directory/e/f")])
         mock_session.client.assert_called_with("s3")
 
         mock_s3_client.download_file.assert_has_calls([
-            mock.call("bucket", "directory/b/c.txt", "save_directory/b/c.txt"),
-            mock.call("bucket", "directory/e.txt", "save_directory/e.txt"),
-            mock.call("bucket", "directory/e/f/d.txt", "save_directory/e/f/d.txt"),
-            mock.call("bucket", "directory/g.txt", "save_directory/g.txt")])
+            mock.call("bucket", "directory/b/c.txt", "save_to_directory/b/c.txt"),
+            mock.call("bucket", "directory/e.txt", "save_to_directory/e.txt"),
+            mock.call("bucket", "directory/e/f/d.txt", "save_to_directory/e/f/d.txt"),
+            mock.call("bucket", "directory/g.txt", "save_to_directory/g.txt")])
+
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_local_storage_load_from_directory(self, mock_session_class, mock_transfer_class):
+        mock_session = mock_session_class.return_value
+        mock_s3_client = mock_session.client.return_value
+
+        # temp_directory/(temp_input_one, temp_input_two,nested_temp_directory/(nested_temp_input))
+        temp_directory = tempfile.mkdtemp()
+        temp_input_one = tempfile.NamedTemporaryFile(dir=temp_directory)
+        temp_input_two = tempfile.NamedTemporaryFile(dir=temp_directory)
+
+        nested_temp_directory = tempfile.mkdtemp(dir=temp_directory)
+        nested_temp_input = tempfile.NamedTemporaryFile(dir=nested_temp_directory)
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/dir?region=US_EAST")
+
+        storage.load_from_directory(temp_directory)
+
+        nested_temp_directory_name = os.path.basename(nested_temp_directory)
+        temp_input_one_name = os.path.basename(temp_input_one.name)
+        temp_input_two_name = os.path.basename(temp_input_two.name)
+        nested_temp_input_name = os.path.basename(nested_temp_input.name)
+
+        mock_s3_client.upload_file.assert_has_calls([
+            mock.call(
+                temp_input_two.name, "bucket",
+                os.path.join("dir", temp_input_two_name)),
+            mock.call(
+                temp_input_one.name, "bucket",
+                os.path.join("dir", temp_input_one_name)),
+            mock.call(
+                nested_temp_input.name, "bucket",
+                os.path.join(
+                    "dir", nested_temp_directory_name, nested_temp_input_name))
+        ], any_order=True)
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_delete(self, mock_session_class):
