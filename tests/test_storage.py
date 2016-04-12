@@ -435,13 +435,30 @@ class TestSwiftStorage(TestCase):
 
         self.assertEqual("foobar", out_file.getvalue())
 
+    @mock.patch("os.path.exists")
+    @mock.patch("os.makedirs")
     @mock.patch("pyrax.create_context")
-    def test_swift_save_to_directory(self, mock_create_context):
-        expected_files = ["a", "a/0.jpg", "a/b", "a/b/c", "a/b/c/1.mp4"]
+    def test_swift_save_to_directory(self, mock_create_context, mock_makedirs, mock_path_exists):
+        class rackspace_object:
+            def __init__(self, name, content_type):
+                self.name = name
+                self.content_type = content_type
+
+        expected_jpg = rackspace_object("a/0.jpg", "image/jpg")
+        expected_mp4 = rackspace_object("a/b/c/1.mp4", "video/mp4")
+
+        expected_files = [
+            rackspace_object("a", "application/directory"),
+            expected_jpg,
+            rackspace_object("a/b", "application/directory"),
+            rackspace_object("a/b/c", "application/directory"),
+            expected_mp4
+        ]
         mock_context = mock_create_context.return_value
         mock_swift = mock_context.get_client.return_value
 
         mock_swift.list_container_objects.return_value = expected_files
+        mock_path_exists.return_value = False
 
         uri = "swift://{username}:{password}@{container}/{file}?" \
               "auth_endpoint={auth_endpoint}&region={region}" \
@@ -453,9 +470,13 @@ class TestSwiftStorage(TestCase):
         mock_swift.list_container_objects.assert_called_with(
             self.params["container"], prefix=self.params["file"])
 
-        for file in expected_files:
-            mock_swift.download_object.assert_any_call(
-                self.params["container"], file, structure=True)
+        mock_makedirs.assert_has_calls([
+            mock.call("/tmp/cat/pants/b"), mock.call("/tmp/cat/pants/b/c")])
+
+        mock_swift.download_object.assert_any_call(
+            self.params["container"], expected_jpg, "a", structure=False)
+        mock_swift.download_object.assert_any_call(
+            self.params["container"], expected_mp4, "a/b/c", structure=False)
 
     @mock.patch("pyrax.create_context")
     def test_swift_load_from_filename(self, mock_create_context):
@@ -521,11 +542,36 @@ class TestSwiftStorage(TestCase):
               "&tenant_id={tenant_id}".format(**self.params)
 
         storage = storagelib.get_storage(uri)
-        storage.load_from_directory("/tmp/foo/bar")
+
+        # temp_directory/(temp_input_one, temp_input_two,nested_temp_directory/(nested_temp_input))
+        temp_directory = tempfile.mkdtemp()
+        temp_input_one = tempfile.NamedTemporaryFile(dir=temp_directory)
+        temp_input_two = tempfile.NamedTemporaryFile(dir=temp_directory)
+
+        nested_temp_directory = tempfile.mkdtemp(dir=temp_directory)
+        nested_temp_input = tempfile.NamedTemporaryFile(dir=nested_temp_directory)
+
+        storage.load_from_directory(temp_directory)
 
         self._assert_default_login_correct(mock_create_context)
-        mock_swift.upload_folder.assert_called_with(
-            "/tmp/foo/bar", container=self.params["container"])
+
+        nested_temp_directory_name = os.path.basename(nested_temp_directory)
+        temp_input_one_name = os.path.basename(temp_input_one.name)
+        temp_input_two_name = os.path.basename(temp_input_two.name)
+        nested_temp_input_name = os.path.basename(nested_temp_input.name)
+
+        mock_swift.upload_file.assert_has_calls([
+            mock.call(
+                self.params["container"], temp_input_two.name,
+                os.path.join(self.params["file"], temp_input_two_name)),
+            mock.call(
+                self.params["container"], temp_input_one.name,
+                os.path.join(self.params["file"], temp_input_one_name)),
+            mock.call(
+                self.params["container"], nested_temp_input.name,
+                os.path.join(
+                    self.params["file"], nested_temp_directory_name, nested_temp_input_name))
+        ], any_order=True)
 
     @mock.patch("pyrax.create_context")
     def test_swift_delete(self, mock_create_context):

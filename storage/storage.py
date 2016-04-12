@@ -99,8 +99,8 @@ class LocalStorage(Storage):
             for chunk in in_file:
                 out_file.write(chunk)
 
-    def save_to_directory(self, directory_path):
-        shutil.copytree(self._parsed_storage_uri.path, directory_path)
+    def save_to_directory(self, destination_directory):
+        shutil.copytree(self._parsed_storage_uri.path, destination_directory)
 
     def _ensure_exists(self):
         dirname = os.path.dirname(self._parsed_storage_uri.path)
@@ -120,9 +120,9 @@ class LocalStorage(Storage):
             for chunk in in_file:
                 out_file.write(chunk)
 
-    def load_from_directory(self, directory_path):
+    def load_from_directory(self, source_directory):
         self._ensure_exists()
-        shutil.copytree(directory_path, self._parsed_storage_uri.path)
+        shutil.copytree(source_directory, self._parsed_storage_uri.path)
 
     def delete(self):
         os.remove(self._parsed_storage_uri.path)
@@ -246,19 +246,37 @@ class SwiftStorage(Storage):
         self._authenticate()
         container_name, prefix = self._get_container_and_object_names()
 
-        files = self._cloudfiles.list_container_objects(container_name, prefix=prefix)
+        objects = self._cloudfiles.list_container_objects(container_name, prefix=prefix)
+        directories = [d for d in objects if d.content_type == "application/directory"]
+        files = [f for f in objects if f.content_type != "application/directory"]
+
+        # create dirs
+        for directory in directories:
+            if directory.name == prefix:
+                continue
+
+            directory_path = directory.name.split('/', 1).pop()
+            target = destination_directory + "/" + directory_path
+            if directory.content_type == "application/directory" and \
+                    not os.path.exists(target):
+                os.makedirs(target)
 
         for file in files:
-            self._cloudfiles.download_object(container_name, file, structure=True)
+            filename = file.name.replace(prefix, destination_directory, 1)
+            filename = filename.rsplit("/", 1)[0]
+            self._cloudfiles.download_object(container_name, file, filename, structure=False)
 
-    def _upload_file(self, file_or_path):
+    def _upload_file(self, file_or_path, object_path=None):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
         kwargs = {}
         mimetype = mimetypes.guess_type(object_name)[0]
         if mimetype is not None:
             kwargs["content_type"] = mimetype
-        self._cloudfiles.upload_file(container_name, file_or_path, object_name, **kwargs)
+
+        object_location = object_path or object_name
+
+        self._cloudfiles.upload_file(container_name, file_or_path, object_location, **kwargs)
 
     def load_from_filename(self, file_path):
         self._upload_file(file_path)
@@ -266,10 +284,15 @@ class SwiftStorage(Storage):
     def load_from_file(self, in_file):
         self._upload_file(in_file)
 
-    def load_from_directory(self, directory):
+    def load_from_directory(self, source_directory):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
-        self._cloudfiles.upload_folder(directory, container=container_name)
+
+        for root, _, files in os.walk(source_directory):
+            relative_path = root.replace(source_directory, object_name)
+            for file in files:
+                self._upload_file(
+                    os.path.join(root, file), object_path=os.path.join(relative_path, file))
 
     def delete(self):
         self._authenticate()
@@ -378,6 +401,9 @@ class FTPStorage(Storage):
         filename = self._cd_to_file(ftp_client)
 
         ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
+
+    def save_to_directory(self, destination_directory):
+        pass
 
     def load_from_filename(self, file_path):
         with open(file_path, "rb") as input_file:
@@ -496,13 +522,14 @@ class S3Storage(Storage):
 
         client.put_object(Bucket=self._bucket, Key=self._keyname, Body=in_file)
 
-    def load_from_directory(self, directory_path):
+    def load_from_directory(self, source_directory):
         client = self._connect()
 
-        for root, dirs, files in os.walk(directory_path):
+        for root, _, files in os.walk(source_directory):
+            relative_path = root.replace(source_directory, self._keyname)
+
             for file in files:
-                upload_path = "{0}/".format(self._keyname) + \
-                    os.path.join(root, file)[len(directory_path) + 1:]
+                upload_path = os.path.join(relative_path, file)
                 client.upload_file(os.path.join(root, file), self._bucket, upload_path)
 
     def delete(self):
