@@ -477,9 +477,9 @@ class S3Storage(Storage):
         for file in dir_contents:
             file_key = file["Key"]
             file_key = file_key[len(self._keyname):]
-            if not file_key.endswith("/"):
+            if file_key and not file_key.endswith("/"):
                 file_path = file_key.rsplit('/', 1)[0]
-                if not os.path.exists(file_path):
+                if not os.path.exists(directory_path + file_path):
                     os.makedirs(directory_path + file_path)
 
                 client.download_file(

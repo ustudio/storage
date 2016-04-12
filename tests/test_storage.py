@@ -1136,6 +1136,9 @@ class TestS3Storage(TestCase):
                     "Key": "directory/e/f/d.txt"
                 },
                 {
+                    "Key": ""
+                },
+                {
                     "Key": "directory/g.txt"
                 }
             ]
