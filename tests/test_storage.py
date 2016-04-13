@@ -11,6 +11,42 @@ from StringIO import StringIO
 EXPECTED_CHUNK_SIZE = 32 * 1024 * 1024
 
 
+def create_temp_nested_directory_with_files():
+    # temp_directory/(temp_input_one, temp_input_two,nested_temp_directory/(nested_temp_input))
+    temp_dir = {}
+    temp_dir["temp_directory"] = {"path": tempfile.mkdtemp()}
+    temp_dir["temp_input_one"] = {
+        "file": tempfile.NamedTemporaryFile(dir=temp_dir["temp_directory"]["path"])}
+    temp_dir["temp_input_one"]["path"] = temp_dir["temp_input_one"]["file"].name
+    temp_dir["temp_input_one"]["name"] = os.path.basename(temp_dir["temp_input_one"]["file"].name)
+
+    temp_dir["temp_input_one"]["file"].write("FOO")
+    temp_dir["temp_input_one"]["file"].flush()
+
+    temp_dir["temp_input_two"] = {
+        "file": tempfile.NamedTemporaryFile(dir=temp_dir["temp_directory"]["path"])}
+    temp_dir["temp_input_two"]["path"] = temp_dir["temp_input_two"]["file"].name
+    temp_dir["temp_input_two"]["name"] = os.path.basename(temp_dir["temp_input_two"]["file"].name)
+    temp_dir["temp_input_two"]["file"].write("BAR")
+    temp_dir["temp_input_two"]["file"].flush()
+
+    temp_dir["nested_temp_directory"] = {
+        "path": tempfile.mkdtemp(dir=temp_dir["temp_directory"]["path"])}
+    temp_dir["nested_temp_directory"]["name"] = os.path.basename(
+        temp_dir["nested_temp_directory"]["path"])
+
+    temp_dir["nested_temp_input"] = {
+        "file": tempfile.NamedTemporaryFile(dir=temp_dir["nested_temp_directory"]["path"])}
+    temp_dir["nested_temp_input"]["path"] = temp_dir["nested_temp_input"]["file"].name
+    temp_dir["nested_temp_input"]["name"] = os.path.basename(
+        temp_dir["nested_temp_input"]["file"].name)
+
+    temp_dir["nested_temp_input"]["file"].write("FOOBAR")
+    temp_dir["nested_temp_input"]["file"].flush()
+
+    return temp_dir
+
+
 class TestRegisterStorageProtocol(TestCase):
 
     def setUp(self):
@@ -60,36 +96,23 @@ class TestLocalStorage(TestCase):
             self.assertEqual("FOOBAR", temp_output_fp.read())
 
     def test_local_storage_save_to_directory(self):
-        temp_directory = tempfile.mkdtemp()
+        temp_directory = create_temp_nested_directory_with_files()
 
-        temp_input_one = tempfile.NamedTemporaryFile(dir=temp_directory)
-        temp_input_one.write("FOO")
-        temp_input_one.flush()
-
-        temp_input_two = tempfile.NamedTemporaryFile(dir=temp_directory)
-        temp_input_two.write("BAR")
-        temp_input_two.flush()
-
-        nested_temp_directory = tempfile.mkdtemp(dir=temp_directory)
-
-        nested_temp_input = tempfile.NamedTemporaryFile(dir=nested_temp_directory)
-        nested_temp_input.write("FOOBAR")
-        nested_temp_input.flush()
-
-        storage = storagelib.get_storage("file://{0}".format(temp_directory))
+        storage = storagelib.get_storage(
+            "file://{0}".format(temp_directory["temp_directory"]["path"]))
 
         temp_output_dir = tempfile.mkdtemp()
         destination_directory_path = os.path.join(temp_output_dir, "tmp")
         storage.save_to_directory(destination_directory_path)
 
-        nested_temp_directory_name = nested_temp_directory.split("/").pop()
         destination_input_one_path = os.path.join(
-            temp_output_dir, destination_directory_path, temp_input_one.name)
+            temp_output_dir, destination_directory_path, temp_directory["temp_input_one"]["name"])
         destination_input_two_path = os.path.join(
-            temp_output_dir, destination_directory_path, temp_input_two.name)
+            temp_output_dir, destination_directory_path, temp_directory["temp_input_two"]["name"])
         nested_temp_input_path = os.path.join(
-            temp_output_dir, destination_directory_path, nested_temp_directory_name,
-            nested_temp_input.name)
+            temp_output_dir, destination_directory_path,
+            temp_directory["nested_temp_directory"]["name"],
+            temp_directory["nested_temp_input"]["name"])
 
         self.assertTrue(os.path.exists(destination_input_one_path))
         self.assertTrue(os.path.exists(destination_input_two_path))
@@ -105,37 +128,23 @@ class TestLocalStorage(TestCase):
             self.assertEqual("FOOBAR", temp_output_fp.read())
 
     def test_local_storage_load_from_directory(self):
-        temp_directory = tempfile.mkdtemp()
-
-        temp_input_one = tempfile.NamedTemporaryFile(dir=temp_directory)
-        temp_input_one.write("FOO")
-        temp_input_one.flush()
-
-        temp_input_two = tempfile.NamedTemporaryFile(dir=temp_directory)
-        temp_input_two.write("BAR")
-        temp_input_two.flush()
-
-        nested_temp_directory = tempfile.mkdtemp(dir=temp_directory)
-
-        nested_temp_input = tempfile.NamedTemporaryFile(dir=nested_temp_directory)
-        nested_temp_input.write("FOOBAR")
-        nested_temp_input.flush()
+        temp_directory = create_temp_nested_directory_with_files()
 
         temp_output_dir = tempfile.mkdtemp()
         storage = storagelib.get_storage("file://{0}/{1}".format(temp_output_dir, "tmp"))
 
-        storage.load_from_directory(temp_directory)
+        storage.load_from_directory(temp_directory["temp_directory"]["path"])
 
-        nested_temp_directory_name = nested_temp_directory.split("/").pop()
         destination_directory_path = os.path.join(
             temp_output_dir, "tmp")
         destination_input_one_path = os.path.join(
-            temp_output_dir, destination_directory_path, temp_input_one.name)
+            temp_output_dir, destination_directory_path, temp_directory["temp_input_one"]["name"])
         destination_input_two_path = os.path.join(
-            temp_output_dir, destination_directory_path, temp_input_two.name)
+            temp_output_dir, destination_directory_path, temp_directory["temp_input_two"]["name"])
         nested_temp_input_path = os.path.join(
-            temp_output_dir, destination_directory_path, nested_temp_directory_name,
-            nested_temp_input.name)
+            temp_output_dir, destination_directory_path,
+            temp_directory["nested_temp_directory"]["path"],
+            temp_directory["nested_temp_input"]["name"])
 
         self.assertTrue(os.path.exists(destination_input_one_path))
         self.assertTrue(os.path.exists(destination_input_two_path))
@@ -439,19 +448,19 @@ class TestSwiftStorage(TestCase):
     @mock.patch("os.makedirs")
     @mock.patch("pyrax.create_context")
     def test_swift_save_to_directory(self, mock_create_context, mock_makedirs, mock_path_exists):
-        class rackspace_object:
+        class RackspaceObject:
             def __init__(self, name, content_type):
                 self.name = name
                 self.content_type = content_type
 
-        expected_jpg = rackspace_object("a/0.jpg", "image/jpg")
-        expected_mp4 = rackspace_object("a/b/c/1.mp4", "video/mp4")
+        expected_jpg = RackspaceObject("a/0.jpg", "image/jpg")
+        expected_mp4 = RackspaceObject("a/b/c/1.mp4", "video/mp4")
 
         expected_files = [
-            rackspace_object("a", "application/directory"),
+            RackspaceObject("a", "application/directory"),
             expected_jpg,
-            rackspace_object("a/b", "application/directory"),
-            rackspace_object("a/b/c", "application/directory"),
+            RackspaceObject("a/b", "application/directory"),
+            RackspaceObject("a/b/c", "application/directory"),
             expected_mp4
         ]
         mock_context = mock_create_context.return_value
@@ -543,34 +552,23 @@ class TestSwiftStorage(TestCase):
 
         storage = storagelib.get_storage(uri)
 
-        # temp_directory/(temp_input_one, temp_input_two,nested_temp_directory/(nested_temp_input))
-        temp_directory = tempfile.mkdtemp()
-        temp_input_one = tempfile.NamedTemporaryFile(dir=temp_directory)
-        temp_input_two = tempfile.NamedTemporaryFile(dir=temp_directory)
-
-        nested_temp_directory = tempfile.mkdtemp(dir=temp_directory)
-        nested_temp_input = tempfile.NamedTemporaryFile(dir=nested_temp_directory)
-
-        storage.load_from_directory(temp_directory)
+        temp_directory = create_temp_nested_directory_with_files()
+        storage.load_from_directory(temp_directory["temp_directory"]["path"])
 
         self._assert_default_login_correct(mock_create_context)
 
-        nested_temp_directory_name = os.path.basename(nested_temp_directory)
-        temp_input_one_name = os.path.basename(temp_input_one.name)
-        temp_input_two_name = os.path.basename(temp_input_two.name)
-        nested_temp_input_name = os.path.basename(nested_temp_input.name)
-
         mock_swift.upload_file.assert_has_calls([
             mock.call(
-                self.params["container"], temp_input_two.name,
-                os.path.join(self.params["file"], temp_input_two_name)),
+                self.params["container"], temp_directory["temp_input_two"]["path"],
+                os.path.join(self.params["file"], temp_directory["temp_input_two"]["name"])),
             mock.call(
-                self.params["container"], temp_input_one.name,
-                os.path.join(self.params["file"], temp_input_one_name)),
+                self.params["container"], temp_directory["temp_input_one"]["path"],
+                os.path.join(self.params["file"], temp_directory["temp_input_one"]["name"])),
             mock.call(
-                self.params["container"], nested_temp_input.name,
+                self.params["container"], temp_directory["nested_temp_input"]["path"],
                 os.path.join(
-                    self.params["file"], nested_temp_directory_name, nested_temp_input_name))
+                    self.params["file"], temp_directory["nested_temp_directory"]["name"],
+                    temp_directory["nested_temp_input"]["name"]))
         ], any_order=True)
 
     @mock.patch("pyrax.create_context")
@@ -1229,35 +1227,25 @@ class TestS3Storage(TestCase):
         mock_session = mock_session_class.return_value
         mock_s3_client = mock_session.client.return_value
 
-        # temp_directory/(temp_input_one, temp_input_two,nested_temp_directory/(nested_temp_input))
-        temp_directory = tempfile.mkdtemp()
-        temp_input_one = tempfile.NamedTemporaryFile(dir=temp_directory)
-        temp_input_two = tempfile.NamedTemporaryFile(dir=temp_directory)
-
-        nested_temp_directory = tempfile.mkdtemp(dir=temp_directory)
-        nested_temp_input = tempfile.NamedTemporaryFile(dir=nested_temp_directory)
+        temp_directory = create_temp_nested_directory_with_files()
 
         storage = storagelib.get_storage(
             "s3://access_key:access_secret@bucket/dir?region=US_EAST")
 
-        storage.load_from_directory(temp_directory)
-
-        nested_temp_directory_name = os.path.basename(nested_temp_directory)
-        temp_input_one_name = os.path.basename(temp_input_one.name)
-        temp_input_two_name = os.path.basename(temp_input_two.name)
-        nested_temp_input_name = os.path.basename(nested_temp_input.name)
+        storage.load_from_directory(temp_directory["temp_directory"]["path"])
 
         mock_s3_client.upload_file.assert_has_calls([
             mock.call(
-                temp_input_two.name, "bucket",
-                os.path.join("dir", temp_input_two_name)),
+                temp_directory["temp_input_two"]["path"], "bucket",
+                os.path.join("dir", temp_directory["temp_input_two"]["name"])),
             mock.call(
-                temp_input_one.name, "bucket",
-                os.path.join("dir", temp_input_one_name)),
+                temp_directory["temp_input_one"]["path"], "bucket",
+                os.path.join("dir", temp_directory["temp_input_one"]["name"])),
             mock.call(
-                nested_temp_input.name, "bucket",
+                temp_directory["nested_temp_input"]["path"], "bucket",
                 os.path.join(
-                    "dir", nested_temp_directory_name, nested_temp_input_name))
+                    "dir", temp_directory["nested_temp_directory"]["name"],
+                    temp_directory["nested_temp_input"]["name"]))
         ], any_order=True)
 
     @mock.patch("boto3.session.Session", autospec=True)
