@@ -1020,6 +1020,64 @@ class TestFTPSStorage(TestCase):
         mock_ftp.storbinary.assert_called_with("STOR file", in_file)
 
     @mock.patch("ftplib.FTP_TLS", autospec=True)
+    def test_ftp_load_from_directory_creates_directories_from_storage_URI_if_not_present(
+            self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+
+        mock_ftp.retrlines.return_value = []
+
+        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
+
+        # empty folder
+        storage.load_from_directory(tempfile.mkdtemp())
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+        mock_ftp.prot_p.assert_called_with()
+
+        mock_ftp.mkd.assert_has_calls([
+            mock.call("some"),
+            mock.call("dir"),
+            mock.call("file")
+        ])
+
+    @mock.patch("ftplib.FTP_TLS", autospec=True)
+    def test_ftp_load_from_directory_does_not_create_dirs_from_storage_URI_if_present(
+            self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+
+        directory_listings = [
+            ["drwxrwxr-x 3 test test 4.0K Apr  9 10:54 some"],
+            ["drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir"],
+        ]
+
+        def get_directory_listing(_, __):
+            if len(directory_listings):
+                return directory_listings.pop(0)
+
+            return []
+
+        mock_ftp.retrlines.side_effect = get_directory_listing
+
+        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
+
+        # empty folder
+        storage.load_from_directory(tempfile.mkdtemp())
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+        mock_ftp.prot_p.assert_called_with()
+
+        mock_ftp.mkd.assert_has_calls([mock.call("file")])
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("some"),
+            mock.call("dir"),
+            mock.call("file")
+        ])
+
+    @mock.patch("ftplib.FTP_TLS", autospec=True)
     def test_delete(self, mock_ftp_class):
         mock_ftp = mock_ftp_class.return_value
 

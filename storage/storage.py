@@ -392,6 +392,34 @@ class FTPStorage(Storage):
         ftp_client.cwd(directory)
         return filename
 
+    def _get_file_list(self, ftp_client):
+        file_list = []
+
+        ftp_client.retrlines('LIST', file_list.append)
+
+        return [
+            {"name": line.split()[-1], "is_directory": line.lower().startswith("d")}
+            for line in file_list
+        ]
+
+    def _create_directory_structure(self, ftp_client, target_path):
+        directories = target_path.lstrip('/').split('/')
+
+        while len(directories):
+            target_directory = directories.pop(0)
+            found = False
+
+            for file in self._get_file_list(ftp_client):
+                # TODO (phd): warn the user that a file exists with the name of their target dir
+                if file["is_directory"] and file["name"] == target_directory:
+                    found = True
+                    break
+
+            if not found:
+                ftp_client.mkd(target_directory)
+
+            ftp_client.cwd(target_directory)
+
     def save_to_filename(self, file_path):
         with open(file_path, "wb") as output_file:
             self.save_to_file(output_file)
@@ -414,6 +442,27 @@ class FTPStorage(Storage):
         filename = self._cd_to_file(ftp_client)
 
         ftp_client.storbinary("STOR {0}".format(filename), in_file)
+
+    def load_from_directory(self, source_directory):
+        ftp_client = self._connect()
+        base_ftp_path = self._parsed_storage_uri.path
+
+        self._create_directory_structure(ftp_client, base_ftp_path)
+
+        for root, dirs, files in os.walk(source_directory):
+            relative_ftp_path = root.replace(source_directory, base_ftp_path)
+
+            for directory in dirs:
+                ftp_client.cwd(relative_ftp_path)
+                self._create_directory_structure(ftp_client, directory)
+
+            ftp_client.cwd(relative_ftp_path)
+
+            for file in files:
+                file_path = os.path.join(root, file)
+
+                with open(file_path, "rb") as input_file:
+                    ftp_client.storbinary("STOR {0}".format(file), input_file)
 
     def delete(self):
         ftp_client = self._connect()
