@@ -402,8 +402,11 @@ class FTPStorage(Storage):
             for line in file_list
         ]
 
-    def _create_directory_structure(self, ftp_client, target_path):
+    def _create_directory_structure(self, ftp_client, target_path, restore=False):
         directories = target_path.lstrip('/').split('/')
+
+        if restore:
+            restore = ftp_client.pwd()
 
         while len(directories):
             target_directory = directories.pop(0)
@@ -419,6 +422,9 @@ class FTPStorage(Storage):
                 ftp_client.mkd(target_directory)
 
             ftp_client.cwd(target_directory)
+
+        if restore:
+            ftp_client.cwd(restore)
 
     def save_to_filename(self, file_path):
         with open(file_path, "wb") as output_file:
@@ -452,11 +458,10 @@ class FTPStorage(Storage):
         for root, dirs, files in os.walk(source_directory):
             relative_ftp_path = root.replace(source_directory, base_ftp_path)
 
-            for directory in dirs:
-                ftp_client.cwd(relative_ftp_path)
-                self._create_directory_structure(ftp_client, directory)
-
             ftp_client.cwd(relative_ftp_path)
+
+            for directory in dirs:
+                self._create_directory_structure(ftp_client, directory, restore=True)
 
             for file in files:
                 file_path = os.path.join(root, file)
