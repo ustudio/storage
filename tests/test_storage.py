@@ -47,6 +47,19 @@ def create_temp_nested_directory_with_files():
     return temp_dir
 
 
+def create_mock_ftp_directory_listing(directory_listings):
+    def mock_directory_listing(_, callback):
+        if len(directory_listings):
+            listing = directory_listings.pop(0)
+
+            if isinstance(listing, basestring):
+                callback(listing)
+            else:
+                map(callback, listing)
+
+    return mock_directory_listing
+
+
 class TestRegisterStorageProtocol(TestCase):
 
     def setUp(self):
@@ -844,9 +857,127 @@ class TestFTPStorage(TestCase):
 
         self.assertEqual("foobar", out_file.getvalue())
 
+    @mock.patch("os.chdir")
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists", return_value=False)
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_save_to_directory_creates_destination_directory_if_needed(
+            self, mock_ftp_class, mock_path_exists, mock_makedirs, mock_chdir):
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.pwd.return_value = "some/dir/file"
+
+        # no files or folders
+        mock_ftp.retrlines.side_effect = create_mock_ftp_directory_listing([])
+
+        mock_path_exists.return_value = False
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        storage.save_to_directory("/cat/pants")
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("/some/dir/file"),
+        ])
+
+        mock_makedirs.assert_has_calls([
+            mock.call("/cat/pants"),
+        ])
+
+        mock_chdir.assert_has_calls([
+            mock.call("/cat/pants"),
+        ])
+
+        mock_ftp.retrbinary.assert_not_called()
+
+    @mock.patch("__builtin__.open", autospec=True)
+    @mock.patch("os.chdir")
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists", return_value=False)
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_save_to_directory_downloads_nested_files(
+            self, mock_ftp_class, mock_path_exists, mock_makedirs, mock_chdir, mock_open):
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.pwd.return_value = "some/place/special"
+        expected_calls = [
+            mock.call("/cat/pants"),
+            mock.call("/cat/pants/dir1"),
+            mock.call("/cat/pants/dir1/dir3"),
+            mock.call("/cat/pants/dir2"),
+            mock.call("/cat/pants/dir2/dir4"),
+        ]
+
+        mock_ftp.retrlines.side_effect = create_mock_ftp_directory_listing([
+            # root
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir1",
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir2",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file1",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file2",
+            ],
+            # dir1
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir3",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file3",
+            ],
+            # dir3
+            [
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file4",
+            ],
+            # dir2
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir4",
+            ],
+        ])
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/place/special")
+
+        storage.save_to_directory("/cat/pants")
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        self.assertEqual(5, mock_ftp.cwd.call_count)
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("/some/place/special"),
+            mock.call("some/place/special/dir1"),
+            mock.call("some/place/special/dir1/dir3"),
+            mock.call("some/place/special/dir2"),
+            mock.call("some/place/special/dir2/dir4"),
+        ])
+
+        self.assertEqual(5, mock_makedirs.call_count)
+        mock_makedirs.assert_has_calls(expected_calls)
+
+        self.assertEqual(5, mock_chdir.call_count)
+        mock_chdir.assert_has_calls(expected_calls)
+
+        self.assertEqual(4, mock_open.call_count)
+        mock_open.assert_has_calls([
+            mock.call("/cat/pants/file1", "wb"),
+            mock.call("/cat/pants/file2", "wb"),
+            mock.call("/cat/pants/dir1/file3", "wb"),
+            mock.call("/cat/pants/dir1/dir3/file4", "wb"),
+        ], any_order=True)
+
+        self.assertEqual(4, mock_ftp.retrbinary.call_count)
+        mock_ftp.retrbinary.assert_has_calls([
+            mock.call("RETR file1", callback=mock_open.return_value.__enter__.return_value.write),
+            mock.call("RETR file2", callback=mock_open.return_value.__enter__.return_value.write),
+            mock.call("RETR file3", callback=mock_open.return_value.__enter__.return_value.write),
+            mock.call("RETR file4", callback=mock_open.return_value.__enter__.return_value.write),
+        ])
+
+        mock_ftp.storbinary.assert_not_called()
+        print dir(mock_ftp.storbinary)
+
     @mock.patch("__builtin__.open", autospec=True)
     @mock.patch("ftplib.FTP", autospec=True)
-    def test_load_from_filename(self, mock_ftp_class, mock_open):
+    def test_ftp_load_from_filename(self, mock_ftp_class, mock_open):
         mock_ftp = mock_ftp_class.return_value
 
         storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -1047,16 +1178,10 @@ class TestFTPSStorage(TestCase):
             self, mock_ftp_class):
         mock_ftp = mock_ftp_class.return_value
 
-        directory_listings = [
+        mock_ftp.retrlines.side_effect = create_mock_ftp_directory_listing([
             "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 some",
             "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir",
-        ]
-
-        def get_directory_listing(_, callback):
-            if len(directory_listings):
-                return callback(directory_listings.pop(0))
-
-        mock_ftp.retrlines.side_effect = get_directory_listing
+        ])
 
         storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
 

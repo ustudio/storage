@@ -392,15 +392,34 @@ class FTPStorage(Storage):
         ftp_client.cwd(directory)
         return filename
 
-    def _get_file_list(self, ftp_client):
-        file_list = []
+    def _walk(self, ftp_client, target_directory=None):
+        if target_directory:
+            ftp_client.cwd(target_directory)
+        else:
+            target_directory = ftp_client.pwd()
 
-        ftp_client.retrlines('LIST', file_list.append)
+        directory_listing = []
+        files = []
+        dirs = []
 
-        return [
-            {"name": line.split()[-1], "is_directory": line.lower().startswith("d")}
-            for line in file_list
-        ]
+        ftp_client.retrlines('LIST', directory_listing.append)
+
+        for line in directory_listing:
+            name = line.split()[-1]
+
+            if line.lower().startswith("d"):
+                dirs.append(name)
+            else:
+                files.append(name)
+
+        yield (target_directory, dirs, files)
+
+        for name in dirs:
+            new_target = os.path.join(target_directory, name)
+            print "### target_directory", target_directory, "NEW root", new_target
+
+            for result in self._walk(ftp_client, target_directory=new_target):
+                yield result
 
     def _create_directory_structure(self, ftp_client, target_path, restore=False):
         directories = target_path.lstrip('/').split('/')
@@ -412,9 +431,10 @@ class FTPStorage(Storage):
             target_directory = directories.pop(0)
             found = False
 
-            for file in self._get_file_list(ftp_client):
+            _, dirs, _ = self._walk(ftp_client).next()
+            for directory in dirs:
                 # TODO (phd): warn the user that a file exists with the name of their target dir
-                if file["is_directory"] and file["name"] == target_directory:
+                if directory == target_directory:
                     found = True
                     break
 
@@ -437,7 +457,23 @@ class FTPStorage(Storage):
         ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
 
     def save_to_directory(self, destination_directory):
-        pass
+        ftp_client = self._connect()
+        base_ftp_path = self._parsed_storage_uri.path
+
+        ftp_client.cwd(base_ftp_path)
+
+        for root, dirs, files in self._walk(ftp_client):
+            relative_path = "/{}".format(root).replace(base_ftp_path, destination_directory)
+
+            if not os.path.exists(relative_path):
+                os.makedirs(relative_path)
+
+            os.chdir(relative_path)
+
+            for filename in files:
+                print "saving file", filename, "rel", relative_path
+                with open(os.path.join(relative_path, filename), "wb") as output_file:
+                    ftp_client.retrbinary("RETR {0}".format(filename), callback=output_file.write)
 
     def load_from_filename(self, file_path):
         with open(file_path, "rb") as input_file:
