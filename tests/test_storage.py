@@ -786,7 +786,7 @@ class TestRackspaceStorage(TestCase):
 
 class TestFTPStorage(TestCase):
     @mock.patch("ftplib.FTP", autospec=True)
-    def test_save_to_filename(self, mock_ftp_class):
+    def test_ftp_save_to_filename(self, mock_ftp_class):
         temp_output = tempfile.NamedTemporaryFile()
 
         mock_results = ["foo", "bar"]
@@ -816,7 +816,7 @@ class TestFTPStorage(TestCase):
             self.assertEqual("foobar", output_fp.read())
 
     @mock.patch("ftplib.FTP", autospec=True)
-    def test_save_to_file(self, mock_ftp_class):
+    def test_ftp_save_to_file(self, mock_ftp_class):
         out_file = StringIO()
 
         mock_results = ["foo", "bar"]
@@ -864,7 +864,7 @@ class TestFTPStorage(TestCase):
             "STOR file", mock_open.return_value.__enter__.return_value)
 
     @mock.patch("ftplib.FTP", autospec=True)
-    def test_load_from_file(self, mock_ftp_class):
+    def test_ftp_load_from_file(self, mock_ftp_class):
         mock_ftp = mock_ftp_class.return_value
         in_file = StringIO("foobar")
 
@@ -881,7 +881,7 @@ class TestFTPStorage(TestCase):
         mock_ftp.storbinary.assert_called_with("STOR file", in_file)
 
     @mock.patch("ftplib.FTP", autospec=True)
-    def test_delete(self, mock_ftp_class):
+    def test_ftp_delete(self, mock_ftp_class):
         mock_ftp = mock_ftp_class.return_value
 
         storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -895,7 +895,7 @@ class TestFTPStorage(TestCase):
         mock_ftp.delete.assert_called_with("file")
 
     @mock.patch("ftplib.FTP", autospec=True)
-    def test_get_download_url(self, mock_ftp_class):
+    def test_ftp_get_download_url(self, mock_ftp_class):
         download_url_base = urllib.quote_plus("http://hostname/path/to/")
 
         ftpuri = "ftp://user:password@ftp.foo.com/some/dir/file.txt?download_url_base={0}".format(
@@ -904,11 +904,11 @@ class TestFTPStorage(TestCase):
         storage = storagelib.get_storage(ftpuri)
         temp_url = storage.get_download_url()
 
-        self.assertFalse(mock_ftp_class.called)
+        mock_ftp_class.assert_not_called()
         self.assertEqual(temp_url, "http://hostname/path/to/file.txt")
 
     @mock.patch("ftplib.FTP", autospec=True)
-    def test_get_download_url_returns_none_with_empty_base(self, mock_ftp_class):
+    def test_ftp_get_download_url_returns_none_with_empty_base(self, mock_ftp_class):
         ftpuri = "ftp://user:password@ftp.foo.com/some/dir/file.txt"
 
         storage = storagelib.get_storage(ftpuri)
@@ -916,7 +916,7 @@ class TestFTPStorage(TestCase):
         with self.assertRaises(DownloadUrlBaseUndefinedError):
             storage.get_download_url()
 
-        self.assertFalse(mock_ftp_class.called)
+        mock_ftp_class.assert_not_called()
 
 
 class TestFTPSStorage(TestCase):
@@ -1145,7 +1145,7 @@ class TestFTPSStorage(TestCase):
         mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
         mock_ftp.login.assert_called_with("user", "password")
         mock_ftp.prot_p.assert_called_with()
-        self.assertFalse(mock_ftp.mkd.called)
+        mock_ftp.mkd.assert_not_called()
 
         mock_ftp.cwd.assert_has_calls([
             mock.call("some"),
