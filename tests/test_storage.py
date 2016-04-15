@@ -973,7 +973,6 @@ class TestFTPStorage(TestCase):
         ])
 
         mock_ftp.storbinary.assert_not_called()
-        print dir(mock_ftp.storbinary)
 
     @mock.patch("__builtin__.open", autospec=True)
     @mock.patch("ftplib.FTP", autospec=True)

@@ -416,7 +416,6 @@ class FTPStorage(Storage):
 
         for name in dirs:
             new_target = os.path.join(target_directory, name)
-            print "### target_directory", target_directory, "NEW root", new_target
 
             for result in self._walk(ftp_client, target_directory=new_target):
                 yield result
@@ -471,7 +470,6 @@ class FTPStorage(Storage):
             os.chdir(relative_path)
 
             for filename in files:
-                print "saving file", filename, "rel", relative_path
                 with open(os.path.join(relative_path, filename), "wb") as output_file:
                     ftp_client.retrbinary("RETR {0}".format(filename), callback=output_file.write)
 
