@@ -59,7 +59,8 @@ reading from the specified file-like-object.
 
 #### `load_from_directory(directory_path)` ####
 
-Uploads to the location specified by the URI to `get_storage` all of the contents of the directory at directory_path.
+Uploads to the location specified by the URI to `get_storage` all
+of the contents of the directory at directory\_path.
 
 #### `save_to_filename(filename)` ####
 
@@ -74,7 +75,7 @@ Downloads the contents of the file specified by the URI to
 #### `save_to_directory(directory_path)` ####
 
 Downloads the contents of the directory specified by the URI to
-`get_storage` into the directory at directory_path.
+`get_storage` into the directory at directory\_path.
 
 #### `delete()` ####
 
@@ -235,7 +236,7 @@ ftp://username:password@my-ftp-server/directory/awesome-file.txt[?download_url_b
 #### ftps ####
 
 A reference to a file on an FTP server, served using the FTPS
-(a.k.a. FTP_TLS) encrypted protocol.
+(a.k.a. FTP\_TLS) encrypted protocol.
 
 Example:
 
