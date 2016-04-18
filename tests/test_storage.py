@@ -905,7 +905,7 @@ class TestFTPStorage(TestCase):
         expected_calls = [
             mock.call("/cat/pants"),
             mock.call("/cat/pants/dir1"),
-            mock.call("/cat/pants/dir1/dir3"),
+            mock.call("/cat/pants/dir1/dir with spaces"),
             mock.call("/cat/pants/dir2"),
             mock.call("/cat/pants/dir2/dir4"),
         ]
@@ -920,12 +920,12 @@ class TestFTPStorage(TestCase):
             ],
             # dir1
             [
-                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir3",
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir with spaces",
                 "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file3",
             ],
-            # dir3
+            # dir with spaces
             [
-                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file4",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file with spaces"
             ],
             # dir2
             [
@@ -945,7 +945,7 @@ class TestFTPStorage(TestCase):
         mock_ftp.cwd.assert_has_calls([
             mock.call("/some/place/special"),
             mock.call("some/place/special/dir1"),
-            mock.call("some/place/special/dir1/dir3"),
+            mock.call("some/place/special/dir1/dir with spaces"),
             mock.call("some/place/special/dir2"),
             mock.call("some/place/special/dir2/dir4"),
         ])
@@ -961,7 +961,7 @@ class TestFTPStorage(TestCase):
             mock.call("/cat/pants/file1", "wb"),
             mock.call("/cat/pants/file2", "wb"),
             mock.call("/cat/pants/dir1/file3", "wb"),
-            mock.call("/cat/pants/dir1/dir3/file4", "wb"),
+            mock.call("/cat/pants/dir1/dir with spaces/file with spaces", "wb"),
         ], any_order=True)
 
         self.assertEqual(4, mock_ftp.retrbinary.call_count)
@@ -969,7 +969,8 @@ class TestFTPStorage(TestCase):
             mock.call("RETR file1", callback=mock_open.return_value.__enter__.return_value.write),
             mock.call("RETR file2", callback=mock_open.return_value.__enter__.return_value.write),
             mock.call("RETR file3", callback=mock_open.return_value.__enter__.return_value.write),
-            mock.call("RETR file4", callback=mock_open.return_value.__enter__.return_value.write),
+            mock.call(
+                "RETR file with spaces", callback=mock_open.return_value.__enter__.return_value.write),
         ])
 
         mock_ftp.storbinary.assert_not_called()

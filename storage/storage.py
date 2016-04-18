@@ -84,6 +84,8 @@ class LocalStorage(Storage):
 
       file:///some/path/to/a/file.txt?[download_url_base=<URL-ENCODED-URL>]
 
+      file:///some/path/to/a/directory?[download_url_base=<URL-ENCODED-URL>]
+
     """
 
     def __init__(self, storage_uri):
@@ -179,6 +181,10 @@ class SwiftStorage(Storage):
     The URI for working with Swift storage has the following format:
 
       swift://username:password@container/object?
+      auth_endpoint=URL&region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
+      [&download_url_key=TEMPURLKEY]
+
+      swift://username:password@container/directory/of/objects?
       auth_endpoint=URL&region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
       [&download_url_key=TEMPURLKEY]
 
@@ -352,6 +358,8 @@ class CloudFilesStorage(SwiftStorage):
 
       cloudfiles://username:key@container/object[?public={True|False}]
 
+      cloudfiles://username:key@container/directory/of/objects[?public={True|False}]
+
     """
 
     def _authenticate(self):
@@ -375,6 +383,8 @@ class FTPStorage(Storage):
     The URI for working with FTP storage has the following format:
 
       ftp://username:password@hostname/path/to/file.txt[?download_url_base=<URL-ENCODED-URL>]
+
+      ftp://username:password@hostname/path/to/directory[?download_url_base=<URL-ENCODED-URL>]
 
     If the ftp storage has access via HTTP, then a download_url_base can be specified
     that will allow get_download_url() to return access to that object via HTTP.
@@ -414,7 +424,7 @@ class FTPStorage(Storage):
         ftp_client.retrlines('LIST', directory_listing.append)
 
         for line in directory_listing:
-            name = line.split()[-1]
+            name = line.split(" ", 9)[-1]
 
             if line.lower().startswith("d"):
                 dirs.append(name)
