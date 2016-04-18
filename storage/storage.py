@@ -230,6 +230,19 @@ class SwiftStorage(Storage):
         object_name = self._parsed_storage_uri.path[1:]
         return container_name, object_name
 
+    def _list_container_objects(self, container_name, prefix):
+        container_objects = self._cloudfiles.list_container_objects(container_name, prefix=prefix)
+        directories = []
+        files = []
+
+        for container_object in container_objects:
+            if container_object.content_type == "application/directory":
+                directories.append(container_object)
+            else:
+                files.append(container_object)
+
+        return directories, files
+
     def save_to_filename(self, file_path):
         with open(file_path, "wb") as output_fp:
             self.save_to_file(output_fp)
@@ -246,25 +259,21 @@ class SwiftStorage(Storage):
         self._authenticate()
         container_name, prefix = self._get_container_and_object_names()
 
-        objects = self._cloudfiles.list_container_objects(container_name, prefix=prefix)
-        directories = [d for d in objects if d.content_type == "application/directory"]
-        files = [f for f in objects if f.content_type != "application/directory"]
+        directories, files = self._list_container_objects(container_name, prefix)
 
-        # create dirs
         for directory in directories:
             if directory.name == prefix:
                 continue
 
             directory_path = directory.name.split('/', 1).pop()
-            target = destination_directory + "/" + directory_path
-            if directory.content_type == "application/directory" and \
-                    not os.path.exists(target):
-                os.makedirs(target)
+            target_directory = os.path.join(destination_directory, directory_path)
+            if not os.path.exists(target_directory):
+                os.makedirs(target_directory)
 
         for file in files:
-            filename = file.name.replace(prefix, destination_directory, 1)
-            filename = filename.rsplit("/", 1)[0]
-            self._cloudfiles.download_object(container_name, file, filename, structure=False)
+            directory = os.path.dirname(file.name.replace(prefix, destination_directory, 1))
+
+            self._cloudfiles.download_object(container_name, file, directory, structure=False)
 
     def _upload_file(self, file_or_path, object_path=None):
         self._authenticate()
@@ -289,10 +298,10 @@ class SwiftStorage(Storage):
         container_name, object_name = self._get_container_and_object_names()
 
         for root, _, files in os.walk(source_directory):
-            relative_path = root.replace(source_directory, object_name)
+            container_path = root.replace(source_directory, object_name, 1)
             for file in files:
                 self._upload_file(
-                    os.path.join(root, file), object_path=os.path.join(relative_path, file))
+                    os.path.join(root, file), object_path=os.path.join(container_path, file))
 
     def delete(self):
         self._authenticate()
@@ -462,7 +471,7 @@ class FTPStorage(Storage):
         ftp_client.cwd(base_ftp_path)
 
         for root, dirs, files in self._walk(ftp_client):
-            relative_path = "/{}".format(root).replace(base_ftp_path, destination_directory)
+            relative_path = "/{}".format(root).replace(base_ftp_path, destination_directory, 1)
 
             if not os.path.exists(relative_path):
                 os.makedirs(relative_path)
@@ -490,7 +499,7 @@ class FTPStorage(Storage):
         self._create_directory_structure(ftp_client, base_ftp_path)
 
         for root, dirs, files in os.walk(source_directory):
-            relative_ftp_path = root.replace(source_directory, base_ftp_path)
+            relative_ftp_path = root.replace(source_directory, base_ftp_path, 1)
 
             ftp_client.cwd(relative_ftp_path)
 
@@ -589,10 +598,11 @@ class S3Storage(Storage):
         dir_contents = dir_object["Contents"]
 
         for file in dir_contents:
-            file_key = file["Key"]
-            file_key = file_key[len(self._keyname):]
+            file_key = file["Key"].replace(self._keyname, "", 1)
+
             if file_key and not file_key.endswith("/"):
-                file_path = file_key.rsplit('/', 1)[0]
+                file_path = os.path.dirname(file_key)
+
                 if not os.path.exists(directory_path + file_path):
                     os.makedirs(directory_path + file_path)
 
@@ -614,7 +624,7 @@ class S3Storage(Storage):
         client = self._connect()
 
         for root, _, files in os.walk(source_directory):
-            relative_path = root.replace(source_directory, self._keyname)
+            relative_path = root.replace(source_directory, self._keyname, 1)
 
             for file in files:
                 upload_path = os.path.join(relative_path, file)
