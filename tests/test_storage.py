@@ -12,7 +12,11 @@ EXPECTED_CHUNK_SIZE = 32 * 1024 * 1024
 
 
 def create_temp_nested_directory_with_files():
-    # temp_directory/(temp_input_one, temp_input_two,nested_temp_directory/(nested_temp_input))
+    # temp_directory/
+    #   temp_input_one
+    #   temp_input_two
+    #   nested_temp_directory/
+    #      nested_temp_input
     temp_dir = {}
     temp_dir["temp_directory"] = {"path": tempfile.mkdtemp()}
     temp_dir["temp_input_one"] = {
