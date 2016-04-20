@@ -1,0 +1,6 @@
+deployment:
+  release:
+    tag: /v[0-9]+(\.[0-9]+)*/
+    owner: ustudio
+    commands:
+      - ./publish_to_pypi.sh
