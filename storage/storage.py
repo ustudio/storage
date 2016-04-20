@@ -52,6 +52,10 @@ class Storage(object):
         raise NotImplementedError(
             "{0} does not implement 'save_to_file'".format(self._class_name()))
 
+    def save_to_directory(self, directory_path):
+        raise NotImplementedError(
+            "{0} does not implement 'save_to_directory'".format(self._class_name()))
+
     def load_from_filename(self, file_path):
         raise NotImplementedError(
             "{0} does not implement 'load_from_filename'".format(self._class_name()))
@@ -60,11 +64,16 @@ class Storage(object):
         raise NotImplementedError(
             "{0} does not implement 'load_from_file'".format(self._class_name()))
 
+    def load_from_directory(self, directory_path):
+        raise NotImplementedError(
+            "{0} does not implement 'load_from_directory'".format(self._class_name()))
+
     def delete(self):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
 
     def get_download_url(self, seconds=60, key=None):
-        raise NotImplementedError("{0} does not implement 'get_download_url'".format(self._class_name()))
+        raise NotImplementedError(
+            "{0} does not implement 'get_download_url'".format(self._class_name()))
 
 
 @register_storage_protocol("file")
@@ -75,7 +84,10 @@ class LocalStorage(Storage):
 
       file:///some/path/to/a/file.txt?[download_url_base=<URL-ENCODED-URL>]
 
+      file:///some/path/to/a/directory?[download_url_base=<URL-ENCODED-URL>]
+
     """
+
     def __init__(self, storage_uri):
         super(LocalStorage, self).__init__(storage_uri)
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
@@ -88,6 +100,9 @@ class LocalStorage(Storage):
         with open(self._parsed_storage_uri.path) as in_file:
             for chunk in in_file:
                 out_file.write(chunk)
+
+    def save_to_directory(self, destination_directory):
+        shutil.copytree(self._parsed_storage_uri.path, destination_directory)
 
     def _ensure_exists(self):
         dirname = os.path.dirname(self._parsed_storage_uri.path)
@@ -107,6 +122,10 @@ class LocalStorage(Storage):
             for chunk in in_file:
                 out_file.write(chunk)
 
+    def load_from_directory(self, source_directory):
+        self._ensure_exists()
+        shutil.copytree(source_directory, self._parsed_storage_uri.path)
+
     def delete(self):
         os.remove(self._parsed_storage_uri.path)
 
@@ -114,8 +133,8 @@ class LocalStorage(Storage):
         """
         Return a temporary URL allowing access to the storage object.
 
-        If a download_url_base is specified in the storage URI, then a call to get_download_url() will
-        return the download_url_base joined with the object name.
+        If a download_url_base is specified in the storage URI, then a call to get_download_url()
+        will return the download_url_base joined with the object name.
 
         For example, if "http://www.someserver.com:1234/path/to/" were passed (urlencoded) as the
         download_url_base query parameter of the storage URI:
@@ -162,6 +181,10 @@ class SwiftStorage(Storage):
     The URI for working with Swift storage has the following format:
 
       swift://username:password@container/object?
+      auth_endpoint=URL&region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
+      [&download_url_key=TEMPURLKEY]
+
+      swift://username:password@container/directory/of/objects?
       auth_endpoint=URL&region=REGION&tenant_id=ID[&api_key=APIKEY][&public={True|False}]
       [&download_url_key=TEMPURLKEY]
 
@@ -213,6 +236,19 @@ class SwiftStorage(Storage):
         object_name = self._parsed_storage_uri.path[1:]
         return container_name, object_name
 
+    def _list_container_objects(self, container_name, prefix):
+        container_objects = self._cloudfiles.list_container_objects(container_name, prefix=prefix)
+        directories = []
+        files = []
+
+        for container_object in container_objects:
+            if container_object.content_type == "application/directory":
+                directories.append(container_object)
+            else:
+                files.append(container_object)
+
+        return directories, files
+
     def save_to_filename(self, file_path):
         with open(file_path, "wb") as output_fp:
             self.save_to_file(output_fp)
@@ -225,20 +261,53 @@ class SwiftStorage(Storage):
                 container_name, object_name, chunk_size=_LARGE_CHUNK):
             out_file.write(chunk)
 
-    def _upload_file(self, file_or_path):
+    def save_to_directory(self, destination_directory):
+        self._authenticate()
+        container_name, prefix = self._get_container_and_object_names()
+
+        directories, files = self._list_container_objects(container_name, prefix)
+
+        for directory in directories:
+            if directory.name == prefix:
+                continue
+
+            directory_path = directory.name.split('/', 1).pop()
+            target_directory = os.path.join(destination_directory, directory_path)
+            if not os.path.exists(target_directory):
+                os.makedirs(target_directory)
+
+        for file in files:
+            directory = os.path.dirname(file.name.replace(prefix, destination_directory, 1))
+
+            self._cloudfiles.download_object(container_name, file, directory, structure=False)
+
+    def _upload_file(self, file_or_path, object_path=None):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
         kwargs = {}
         mimetype = mimetypes.guess_type(object_name)[0]
         if mimetype is not None:
             kwargs["content_type"] = mimetype
-        self._cloudfiles.upload_file(container_name, file_or_path, object_name, **kwargs)
+
+        object_location = object_path or object_name
+
+        self._cloudfiles.upload_file(container_name, file_or_path, object_location, **kwargs)
 
     def load_from_filename(self, file_path):
         self._upload_file(file_path)
 
     def load_from_file(self, in_file):
         self._upload_file(in_file)
+
+    def load_from_directory(self, source_directory):
+        self._authenticate()
+        container_name, object_name = self._get_container_and_object_names()
+
+        for root, _, files in os.walk(source_directory):
+            container_path = root.replace(source_directory, object_name, 1)
+            for file in files:
+                self._upload_file(
+                    os.path.join(root, file), object_path=os.path.join(container_path, file))
 
     def delete(self):
         self._authenticate()
@@ -289,6 +358,8 @@ class CloudFilesStorage(SwiftStorage):
 
       cloudfiles://username:key@container/object[?public={True|False}]
 
+      cloudfiles://username:key@container/directory/of/objects[?public={True|False}]
+
     """
 
     def _authenticate(self):
@@ -312,6 +383,8 @@ class FTPStorage(Storage):
     The URI for working with FTP storage has the following format:
 
       ftp://username:password@hostname/path/to/file.txt[?download_url_base=<URL-ENCODED-URL>]
+
+      ftp://username:password@hostname/path/to/directory[?download_url_base=<URL-ENCODED-URL>]
 
     If the ftp storage has access via HTTP, then a download_url_base can be specified
     that will allow get_download_url() to return access to that object via HTTP.
@@ -338,6 +411,59 @@ class FTPStorage(Storage):
         ftp_client.cwd(directory)
         return filename
 
+    def _walk(self, ftp_client, target_directory=None):
+        if target_directory:
+            ftp_client.cwd(target_directory)
+        else:
+            target_directory = ftp_client.pwd()
+
+        directory_listing = []
+        files = []
+        dirs = []
+
+        ftp_client.retrlines('LIST', directory_listing.append)
+
+        for line in directory_listing:
+            name = line.split(" ", 9)[-1]
+
+            if line.lower().startswith("d"):
+                dirs.append(name)
+            else:
+                files.append(name)
+
+        yield (target_directory, dirs, files)
+
+        for name in dirs:
+            new_target = os.path.join(target_directory, name)
+
+            for result in self._walk(ftp_client, target_directory=new_target):
+                yield result
+
+    def _create_directory_structure(self, ftp_client, target_path, restore=False):
+        directories = target_path.lstrip('/').split('/')
+
+        if restore:
+            restore = ftp_client.pwd()
+
+        while len(directories):
+            target_directory = directories.pop(0)
+            found = False
+
+            _, dirs, _ = self._walk(ftp_client).next()
+            for directory in dirs:
+                # TODO (phd): warn the user that a file exists with the name of their target dir
+                if directory == target_directory:
+                    found = True
+                    break
+
+            if not found:
+                ftp_client.mkd(target_directory)
+
+            ftp_client.cwd(target_directory)
+
+        if restore:
+            ftp_client.cwd(restore)
+
     def save_to_filename(self, file_path):
         with open(file_path, "wb") as output_file:
             self.save_to_file(output_file)
@@ -347,6 +473,24 @@ class FTPStorage(Storage):
         filename = self._cd_to_file(ftp_client)
 
         ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
+
+    def save_to_directory(self, destination_directory):
+        ftp_client = self._connect()
+        base_ftp_path = self._parsed_storage_uri.path
+
+        ftp_client.cwd(base_ftp_path)
+
+        for root, dirs, files in self._walk(ftp_client):
+            relative_path = "/{}".format(root).replace(base_ftp_path, destination_directory, 1)
+
+            if not os.path.exists(relative_path):
+                os.makedirs(relative_path)
+
+            os.chdir(relative_path)
+
+            for filename in files:
+                with open(os.path.join(relative_path, filename), "wb") as output_file:
+                    ftp_client.retrbinary("RETR {0}".format(filename), callback=output_file.write)
 
     def load_from_filename(self, file_path):
         with open(file_path, "rb") as input_file:
@@ -358,6 +502,26 @@ class FTPStorage(Storage):
 
         ftp_client.storbinary("STOR {0}".format(filename), in_file)
 
+    def load_from_directory(self, source_directory):
+        ftp_client = self._connect()
+        base_ftp_path = self._parsed_storage_uri.path
+
+        self._create_directory_structure(ftp_client, base_ftp_path)
+
+        for root, dirs, files in os.walk(source_directory):
+            relative_ftp_path = root.replace(source_directory, base_ftp_path, 1)
+
+            ftp_client.cwd(relative_ftp_path)
+
+            for directory in dirs:
+                self._create_directory_structure(ftp_client, directory, restore=True)
+
+            for file in files:
+                file_path = os.path.join(root, file)
+
+                with open(file_path, "rb") as input_file:
+                    ftp_client.storbinary("STOR {0}".format(file), input_file)
+
     def delete(self):
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
@@ -367,8 +531,8 @@ class FTPStorage(Storage):
         """
         Return a temporary URL allowing access to the storage object.
 
-        If a download_url_base is specified in the storage URI, then a call to get_download_url() will
-        return the download_url_base joined with the object name.
+        If a download_url_base is specified in the storage URI, then a call to get_download_url()
+        will return the download_url_base joined with the object name.
 
         For example, if "http://www.someserver.com:1234/path/to/" were passed (urlencoded) as the
         download_url_base query parameter of the storage URI:
@@ -437,6 +601,24 @@ class S3Storage(Storage):
             if not chunk:
                 break
 
+    def save_to_directory(self, directory_path):
+        client = self._connect()
+        directory_prefix = "{}/".format(self._keyname)
+        dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
+        dir_contents = dir_object["Contents"]
+
+        for file in dir_contents:
+            file_key = file["Key"].replace(self._keyname, "", 1)
+
+            if file_key and not file_key.endswith("/"):
+                file_path = os.path.dirname(file_key)
+
+                if not os.path.exists(directory_path + file_path):
+                    os.makedirs(directory_path + file_path)
+
+                client.download_file(
+                    self._bucket, file["Key"], directory_path + file_key)
+
     def load_from_filename(self, file_path):
         client = self._connect()
 
@@ -447,6 +629,16 @@ class S3Storage(Storage):
         client = self._connect()
 
         client.put_object(Bucket=self._bucket, Key=self._keyname, Body=in_file)
+
+    def load_from_directory(self, source_directory):
+        client = self._connect()
+
+        for root, _, files in os.walk(source_directory):
+            relative_path = root.replace(source_directory, self._keyname, 1)
+
+            for file in files:
+                upload_path = os.path.join(relative_path, file)
+                client.upload_file(os.path.join(root, file), self._bucket, upload_path)
 
     def delete(self):
         client = self._connect()

@@ -6,7 +6,7 @@ with open("requirements.txt") as requirements_file:
                           map(lambda r: r.strip(), requirements_file.readlines()))
 
 setup(name="object_storage",
-      version="0.6.2",
+      version="0.7.0",
       description="Python library for accessing files over various file transfer protocols.",
       url="https://github.com/ustudio/storage",
       packages=["storage"],
