@@ -5,6 +5,7 @@ import functools
 import mimetypes
 import os
 import os.path
+import re
 import shutil
 import urllib
 import urlparse
@@ -412,27 +413,33 @@ class FTPStorage(Storage):
         ftp_client.cwd(directory)
         return filename
 
+    def _list(self, ftp_client):
+        directory_listing = []
+
+        ftp_client.retrlines('LIST', directory_listing.append)
+
+        directories = []
+        files = []
+
+        for line in directory_listing:
+            name = re.split(r"\s+", line, 8)[-1]
+
+            if line.lower().startswith("d"):
+                directories.append(name)
+            else:
+                files.append(name)
+
+        return directories, files
+
     def _walk(self, ftp_client, target_directory=None):
         if target_directory:
             ftp_client.cwd(target_directory)
         else:
             target_directory = ftp_client.pwd()
 
-        directory_listing = []
-        files = []
-        dirs = []
+        dirs, files = self._list(ftp_client)
 
-        ftp_client.retrlines('LIST', directory_listing.append)
-
-        for line in directory_listing:
-            name = line.split(" ", 9)[-1]
-
-            if line.lower().startswith("d"):
-                dirs.append(name)
-            else:
-                files.append(name)
-
-        yield (target_directory, dirs, files)
+        yield target_directory, dirs, files
 
         for name in dirs:
             new_target = os.path.join(target_directory, name)
@@ -446,18 +453,11 @@ class FTPStorage(Storage):
         if restore:
             restore = ftp_client.pwd()
 
-        while len(directories):
-            target_directory = directories.pop(0)
-            found = False
+        for target_directory in directories:
+            dirs, _ = self._list(ftp_client)
 
-            _, dirs, _ = self._walk(ftp_client).next()
-            for directory in dirs:
-                # TODO (phd): warn the user that a file exists with the name of their target dir
-                if directory == target_directory:
-                    found = True
-                    break
-
-            if not found:
+            # TODO (phd): warn the user that a file exists with the name of their target dir
+            if target_directory not in dirs:
                 ftp_client.mkd(target_directory)
 
             ftp_client.cwd(target_directory)
