@@ -1,5 +1,6 @@
 import boto3
 import boto3.s3.transfer
+import distutils.dir_util
 import ftplib
 import functools
 import mimetypes
@@ -103,7 +104,7 @@ class LocalStorage(Storage):
                 out_file.write(chunk)
 
     def save_to_directory(self, destination_directory):
-        shutil.copytree(self._parsed_storage_uri.path, destination_directory)
+        distutils.dir_util.copy_tree(self._parsed_storage_uri.path, destination_directory)
 
     def _ensure_exists(self):
         dirname = os.path.dirname(self._parsed_storage_uri.path)
@@ -125,7 +126,7 @@ class LocalStorage(Storage):
 
     def load_from_directory(self, source_directory):
         self._ensure_exists()
-        shutil.copytree(source_directory, self._parsed_storage_uri.path)
+        distutils.dir_util.copy_tree(source_directory, self._parsed_storage_uri.path)
 
     def delete(self):
         os.remove(self._parsed_storage_uri.path)
@@ -274,11 +275,15 @@ class SwiftStorage(Storage):
 
             directory_path = directory.name.split('/', 1).pop()
             target_directory = os.path.join(destination_directory, directory_path)
+
             if not os.path.exists(target_directory):
                 os.makedirs(target_directory)
 
         for file in files:
             directory = os.path.dirname(file.name.replace(prefix, destination_directory, 1))
+
+            if not os.path.exists(directory):
+                os.makedirs(directory)
 
             self._cloudfiles.download_object(container_name, file, directory, structure=False)
 
@@ -306,6 +311,7 @@ class SwiftStorage(Storage):
 
         for root, _, files in os.walk(source_directory):
             container_path = root.replace(source_directory, object_name, 1)
+
             for file in files:
                 self._upload_file(
                     os.path.join(root, file), object_path=os.path.join(container_path, file))
