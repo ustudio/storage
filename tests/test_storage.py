@@ -1003,7 +1003,8 @@ class TestFTPStorage(TestCase):
             mock.call("RETR file2", callback=mock_open.return_value.__enter__.return_value.write),
             mock.call("RETR file3", callback=mock_open.return_value.__enter__.return_value.write),
             mock.call(
-                "RETR file with spaces", callback=mock_open.return_value.__enter__.return_value.write),
+                "RETR file with spaces",
+                callback=mock_open.return_value.__enter__.return_value.write),
         ])
 
         mock_ftp.storbinary.assert_not_called()
