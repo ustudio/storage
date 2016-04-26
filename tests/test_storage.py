@@ -461,10 +461,50 @@ class TestSwiftStorage(TestCase):
 
         self.assertEqual("foobar", out_file.getvalue())
 
-    @mock.patch("os.path.exists")
+    @mock.patch("os.path.exists", return_value=False)
     @mock.patch("os.makedirs")
     @mock.patch("pyrax.create_context")
     def test_swift_save_to_directory(self, mock_create_context, mock_makedirs, mock_path_exists):
+        class RackspaceObject:
+            def __init__(self, name, content_type):
+                self.name = name
+                self.content_type = content_type
+
+        expected_jpg = RackspaceObject("file/a/0.jpg", "image/jpg")
+        expected_mp4 = RackspaceObject("file/a/b/c/1.mp4", "video/mp4")
+
+        expected_files = [
+            expected_jpg,
+            expected_mp4
+        ]
+        mock_context = mock_create_context.return_value
+        mock_swift = mock_context.get_client.return_value
+
+        mock_swift.list_container_objects.return_value = expected_files
+
+        uri = "swift://{username}:{password}@{container}/{file}?" \
+              "auth_endpoint={auth_endpoint}&region={region}" \
+              "&tenant_id={tenant_id}".format(**self.params)
+
+        storagelib.get_storage(uri).save_to_directory("/tmp/cat/pants")
+
+        self._assert_default_login_correct(mock_create_context)
+        mock_swift.list_container_objects.assert_called_with(
+            self.params["container"], prefix=self.params["file"])
+
+        mock_makedirs.assert_has_calls([
+            mock.call("/tmp/cat/pants/a"), mock.call("/tmp/cat/pants/a/b/c")])
+
+        mock_swift.download_object.assert_any_call(
+            self.params["container"], expected_jpg, "/tmp/cat/pants/a", structure=False)
+        mock_swift.download_object.assert_any_call(
+            self.params["container"], expected_mp4, "/tmp/cat/pants/a/b/c", structure=False)
+
+    @mock.patch("os.path.exists", return_value=False)
+    @mock.patch("os.makedirs")
+    @mock.patch("pyrax.create_context")
+    def test_swift_save_to_directory_works_with_empty_directories(
+            self, mock_create_context, mock_makedirs, mock_path_exists):
         class RackspaceObject:
             def __init__(self, name, content_type):
                 self.name = name
@@ -474,10 +514,10 @@ class TestSwiftStorage(TestCase):
         expected_mp4 = RackspaceObject("a/b/c/1.mp4", "video/mp4")
 
         expected_files = [
-            RackspaceObject("a", "application/directory"),
+            RackspaceObject("nothing", "application/directory"),
             expected_jpg,
-            RackspaceObject("a/b", "application/directory"),
-            RackspaceObject("a/b/c", "application/directory"),
+            RackspaceObject("to see", "application/directory"),
+            RackspaceObject("here", "application/directory"),
             expected_mp4
         ]
         mock_context = mock_create_context.return_value
@@ -497,7 +537,10 @@ class TestSwiftStorage(TestCase):
             self.params["container"], prefix=self.params["file"])
 
         mock_makedirs.assert_has_calls([
-            mock.call("/tmp/cat/pants/b"), mock.call("/tmp/cat/pants/b/c")])
+            mock.call("/tmp/cat/pants/nothing"),
+            mock.call("/tmp/cat/pants/to see"),
+            mock.call("/tmp/cat/pants/here"),
+        ])
 
         mock_swift.download_object.assert_any_call(
             self.params["container"], expected_jpg, "a", structure=False)
@@ -860,7 +903,7 @@ class TestFTPStorage(TestCase):
         self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
 
         self.assertEqual("foobar", out_file.getvalue())
- 
+
     @mock.patch("ftplib.FTP", autospec=True)
     def test_save_to_file_with_specific_port(self, mock_ftp_class):
         out_file = StringIO()
@@ -1003,7 +1046,8 @@ class TestFTPStorage(TestCase):
             mock.call("RETR file2", callback=mock_open.return_value.__enter__.return_value.write),
             mock.call("RETR file3", callback=mock_open.return_value.__enter__.return_value.write),
             mock.call(
-                "RETR file with spaces", callback=mock_open.return_value.__enter__.return_value.write),
+                "RETR file with spaces",
+                callback=mock_open.return_value.__enter__.return_value.write),
         ])
 
         mock_ftp.storbinary.assert_not_called()
@@ -1026,7 +1070,7 @@ class TestFTPStorage(TestCase):
         mock_open.assert_called_with("some_file", "rb")
         mock_ftp.storbinary.assert_called_with(
             "STOR file", mock_open.return_value.__enter__.return_value)
- 
+
     @mock.patch("__builtin__.open", autospec=True)
     @mock.patch("ftplib.FTP", autospec=True)
     def test_load_from_filename_with_specific_port(self, mock_ftp_class, mock_open):

@@ -1,10 +1,12 @@
 import boto3
 import boto3.s3.transfer
+import distutils.dir_util
 import ftplib
 import functools
 import mimetypes
 import os
 import os.path
+import re
 import shutil
 import urllib
 import urlparse
@@ -102,7 +104,7 @@ class LocalStorage(Storage):
                 out_file.write(chunk)
 
     def save_to_directory(self, destination_directory):
-        shutil.copytree(self._parsed_storage_uri.path, destination_directory)
+        distutils.dir_util.copy_tree(self._parsed_storage_uri.path, destination_directory)
 
     def _ensure_exists(self):
         dirname = os.path.dirname(self._parsed_storage_uri.path)
@@ -124,7 +126,7 @@ class LocalStorage(Storage):
 
     def load_from_directory(self, source_directory):
         self._ensure_exists()
-        shutil.copytree(source_directory, self._parsed_storage_uri.path)
+        distutils.dir_util.copy_tree(source_directory, self._parsed_storage_uri.path)
 
     def delete(self):
         os.remove(self._parsed_storage_uri.path)
@@ -273,11 +275,15 @@ class SwiftStorage(Storage):
 
             directory_path = directory.name.split('/', 1).pop()
             target_directory = os.path.join(destination_directory, directory_path)
+
             if not os.path.exists(target_directory):
                 os.makedirs(target_directory)
 
         for file in files:
             directory = os.path.dirname(file.name.replace(prefix, destination_directory, 1))
+
+            if not os.path.exists(directory):
+                os.makedirs(directory)
 
             self._cloudfiles.download_object(container_name, file, directory, structure=False)
 
@@ -305,6 +311,7 @@ class SwiftStorage(Storage):
 
         for root, _, files in os.walk(source_directory):
             container_path = root.replace(source_directory, object_name, 1)
+
             for file in files:
                 self._upload_file(
                     os.path.join(root, file), object_path=os.path.join(container_path, file))
@@ -395,7 +402,8 @@ class FTPStorage(Storage):
         self._username = self._parsed_storage_uri.username
         self._password = self._parsed_storage_uri.password
         self._hostname = self._parsed_storage_uri.hostname
-        self._port = self._parsed_storage_uri.port if self._parsed_storage_uri.port is not None else 21
+        self._port = \
+            self._parsed_storage_uri.port if self._parsed_storage_uri.port is not None else 21
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
         self._download_url_base = query.get("download_url_base", [None])[0]
 
@@ -411,27 +419,33 @@ class FTPStorage(Storage):
         ftp_client.cwd(directory)
         return filename
 
+    def _list(self, ftp_client):
+        directory_listing = []
+
+        ftp_client.retrlines('LIST', directory_listing.append)
+
+        directories = []
+        files = []
+
+        for line in directory_listing:
+            name = re.split(r"\s+", line, 8)[-1]
+
+            if line.lower().startswith("d"):
+                directories.append(name)
+            else:
+                files.append(name)
+
+        return directories, files
+
     def _walk(self, ftp_client, target_directory=None):
         if target_directory:
             ftp_client.cwd(target_directory)
         else:
             target_directory = ftp_client.pwd()
 
-        directory_listing = []
-        files = []
-        dirs = []
+        dirs, files = self._list(ftp_client)
 
-        ftp_client.retrlines('LIST', directory_listing.append)
-
-        for line in directory_listing:
-            name = line.split(" ", 9)[-1]
-
-            if line.lower().startswith("d"):
-                dirs.append(name)
-            else:
-                files.append(name)
-
-        yield (target_directory, dirs, files)
+        yield target_directory, dirs, files
 
         for name in dirs:
             new_target = os.path.join(target_directory, name)
@@ -445,18 +459,11 @@ class FTPStorage(Storage):
         if restore:
             restore = ftp_client.pwd()
 
-        while len(directories):
-            target_directory = directories.pop(0)
-            found = False
+        for target_directory in directories:
+            dirs, _ = self._list(ftp_client)
 
-            _, dirs, _ = self._walk(ftp_client).next()
-            for directory in dirs:
-                # TODO (phd): warn the user that a file exists with the name of their target dir
-                if directory == target_directory:
-                    found = True
-                    break
-
-            if not found:
+            # TODO (phd): warn the user that a file exists with the name of their target dir
+            if target_directory not in dirs:
                 ftp_client.mkd(target_directory)
 
             ftp_client.cwd(target_directory)
