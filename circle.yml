@@ -1,6 +1,8 @@
 test:
   override:
     - nosetests tests
+  pre:
+    - pip install -e .
   post:
     - python integration-tests.py
 
