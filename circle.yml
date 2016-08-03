@@ -1,8 +1,10 @@
+dependencies:
+  pre:
+    - pip install -e .
+
 test:
   override:
     - nosetests tests
-  pre:
-    - pip install -e .
   post:
     - python integration-tests.py
 
