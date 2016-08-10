@@ -114,7 +114,6 @@ class TestLocalStorage(TestCase):
 
     def test_local_storage_save_to_directory(self):
         temp_directory = create_temp_nested_directory_with_files()
-
         storage = storagelib.get_storage(
             "file://{0}".format(temp_directory["temp_directory"]["path"]))
 
@@ -189,12 +188,26 @@ class TestLocalStorage(TestCase):
         mock_makedirs.assert_called_with("/foo/bar")
         mock_copy.assert_called_with("input_file", "/foo/bar/file")
 
+    @mock.patch("shutil.rmtree", autospec=True)
     @mock.patch("os.remove", autospec=True)
-    def test_local_storage_delete(self, mock_remove):
+    def test_local_storage_delete(self, mock_remove, mock_rmtree):
         storage = storagelib.get_storage("file:///folder/file")
         storage.delete()
 
         mock_remove.assert_called_with("/folder/file")
+        self.assertFalse(mock_rmtree.called)
+
+    @mock.patch("shutil.rmtree", autospec=True)
+    @mock.patch("os.remove", autospec=True)
+    def test_local_storage_delete_recursive(self, mock_remove, mock_rmtree):
+        temp_directory = create_temp_nested_directory_with_files()
+
+        storage = storagelib.get_storage(
+            "file://{0}".format(temp_directory["temp_directory"]["path"]))
+        storage.delete(recursive=True)
+
+        self.assertFalse(mock_remove.called)
+        mock_rmtree.assert_called_once_with(temp_directory["temp_directory"]["path"], True)
 
     def test_local_storage_save_to_file(self):
         temp_input = tempfile.NamedTemporaryFile()

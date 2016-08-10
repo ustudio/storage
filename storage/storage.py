@@ -70,7 +70,7 @@ class Storage(object):
         raise NotImplementedError(
             "{0} does not implement 'load_from_directory'".format(self._class_name()))
 
-    def delete(self):
+    def delete(self, recursive=False):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
 
     def get_download_url(self, seconds=60, key=None):
@@ -128,8 +128,11 @@ class LocalStorage(Storage):
         self._ensure_exists()
         distutils.dir_util.copy_tree(source_directory, self._parsed_storage_uri.path)
 
-    def delete(self):
-        os.remove(self._parsed_storage_uri.path)
+    def delete(self, recursive=False):
+        if recursive:
+            shutil.rmtree(self._parsed_storage_uri.path, True)
+        else:
+            os.remove(self._parsed_storage_uri.path)
 
     def get_download_url(self, seconds=60, key=None):
         """
