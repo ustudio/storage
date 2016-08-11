@@ -1157,6 +1157,68 @@ class TestFTPStorage(TestCase):
         mock_ftp.delete.assert_called_with("file")
 
     @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_delete_recursive(self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+
+        mock_ftp.pwd.return_value = "some/dir/file"
+
+        mock_ftp.retrlines.side_effect = create_mock_ftp_directory_listing([
+            # root
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir1",
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir2",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file1",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file2",
+            ],
+            # dir1
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir with spaces",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file3",
+            ],
+            # dir with spaces
+            [
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file with spaces"
+            ],
+            # dir2
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir4",
+            ],
+        ])
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+        storage.delete(recursive=True)
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("/some/dir/file"),
+            mock.call("some/dir/file/dir1"),
+            mock.call("some/dir/file/dir1/dir with spaces"),
+            mock.call("some/dir/file/dir2"),
+            mock.call("some/dir/file/dir2/dir4")
+        ])
+        self.assertEqual(5, mock_ftp.cwd.call_count)
+
+        mock_ftp.delete.assert_has_calls([
+            mock.call("/some/dir/file/dir1/dir with spaces/file with spaces"),
+            mock.call("/some/dir/file/dir1/file3"),
+            mock.call("/some/dir/file/file2"),
+            mock.call("/some/dir/file/file1")
+        ], any_order=True)
+        self.assertEqual(4, mock_ftp.delete.call_count)
+
+        mock_ftp.rmd.assert_has_calls([
+            mock.call("/some/dir/file/dir2/dir4"),
+            mock.call("/some/dir/file/dir2"),
+            mock.call("/some/dir/file/dir1/dir with spaces"),
+            mock.call("/some/dir/file/dir1"),
+            mock.call("/some/dir/file")
+        ])
+        self.assertEqual(5, mock_ftp.rmd.call_count)
+
+    @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_get_download_url(self, mock_ftp_class):
         download_url_base = urllib.quote_plus("http://hostname/path/to/")
 

@@ -540,10 +540,26 @@ class FTPStorage(Storage):
                 with open(file_path, "rb") as input_file:
                     ftp_client.storbinary("STOR {0}".format(file), input_file)
 
-    def delete(self):
+    def delete(self, recursive=False):
         ftp_client = self._connect()
-        filename = self._cd_to_file(ftp_client)
-        ftp_client.delete(filename)
+
+        if not recursive:
+            filename = self._cd_to_file(ftp_client)
+            ftp_client.delete(filename)
+        else:
+            base_ftp_path = self._parsed_storage_uri.path
+            ftp_client.cwd(base_ftp_path)
+
+            directories_to_remove = []
+            for root, directories, files in self._walk(ftp_client):
+                for filename in files:
+                    ftp_client.delete("/{}/{}".format(root, filename))
+
+                directories_to_remove.append("/{}".format(root))
+
+            directories_to_remove.sort(reverse=True)
+            for directory in directories_to_remove:
+                ftp_client.rmd("{}".format(directory))
 
     def get_download_url(self, seconds=60, key=None):
         """
