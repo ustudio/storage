@@ -319,10 +319,18 @@ class SwiftStorage(Storage):
                 self._upload_file(
                     os.path.join(root, file), object_path=os.path.join(container_path, file))
 
-    def delete(self):
+    def delete(self, recursive=False):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
-        self._cloudfiles.delete_object(container_name, object_name)
+
+        if not recursive:
+            self._cloudfiles.delete_object(container_name, object_name)
+        else:
+            # recursively find and delete all objects below object_name
+            _, objects = self._list_container_objects(container_name, object_name)
+
+            for obj in objects:
+                self._cloudfiles.delete_object(container_name, obj.name)
 
     def get_download_url(self, seconds=60, key=None):
         self._authenticate()

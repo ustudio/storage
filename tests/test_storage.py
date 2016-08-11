@@ -332,6 +332,11 @@ class TestLocalStorage(TestCase):
 
 class TestSwiftStorage(TestCase):
 
+    class RackspaceObject:
+        def __init__(self, name, content_type):
+            self.name = name
+            self.content_type = content_type
+
     def setUp(self):
         self.params = {
             "username": "user",
@@ -478,13 +483,9 @@ class TestSwiftStorage(TestCase):
     @mock.patch("os.makedirs")
     @mock.patch("pyrax.create_context")
     def test_swift_save_to_directory(self, mock_create_context, mock_makedirs, mock_path_exists):
-        class RackspaceObject:
-            def __init__(self, name, content_type):
-                self.name = name
-                self.content_type = content_type
 
-        expected_jpg = RackspaceObject("file/a/0.jpg", "image/jpg")
-        expected_mp4 = RackspaceObject("file/a/b/c/1.mp4", "video/mp4")
+        expected_jpg = self.RackspaceObject("file/a/0.jpg", "image/jpg")
+        expected_mp4 = self.RackspaceObject("file/a/b/c/1.mp4", "video/mp4")
 
         expected_files = [
             expected_jpg,
@@ -518,19 +519,15 @@ class TestSwiftStorage(TestCase):
     @mock.patch("pyrax.create_context")
     def test_swift_save_to_directory_works_with_empty_directories(
             self, mock_create_context, mock_makedirs, mock_path_exists):
-        class RackspaceObject:
-            def __init__(self, name, content_type):
-                self.name = name
-                self.content_type = content_type
 
-        expected_jpg = RackspaceObject("a/0.jpg", "image/jpg")
-        expected_mp4 = RackspaceObject("a/b/c/1.mp4", "video/mp4")
+        expected_jpg = self.RackspaceObject("a/0.jpg", "image/jpg")
+        expected_mp4 = self.RackspaceObject("a/b/c/1.mp4", "video/mp4")
 
         expected_files = [
-            RackspaceObject("nothing", "application/directory"),
+            self.RackspaceObject("nothing", "application/directory"),
             expected_jpg,
-            RackspaceObject("to see", "application/directory"),
-            RackspaceObject("here", "application/directory"),
+            self.RackspaceObject("to see", "application/directory"),
+            self.RackspaceObject("here", "application/directory"),
             expected_mp4
         ]
         mock_context = mock_create_context.return_value
@@ -656,6 +653,31 @@ class TestSwiftStorage(TestCase):
 
         self._assert_default_login_correct(mock_create_context)
         mock_swift.delete_object.assert_called_with(self.params["container"], self.params["file"])
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_delete_recursive(self, mock_create_context):
+
+        expected_files = [
+            self.RackspaceObject("file/a/0.txt", "text/plain"),
+            self.RackspaceObject("file/a/b/1.mp4", "video/mp4"),
+            self.RackspaceObject("file/a/b/c/2.mp4", "video/mp4")
+        ]
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        mock_swift.list_container_objects.return_value = expected_files
+
+        uri = "swift://{username}:{password}@{container}/{file}?" \
+              "auth_endpoint={auth_endpoint}&region={region}" \
+              "&tenant_id={tenant_id}".format(**self.params)
+
+        storage = storagelib.get_storage(uri)
+        storage.delete(recursive=True)
+
+        mock_swift.delete_object.assert_has_calls([
+            mock.call(self.params["container"], "file/a/b/c/2.mp4"),
+            mock.call(self.params["container"], "file/a/b/1.mp4"),
+            mock.call(self.params["container"], "file/a/0.txt")
+        ], any_order=True)
 
     @mock.patch("pyrax.create_context")
     def test_swift_uses_servicenet_when_requested(self, mock_create_context):
