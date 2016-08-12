@@ -1537,6 +1537,68 @@ class TestFTPSStorage(TestCase):
         mock_ftp.cwd.assert_called_with("some/dir")
         mock_ftp.delete.assert_called_with("file")
 
+    @mock.patch("ftplib.FTP_TLS", autospec=True)
+    def test_delete_recursive(self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+
+        mock_ftp.pwd.return_value = "some/dir/file"
+
+        mock_ftp.retrlines.side_effect = create_mock_ftp_directory_listing([
+            # root
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir1",
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir2",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file1",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file2",
+            ],
+            # dir1
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir with spaces",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file3",
+            ],
+            # dir with spaces
+            [
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file with spaces"
+            ],
+            # dir2
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir4",
+            ],
+        ])
+
+        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
+        storage.delete(recursive=True)
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("/some/dir/file"),
+            mock.call("some/dir/file/dir1"),
+            mock.call("some/dir/file/dir1/dir with spaces"),
+            mock.call("some/dir/file/dir2"),
+            mock.call("some/dir/file/dir2/dir4")
+        ])
+        self.assertEqual(5, mock_ftp.cwd.call_count)
+
+        mock_ftp.delete.assert_has_calls([
+            mock.call("/some/dir/file/dir1/dir with spaces/file with spaces"),
+            mock.call("/some/dir/file/dir1/file3"),
+            mock.call("/some/dir/file/file2"),
+            mock.call("/some/dir/file/file1")
+        ], any_order=True)
+        self.assertEqual(4, mock_ftp.delete.call_count)
+
+        mock_ftp.rmd.assert_has_calls([
+            mock.call("/some/dir/file/dir2/dir4"),
+            mock.call("/some/dir/file/dir2"),
+            mock.call("/some/dir/file/dir1/dir with spaces"),
+            mock.call("/some/dir/file/dir1"),
+            mock.call("/some/dir/file")
+        ])
+        self.assertEqual(5, mock_ftp.rmd.call_count)
+
 
 class TestS3Storage(TestCase):
     def test_s3storage_init_sets_correct_keyname(self):
@@ -1769,6 +1831,96 @@ class TestS3Storage(TestCase):
         mock_session.client.assert_called_with("s3")
 
         mock_s3.delete_object.assert_called_with(Bucket="bucket", Key="some/file")
+
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_delete_recursive(self, mock_session_class):
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_s3.list_objects.return_value = {
+            "Contents": [
+                {
+                    "Key": "some/dir/",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                },
+                {
+                    "Key": "some/dir/b/",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                },
+                {
+                    "Key": "some/dir/b/c.txt",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                },
+                {
+                    "Key": "some/dir/e.txt",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                },
+                {
+                    "Key": "some/dir/e/f/d.txt",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                },
+                {
+                    "Key": "some/dir/g.txt",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                }
+            ]
+        }
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/dir")
+
+        storage.delete(recursive=True)
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name=None)
+
+        mock_session.client.assert_called_with("s3")
+
+        mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
+        mock_s3.delete_objects.assert_called_once_with(
+            Bucket="bucket",
+            Delete={
+                "Objects": [
+                    {
+                        "Key": "some/dir/"
+                    },
+                    {
+                        "Key": "some/dir/b/"
+                    },
+                    {
+                        "Key": "some/dir/b/c.txt"
+                    },
+                    {
+                        "Key": "some/dir/e.txt"
+                    },
+                    {
+                        "Key": "some/dir/e/f/d.txt"
+                    },
+                    {
+                        "Key": "some/dir/g.txt"
+                    }
+                ]
+            })
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_get_download_url_calls_boto_generate_presigned_url_with_correct_data(

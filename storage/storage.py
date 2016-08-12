@@ -674,10 +674,20 @@ class S3Storage(Storage):
                 upload_path = os.path.join(relative_path, file)
                 client.upload_file(os.path.join(root, file), self._bucket, upload_path)
 
-    def delete(self):
+    def delete(self, recursive=False):
         client = self._connect()
 
-        client.delete_object(Bucket=self._bucket, Key=self._keyname)
+        if not recursive:
+            client.delete_object(Bucket=self._bucket, Key=self._keyname)
+        else:
+            directory_prefix = "{}/".format(self._keyname)
+            dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
+            object_keys = [{"Key": o.get("Key", None)} for o in dir_object["Contents"]]
+            client.delete_objects(
+                Bucket=self._bucket,
+                Delete={
+                    "Objects": object_keys
+                })
 
     def get_download_url(self, seconds=60, key=None):
         client = self._connect()
