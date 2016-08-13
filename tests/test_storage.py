@@ -199,12 +199,12 @@ class TestLocalStorage(TestCase):
 
     @mock.patch("shutil.rmtree", autospec=True)
     @mock.patch("os.remove", autospec=True)
-    def test_local_storage_delete_recursive(self, mock_remove, mock_rmtree):
+    def test_local_storage_delete_directory(self, mock_remove, mock_rmtree):
         temp_directory = create_temp_nested_directory_with_files()
 
         storage = storagelib.get_storage(
             "file://{0}".format(temp_directory["temp_directory"]["path"]))
-        storage.delete(recursive=True)
+        storage.delete_directory()
 
         self.assertFalse(mock_remove.called)
         mock_rmtree.assert_called_once_with(temp_directory["temp_directory"]["path"], True)
@@ -655,7 +655,7 @@ class TestSwiftStorage(TestCase):
         mock_swift.delete_object.assert_called_with(self.params["container"], self.params["file"])
 
     @mock.patch("pyrax.create_context")
-    def test_swift_delete_recursive(self, mock_create_context):
+    def test_swift_delete_directory(self, mock_create_context):
 
         expected_files = [
             self.RackspaceObject("file/a/0.txt", "text/plain"),
@@ -671,7 +671,7 @@ class TestSwiftStorage(TestCase):
               "&tenant_id={tenant_id}".format(**self.params)
 
         storage = storagelib.get_storage(uri)
-        storage.delete(recursive=True)
+        storage.delete_directory()
 
         mock_swift.delete_object.assert_has_calls([
             mock.call(self.params["container"], "file/a/b/c/2.mp4"),
@@ -1331,7 +1331,7 @@ class TestFTPStorage(TestCase):
         mock_ftp.delete.assert_called_with("file")
 
     @mock.patch("ftplib.FTP", autospec=True)
-    def test_ftp_delete_recursive(self, mock_ftp_class):
+    def test_ftp_delete_directory(self, mock_ftp_class):
         mock_ftp = mock_ftp_class.return_value
 
         mock_ftp.pwd.return_value = "some/dir/file"
@@ -1360,7 +1360,7 @@ class TestFTPStorage(TestCase):
         ])
 
         storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
-        storage.delete(recursive=True)
+        storage.delete_directory()
 
         mock_ftp_class.assert_called_with()
         mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
@@ -1676,7 +1676,7 @@ class TestS3Storage(TestCase):
         mock_s3.delete_object.assert_called_with(Bucket="bucket", Key="some/file")
 
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_delete_recursive(self, mock_session_class):
+    def test_delete_directory(self, mock_session_class):
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
 
@@ -1730,7 +1730,7 @@ class TestS3Storage(TestCase):
         storage = storagelib.get_storage(
             "s3://access_key:access_secret@bucket/some/dir")
 
-        storage.delete(recursive=True)
+        storage.delete_directory()
 
         mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
