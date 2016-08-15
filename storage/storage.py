@@ -132,7 +132,7 @@ class LocalStorage(Storage):
         self._ensure_exists()
         distutils.dir_util.copy_tree(source_directory, self._parsed_storage_uri.path)
 
-    def delete(self, recursive=False):
+    def delete(self):
         os.remove(self._parsed_storage_uri.path)
 
     def delete_directory(self):
@@ -563,6 +563,9 @@ class FTPStorage(Storage):
 
             directories_to_remove.append("/{}".format(root))
 
+        # delete directories _after_ removing files from directories
+        # directories should be removed in reverse order - leaf directories before
+        # parent directories - since there is no recursive delete
         directories_to_remove.sort(reverse=True)
         for directory in directories_to_remove:
             ftp_client.rmd("{}".format(directory))
