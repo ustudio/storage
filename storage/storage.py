@@ -73,6 +73,10 @@ class Storage(object):
     def delete(self):
         raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
 
+    def delete_directory(self):
+        raise NotImplementedError(
+            "{0} does not implement 'delete_directory'".format(self._class_name()))
+
     def get_download_url(self, seconds=60, key=None):
         raise NotImplementedError(
             "{0} does not implement 'get_download_url'".format(self._class_name()))
@@ -130,6 +134,9 @@ class LocalStorage(Storage):
 
     def delete(self):
         os.remove(self._parsed_storage_uri.path)
+
+    def delete_directory(self):
+        shutil.rmtree(self._parsed_storage_uri.path, True)
 
     def get_download_url(self, seconds=60, key=None):
         """
@@ -320,6 +327,16 @@ class SwiftStorage(Storage):
         self._authenticate()
         container_name, object_name = self._get_container_and_object_names()
         self._cloudfiles.delete_object(container_name, object_name)
+
+    def delete_directory(self):
+        self._authenticate()
+        container_name, object_name = self._get_container_and_object_names()
+
+        # recursively find and delete all objects below object_name
+        _, objects = self._list_container_objects(container_name, object_name)
+
+        for obj in objects:
+            self._cloudfiles.delete_object(container_name, obj.name)
 
     def get_download_url(self, seconds=60, key=None):
         self._authenticate()
@@ -534,6 +551,25 @@ class FTPStorage(Storage):
         filename = self._cd_to_file(ftp_client)
         ftp_client.delete(filename)
 
+    def delete_directory(self):
+        ftp_client = self._connect()
+        base_ftp_path = self._parsed_storage_uri.path
+        ftp_client.cwd(base_ftp_path)
+
+        directories_to_remove = []
+        for root, directories, files in self._walk(ftp_client):
+            for filename in files:
+                ftp_client.delete("/{}/{}".format(root, filename))
+
+            directories_to_remove.append("/{}".format(root))
+
+        # delete directories _after_ removing files from directories
+        # directories should be removed in reverse order - leaf directories before
+        # parent directories - since there is no recursive delete
+        directories_to_remove.sort(reverse=True)
+        for directory in directories_to_remove:
+            ftp_client.rmd("{}".format(directory))
+
     def get_download_url(self, seconds=60, key=None):
         """
         Return a temporary URL allowing access to the storage object.
@@ -649,8 +685,18 @@ class S3Storage(Storage):
 
     def delete(self):
         client = self._connect()
-
         client.delete_object(Bucket=self._bucket, Key=self._keyname)
+
+    def delete_directory(self):
+        client = self._connect()
+        directory_prefix = "{}/".format(self._keyname)
+        dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
+        object_keys = [{"Key": o.get("Key", None)} for o in dir_object["Contents"]]
+        client.delete_objects(
+            Bucket=self._bucket,
+            Delete={
+                "Objects": object_keys
+            })
 
     def get_download_url(self, seconds=60, key=None):
         client = self._connect()

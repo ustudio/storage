@@ -196,6 +196,18 @@ class TestLocalStorage(TestCase):
 
         mock_remove.assert_called_with("/folder/file")
 
+    @mock.patch("shutil.rmtree", autospec=True)
+    @mock.patch("os.remove", autospec=True)
+    def test_local_storage_delete_directory(self, mock_remove, mock_rmtree):
+        temp_directory = create_temp_nested_directory_with_files()
+
+        storage = storagelib.get_storage(
+            "file://{0}".format(temp_directory["temp_directory"]["path"]))
+        storage.delete_directory()
+
+        self.assertFalse(mock_remove.called)
+        mock_rmtree.assert_called_once_with(temp_directory["temp_directory"]["path"], True)
+
     def test_local_storage_save_to_file(self):
         temp_input = tempfile.NamedTemporaryFile()
         temp_input.write("FOOBAR")
@@ -318,6 +330,11 @@ class TestLocalStorage(TestCase):
 
 
 class TestSwiftStorage(TestCase):
+
+    class RackspaceObject:
+        def __init__(self, name, content_type):
+            self.name = name
+            self.content_type = content_type
 
     def setUp(self):
         self.params = {
@@ -465,13 +482,9 @@ class TestSwiftStorage(TestCase):
     @mock.patch("os.makedirs")
     @mock.patch("pyrax.create_context")
     def test_swift_save_to_directory(self, mock_create_context, mock_makedirs, mock_path_exists):
-        class RackspaceObject:
-            def __init__(self, name, content_type):
-                self.name = name
-                self.content_type = content_type
 
-        expected_jpg = RackspaceObject("file/a/0.jpg", "image/jpg")
-        expected_mp4 = RackspaceObject("file/a/b/c/1.mp4", "video/mp4")
+        expected_jpg = self.RackspaceObject("file/a/0.jpg", "image/jpg")
+        expected_mp4 = self.RackspaceObject("file/a/b/c/1.mp4", "video/mp4")
 
         expected_files = [
             expected_jpg,
@@ -505,19 +518,15 @@ class TestSwiftStorage(TestCase):
     @mock.patch("pyrax.create_context")
     def test_swift_save_to_directory_works_with_empty_directories(
             self, mock_create_context, mock_makedirs, mock_path_exists):
-        class RackspaceObject:
-            def __init__(self, name, content_type):
-                self.name = name
-                self.content_type = content_type
 
-        expected_jpg = RackspaceObject("a/0.jpg", "image/jpg")
-        expected_mp4 = RackspaceObject("a/b/c/1.mp4", "video/mp4")
+        expected_jpg = self.RackspaceObject("a/0.jpg", "image/jpg")
+        expected_mp4 = self.RackspaceObject("a/b/c/1.mp4", "video/mp4")
 
         expected_files = [
-            RackspaceObject("nothing", "application/directory"),
+            self.RackspaceObject("nothing", "application/directory"),
             expected_jpg,
-            RackspaceObject("to see", "application/directory"),
-            RackspaceObject("here", "application/directory"),
+            self.RackspaceObject("to see", "application/directory"),
+            self.RackspaceObject("here", "application/directory"),
             expected_mp4
         ]
         mock_context = mock_create_context.return_value
@@ -643,6 +652,31 @@ class TestSwiftStorage(TestCase):
 
         self._assert_default_login_correct(mock_create_context)
         mock_swift.delete_object.assert_called_with(self.params["container"], self.params["file"])
+
+    @mock.patch("pyrax.create_context")
+    def test_swift_delete_directory(self, mock_create_context):
+
+        expected_files = [
+            self.RackspaceObject("file/a/0.txt", "text/plain"),
+            self.RackspaceObject("file/a/b/1.mp4", "video/mp4"),
+            self.RackspaceObject("file/a/b/c/2.mp4", "video/mp4")
+        ]
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        mock_swift.list_container_objects.return_value = expected_files
+
+        uri = "swift://{username}:{password}@{container}/{file}?" \
+              "auth_endpoint={auth_endpoint}&region={region}" \
+              "&tenant_id={tenant_id}".format(**self.params)
+
+        storage = storagelib.get_storage(uri)
+        storage.delete_directory()
+
+        mock_swift.delete_object.assert_has_calls([
+            mock.call(self.params["container"], "file/a/b/c/2.mp4"),
+            mock.call(self.params["container"], "file/a/b/1.mp4"),
+            mock.call(self.params["container"], "file/a/0.txt")
+        ], any_order=True)
 
     @mock.patch("pyrax.create_context")
     def test_swift_uses_servicenet_when_requested(self, mock_create_context):
@@ -1108,6 +1142,180 @@ class TestFTPStorage(TestCase):
         mock_ftp.storbinary.assert_called_with("STOR file", in_file)
 
     @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_load_from_directory_creates_directories_from_storage_URI_if_not_present(
+            self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+
+        mock_ftp.retrlines.return_value = []
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        # empty folder
+        storage.load_from_directory(tempfile.mkdtemp())
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.mkd.assert_has_calls([
+            mock.call("some"),
+            mock.call("dir"),
+            mock.call("file")
+        ])
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_load_from_directory_does_not_create_dirs_from_storage_URI_if_present(
+            self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+
+        mock_ftp.retrlines.side_effect = create_mock_ftp_directory_listing([
+            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 some",
+            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir",
+        ])
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        # empty folder
+        storage.load_from_directory(tempfile.mkdtemp())
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+        self.assertEqual(1, mock_ftp.mkd.call_count)
+        mock_ftp.mkd.assert_has_calls([mock.call("file")])
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("some"),
+            mock.call("dir"),
+            mock.call("file")
+        ])
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_load_from_directory_create_dirs_from_load_directory(
+            self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.pwd.return_value = "pwd_return_value"
+        temp_directory = create_temp_nested_directory_with_files()
+
+        directory_listings = [
+            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 some",
+            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir",
+        ]
+
+        def get_directory_listing(_, callback):
+            if len(directory_listings):
+                return callback(directory_listings.pop(0))
+
+        mock_ftp.retrlines.side_effect = get_directory_listing
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir")
+
+        # empty folder
+        storage.load_from_directory(temp_directory["temp_directory"]["path"])
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.mkd.assert_has_calls([
+            mock.call(temp_directory["nested_temp_directory"]["name"])
+        ])
+
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("some"),
+            mock.call("dir"),
+            mock.call("/some/dir"),
+            mock.call(temp_directory["nested_temp_directory"]["name"]),
+            mock.call("pwd_return_value"),
+            mock.call("/some/dir/" + temp_directory["nested_temp_directory"]["name"])
+        ])
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_load_from_directory_does_not_create_existing_dirs_from_load_directory(
+            self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.pwd.return_value = "pwd_return_value"
+        temp_directory = create_temp_nested_directory_with_files()
+
+        directory_listings = [
+            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 some",
+            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir",
+            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 {0}".format(
+                temp_directory["nested_temp_directory"]["name"]),
+        ]
+
+        def get_directory_listing(_, callback):
+            if len(directory_listings):
+                return callback(directory_listings.pop(0))
+
+        mock_ftp.retrlines.side_effect = get_directory_listing
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir")
+
+        # empty folder
+        storage.load_from_directory(temp_directory["temp_directory"]["path"])
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+        mock_ftp.mkd.assert_not_called()
+
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("some"),
+            mock.call("dir"),
+            mock.call("/some/dir"),
+            mock.call(temp_directory["nested_temp_directory"]["name"]),
+            mock.call("pwd_return_value"),
+            mock.call("/some/dir/" + temp_directory["nested_temp_directory"]["name"])
+        ])
+
+    @mock.patch("__builtin__.open", autospec=True)
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_load_from_directory_creates_files_from_local_source_directory(
+            self, mock_ftp_class, mock_open):
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.pwd.return_value = "pwd_return_value"
+        mock_open_return = mock_open.return_value.__enter__.return_value
+
+        temp_directory = create_temp_nested_directory_with_files()
+
+        directory_listings = [
+            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 {0}".format(
+                temp_directory["nested_temp_directory"]["name"]),
+        ]
+
+        def get_directory_listing(_, callback):
+            if len(directory_listings):
+                return callback(directory_listings.pop(0))
+
+        mock_ftp.retrlines.side_effect = get_directory_listing
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/dir")
+
+        # empty folder
+        storage.load_from_directory(temp_directory["temp_directory"]["path"])
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.storbinary.assert_has_calls([
+            mock.call(
+                "STOR {0}".format(temp_directory["temp_input_one"]["name"]), mock_open_return),
+            mock.call(
+                "STOR {0}".format(temp_directory["temp_input_two"]["name"]), mock_open_return),
+            mock.call(
+                "STOR {0}".format(temp_directory["nested_temp_input"]["name"]), mock_open_return)
+        ], any_order=True)
+
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("dir"),
+            mock.call("/dir"),
+            mock.call(temp_directory["nested_temp_directory"]["name"]),
+            mock.call("pwd_return_value"),
+            mock.call("/dir/" + temp_directory["nested_temp_directory"]["name"])
+        ])
+
+    @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_delete(self, mock_ftp_class):
         mock_ftp = mock_ftp_class.return_value
 
@@ -1120,6 +1328,68 @@ class TestFTPStorage(TestCase):
 
         mock_ftp.cwd.assert_called_with("some/dir")
         mock_ftp.delete.assert_called_with("file")
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_delete_directory(self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+
+        mock_ftp.pwd.return_value = "some/dir/file"
+
+        mock_ftp.retrlines.side_effect = create_mock_ftp_directory_listing([
+            # root
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir1",
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir2",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file1",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file2",
+            ],
+            # dir1
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir with spaces",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file3",
+            ],
+            # dir with spaces
+            [
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file with spaces"
+            ],
+            # dir2
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir4",
+            ],
+        ])
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+        storage.delete_directory()
+
+        mock_ftp_class.assert_called_with()
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("/some/dir/file"),
+            mock.call("some/dir/file/dir1"),
+            mock.call("some/dir/file/dir1/dir with spaces"),
+            mock.call("some/dir/file/dir2"),
+            mock.call("some/dir/file/dir2/dir4")
+        ])
+        self.assertEqual(5, mock_ftp.cwd.call_count)
+
+        mock_ftp.delete.assert_has_calls([
+            mock.call("/some/dir/file/dir1/dir with spaces/file with spaces"),
+            mock.call("/some/dir/file/dir1/file3"),
+            mock.call("/some/dir/file/file2"),
+            mock.call("/some/dir/file/file1")
+        ], any_order=True)
+        self.assertEqual(4, mock_ftp.delete.call_count)
+
+        mock_ftp.rmd.assert_has_calls([
+            mock.call("/some/dir/file/dir2/dir4"),
+            mock.call("/some/dir/file/dir2"),
+            mock.call("/some/dir/file/dir1/dir with spaces"),
+            mock.call("/some/dir/file/dir1"),
+            mock.call("/some/dir/file")
+        ])
+        self.assertEqual(5, mock_ftp.rmd.call_count)
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_get_download_url(self, mock_ftp_class):
@@ -1148,7 +1418,7 @@ class TestFTPStorage(TestCase):
 
 class TestFTPSStorage(TestCase):
     @mock.patch("ftplib.FTP_TLS", autospec=True)
-    def test_save_to_filename(self, mock_ftp_class):
+    def test_ftps_scheme_connects_using_ftp_lts_class(self, mock_ftp_lts_class):
         temp_output = tempfile.NamedTemporaryFile()
 
         mock_results = ["foo", "bar"]
@@ -1159,286 +1429,17 @@ class TestFTPSStorage(TestCase):
 
             return "226"
 
-        mock_ftp = mock_ftp_class.return_value
+        mock_ftp = mock_ftp_lts_class.return_value
         mock_ftp.retrbinary.side_effect = mock_retrbinary
 
         storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
 
         storage.save_to_filename(temp_output.name)
 
-        mock_ftp_class.assert_called_with()
+        mock_ftp_lts_class.assert_called_with()
         mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
         mock_ftp.login.assert_called_with("user", "password")
         mock_ftp.prot_p.assert_called_with()
-
-        mock_ftp.cwd.assert_called_with("some/dir")
-        self.assertEqual(1, mock_ftp.retrbinary.call_count)
-        self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
-
-        with open(temp_output.name) as output_fp:
-            self.assertEqual("foobar", output_fp.read())
-
-    @mock.patch("ftplib.FTP_TLS", autospec=True)
-    def test_save_to_file(self, mock_ftp_class):
-        out_file = StringIO()
-
-        mock_results = ["foo", "bar"]
-
-        def mock_retrbinary(command, callback):
-            for chunk in mock_results:
-                callback(chunk)
-
-            return "226"
-
-        mock_ftp = mock_ftp_class.return_value
-        mock_ftp.retrbinary.side_effect = mock_retrbinary
-
-        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
-
-        storage.save_to_file(out_file)
-
-        mock_ftp_class.assert_called_with()
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
-        mock_ftp.prot_p.assert_called_with()
-
-        mock_ftp.cwd.assert_called_with("some/dir")
-        self.assertEqual(1, mock_ftp.retrbinary.call_count)
-        self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
-
-        self.assertEqual("foobar", out_file.getvalue())
-
-    @mock.patch("__builtin__.open", autospec=True)
-    @mock.patch("ftplib.FTP_TLS", autospec=True)
-    def test_load_from_filename(self, mock_ftp_class, mock_open):
-        mock_ftp = mock_ftp_class.return_value
-
-        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
-
-        storage.load_from_filename("some_file")
-
-        mock_ftp_class.assert_called_with()
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
-        mock_ftp.prot_p.assert_called_with()
-
-        mock_ftp.cwd.assert_called_with("some/dir")
-
-        mock_open.assert_called_with("some_file", "rb")
-        mock_ftp.storbinary.assert_called_with(
-            "STOR file", mock_open.return_value.__enter__.return_value)
-
-    @mock.patch("ftplib.FTP_TLS", autospec=True)
-    def test_load_from_file(self, mock_ftp_class):
-        mock_ftp = mock_ftp_class.return_value
-        in_file = StringIO("foobar")
-
-        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
-
-        storage.load_from_file(in_file)
-
-        mock_ftp_class.assert_called_with()
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
-        mock_ftp.prot_p.assert_called_with()
-
-        mock_ftp.cwd.assert_called_with("some/dir")
-
-        mock_ftp.storbinary.assert_called_with("STOR file", in_file)
-
-    @mock.patch("ftplib.FTP_TLS", autospec=True)
-    def test_ftp_load_from_directory_creates_directories_from_storage_URI_if_not_present(
-            self, mock_ftp_class):
-        mock_ftp = mock_ftp_class.return_value
-
-        mock_ftp.retrlines.return_value = []
-
-        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
-
-        # empty folder
-        storage.load_from_directory(tempfile.mkdtemp())
-
-        mock_ftp_class.assert_called_with()
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
-        mock_ftp.prot_p.assert_called_with()
-
-        mock_ftp.mkd.assert_has_calls([
-            mock.call("some"),
-            mock.call("dir"),
-            mock.call("file")
-        ])
-
-    @mock.patch("ftplib.FTP_TLS", autospec=True)
-    def test_ftp_load_from_directory_does_not_create_dirs_from_storage_URI_if_present(
-            self, mock_ftp_class):
-        mock_ftp = mock_ftp_class.return_value
-
-        mock_ftp.retrlines.side_effect = create_mock_ftp_directory_listing([
-            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 some",
-            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir",
-        ])
-
-        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
-
-        # empty folder
-        storage.load_from_directory(tempfile.mkdtemp())
-
-        mock_ftp_class.assert_called_with()
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
-        mock_ftp.prot_p.assert_called_with()
-        self.assertEqual(1, mock_ftp.mkd.call_count)
-        mock_ftp.mkd.assert_has_calls([mock.call("file")])
-        mock_ftp.cwd.assert_has_calls([
-            mock.call("some"),
-            mock.call("dir"),
-            mock.call("file")
-        ])
-
-    @mock.patch("ftplib.FTP_TLS", autospec=True)
-    def test_ftp_load_from_directory_create_dirs_from_load_directory(
-            self, mock_ftp_class):
-        mock_ftp = mock_ftp_class.return_value
-        mock_ftp.pwd.return_value = "pwd_return_value"
-        temp_directory = create_temp_nested_directory_with_files()
-
-        directory_listings = [
-            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 some",
-            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir",
-        ]
-
-        def get_directory_listing(_, callback):
-            if len(directory_listings):
-                return callback(directory_listings.pop(0))
-
-        mock_ftp.retrlines.side_effect = get_directory_listing
-
-        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir")
-
-        # empty folder
-        storage.load_from_directory(temp_directory["temp_directory"]["path"])
-
-        mock_ftp_class.assert_called_with()
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
-        mock_ftp.prot_p.assert_called_with()
-
-        mock_ftp.mkd.assert_has_calls([
-            mock.call(temp_directory["nested_temp_directory"]["name"])
-        ])
-
-        mock_ftp.cwd.assert_has_calls([
-            mock.call("some"),
-            mock.call("dir"),
-            mock.call("/some/dir"),
-            mock.call(temp_directory["nested_temp_directory"]["name"]),
-            mock.call("pwd_return_value"),
-            mock.call("/some/dir/" + temp_directory["nested_temp_directory"]["name"])
-        ])
-
-    @mock.patch("ftplib.FTP_TLS", autospec=True)
-    def test_ftp_load_from_directory_does_not_create_existing_dirs_from_load_directory(
-            self, mock_ftp_class):
-        mock_ftp = mock_ftp_class.return_value
-        mock_ftp.pwd.return_value = "pwd_return_value"
-        temp_directory = create_temp_nested_directory_with_files()
-
-        directory_listings = [
-            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 some",
-            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir",
-            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 {0}".format(
-                temp_directory["nested_temp_directory"]["name"]),
-        ]
-
-        def get_directory_listing(_, callback):
-            if len(directory_listings):
-                return callback(directory_listings.pop(0))
-
-        mock_ftp.retrlines.side_effect = get_directory_listing
-
-        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir")
-
-        # empty folder
-        storage.load_from_directory(temp_directory["temp_directory"]["path"])
-
-        mock_ftp_class.assert_called_with()
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
-        mock_ftp.prot_p.assert_called_with()
-        mock_ftp.mkd.assert_not_called()
-
-        mock_ftp.cwd.assert_has_calls([
-            mock.call("some"),
-            mock.call("dir"),
-            mock.call("/some/dir"),
-            mock.call(temp_directory["nested_temp_directory"]["name"]),
-            mock.call("pwd_return_value"),
-            mock.call("/some/dir/" + temp_directory["nested_temp_directory"]["name"])
-        ])
-
-    @mock.patch("__builtin__.open", autospec=True)
-    @mock.patch("ftplib.FTP_TLS", autospec=True)
-    def test_ftp_load_from_directory_creates_files_from_local_source_directory(
-            self, mock_ftp_class, mock_open):
-        mock_ftp = mock_ftp_class.return_value
-        mock_ftp.pwd.return_value = "pwd_return_value"
-        mock_open_return = mock_open.return_value.__enter__.return_value
-
-        temp_directory = create_temp_nested_directory_with_files()
-
-        directory_listings = [
-            "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 {0}".format(
-                temp_directory["nested_temp_directory"]["name"]),
-        ]
-
-        def get_directory_listing(_, callback):
-            if len(directory_listings):
-                return callback(directory_listings.pop(0))
-
-        mock_ftp.retrlines.side_effect = get_directory_listing
-
-        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/dir")
-
-        # empty folder
-        storage.load_from_directory(temp_directory["temp_directory"]["path"])
-
-        mock_ftp_class.assert_called_with()
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
-        mock_ftp.prot_p.assert_called_with()
-
-        mock_ftp.storbinary.assert_has_calls([
-            mock.call(
-                "STOR {0}".format(temp_directory["temp_input_one"]["name"]), mock_open_return),
-            mock.call(
-                "STOR {0}".format(temp_directory["temp_input_two"]["name"]), mock_open_return),
-            mock.call(
-                "STOR {0}".format(temp_directory["nested_temp_input"]["name"]), mock_open_return)
-        ], any_order=True)
-
-        mock_ftp.cwd.assert_has_calls([
-            mock.call("dir"),
-            mock.call("/dir"),
-            mock.call(temp_directory["nested_temp_directory"]["name"]),
-            mock.call("pwd_return_value"),
-            mock.call("/dir/" + temp_directory["nested_temp_directory"]["name"])
-        ])
-
-    @mock.patch("ftplib.FTP_TLS", autospec=True)
-    def test_delete(self, mock_ftp_class):
-        mock_ftp = mock_ftp_class.return_value
-
-        storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
-        storage.delete()
-
-        mock_ftp_class.assert_called_with()
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
-        mock_ftp.prot_p.assert_called_with()
-
-        mock_ftp.cwd.assert_called_with("some/dir")
-        mock_ftp.delete.assert_called_with("file")
 
 
 class TestS3Storage(TestCase):
@@ -1672,6 +1673,96 @@ class TestS3Storage(TestCase):
         mock_session.client.assert_called_with("s3")
 
         mock_s3.delete_object.assert_called_with(Bucket="bucket", Key="some/file")
+
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_delete_directory(self, mock_session_class):
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_s3.list_objects.return_value = {
+            "Contents": [
+                {
+                    "Key": "some/dir/",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                },
+                {
+                    "Key": "some/dir/b/",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                },
+                {
+                    "Key": "some/dir/b/c.txt",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                },
+                {
+                    "Key": "some/dir/e.txt",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                },
+                {
+                    "Key": "some/dir/e/f/d.txt",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                },
+                {
+                    "Key": "some/dir/g.txt",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                }
+            ]
+        }
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/some/dir")
+
+        storage.delete_directory()
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name=None)
+
+        mock_session.client.assert_called_with("s3")
+
+        mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
+        mock_s3.delete_objects.assert_called_once_with(
+            Bucket="bucket",
+            Delete={
+                "Objects": [
+                    {
+                        "Key": "some/dir/"
+                    },
+                    {
+                        "Key": "some/dir/b/"
+                    },
+                    {
+                        "Key": "some/dir/b/c.txt"
+                    },
+                    {
+                        "Key": "some/dir/e.txt"
+                    },
+                    {
+                        "Key": "some/dir/e/f/d.txt"
+                    },
+                    {
+                        "Key": "some/dir/g.txt"
+                    }
+                ]
+            })
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_get_download_url_calls_boto_generate_presigned_url_with_correct_data(

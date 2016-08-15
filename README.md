@@ -13,7 +13,7 @@ Install via pip:
 pip install object_storage
 ```
 
-The current version is `0.7.2`.
+The current version is `0.7.3`.
 
 ## Quick Start ##
 
@@ -79,7 +79,12 @@ Downloads the contents of the directory specified by the URI to
 
 #### `delete()` ####
 
-Deletes the file specified by the URI to `get_storage`
+Deletes the file specified by the URI to `get_storage`.
+
+#### `delete_directory()` ####
+
+Recursively deletes the directory structure specified by the URI to `get_storage()`.
+
 
 #### `get_download_url(seconds=60, key=None)` ####
 
@@ -220,6 +225,10 @@ s3://aws_access_key_id:aws_secret_access_key@bucket/path/to/file[?region=us-west
 
 
 ```
+
+Note that the `aws_access_key` and `aws_secret_access_key` should be URL encoded, to quote
+unsafe characters, if necessary. This may be necessary as AWS sometimes includes characters
+such as a `/`.
 
 ### ftp ####
 
