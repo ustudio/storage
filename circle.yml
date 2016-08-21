@@ -1,6 +1,7 @@
 dependencies:
   pre:
     - pip install -e .
+    - pip install coverage
 
 test:
   override:
