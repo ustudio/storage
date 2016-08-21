@@ -4,7 +4,7 @@ dependencies:
 
 test:
   override:
-    - nosetests tests
+    - nosetests --with-coverage --cover-package=storage tests
   post:
     - python integration-tests.py
     - bash <(curl -s https://codecov.io/bash)
