@@ -1,6 +1,7 @@
 dependencies:
   pre:
-    - pip install --upgrade --upgrade-strategy eager pip
+    - pip --version
+    - pip install --upgrade --force-reinstall eager pip
     - pip install -e .
     - pip install coverage
   override:
