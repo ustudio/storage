@@ -1,6 +1,9 @@
 dependencies:
   pre:
     - pip install coverage
+  override:
+    - pip install -e .
+    - pip install -r requirements.txt
 
 test:
   override:
