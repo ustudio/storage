@@ -399,6 +399,18 @@ class CloudFilesStorage(SwiftStorage):
         context.authenticate()
         self._cloudfiles = context.get_client("cloudfiles", region, public=public)
 
+    def get_download_url(self, seconds=60, key=None):
+        self._authenticate()
+        container_name, object_name = self._get_container_and_object_names()
+
+        download_url = self._cloudfiles.get_temp_url(
+            container_name, object_name, seconds=seconds, method="GET")
+
+        parsed_url = urlparse.urlparse(download_url)
+        parsed_url = parsed_url._replace(path=urllib.quote(parsed_url.path))
+
+        return urlparse.urlunparse(parsed_url)
+
 
 """Socket timeout (float seconds) for FTP transfers."""
 DEFAULT_FTP_TIMEOUT = 60.0
