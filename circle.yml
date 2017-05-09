@@ -1,7 +1,10 @@
 dependencies:
   pre:
-    - pip install -e .
     - pip install coverage
+  override:
+    - pip install -r pyrax-requirements.txt
+    - pip install -e .
+    - pip install -r requirements.txt
 
 test:
   override:

@@ -400,6 +400,10 @@ class CloudFilesStorage(SwiftStorage):
         self._cloudfiles = context.get_client("cloudfiles", region, public=public)
 
 
+"""Socket timeout (float seconds) for FTP transfers."""
+DEFAULT_FTP_TIMEOUT = 60.0
+
+
 @register_storage_protocol("ftp")
 class FTPStorage(Storage):
     """FTP storage.
@@ -425,7 +429,7 @@ class FTPStorage(Storage):
         self._download_url_base = query.get("download_url_base", [None])[0]
 
     def _connect(self):
-        ftp_client = ftplib.FTP()
+        ftp_client = ftplib.FTP(timeout=DEFAULT_FTP_TIMEOUT)
         ftp_client.connect(self._hostname, port=self._port)
         ftp_client.login(self._username, self._password)
 
@@ -600,7 +604,7 @@ class FTPStorage(Storage):
 @register_storage_protocol("ftps")
 class FTPSStorage(FTPStorage):
     def _connect(self):
-        ftp_client = ftplib.FTP_TLS()
+        ftp_client = ftplib.FTP_TLS(timeout=DEFAULT_FTP_TIMEOUT)
         ftp_client.connect(self._hostname, port=self._port)
         ftp_client.login(self._username, self._password)
         ftp_client.prot_p()
