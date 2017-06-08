@@ -15,7 +15,7 @@ Install via pip:
 pip install object_storage
 ```
 
-The current version is `0.8.0`.
+The current version is `0.9.0`.
 
 ## Quick Start ##
 
@@ -248,6 +248,17 @@ ftp://username:password@my-ftp-server/directory/awesome-file.txt[?download_url_b
  network operations, which can be set by changing
  `storage.storage.DEFAULT_FTP_TIMEOUT`, specified in seconds. The
  timeout is per data chunk, not for transfer of the entire object.
+
+#### FTP Command Socket Keepalive ####
+
+In certain environments there can be an issue where, during a large
+transfer, the command socket will timeout, due to inactivity, because
+data transfer happens over a separate socket in FTP. As a workaround,
+you can enable `storage.storage.ENABLE_FTP_CMD_KEEPALIVE`, which will
+send a `NOOP` command after every chunk has been transferred. Note
+that this may confuse certain FTP servers, since you are sending one
+command while another is executing, so only enable it if it is
+strictly necessary. It is disabled by default.
 
 #### ftps ####
 

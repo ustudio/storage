@@ -1,3 +1,4 @@
+import ftplib
 import mock
 import os.path
 import storage as storagelib
@@ -879,6 +880,15 @@ class TestRackspaceStorage(TestCase):
 
 
 class TestFTPStorage(TestCase):
+    def setUp(self):
+        super(TestFTPStorage, self).setUp()
+
+        self._original_ftp_keepalive = storagelib.storage.ENABLE_FTP_CMD_KEEPALIVE
+
+    def teardown(self):
+        super(TestFTPStorage, self).tearDown()
+        storagelib.storage.ENABLE_FTP_CMD_KEEPALIVE = self._original_ftp_keepalive
+
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_save_to_filename(self, mock_ftp_class):
         temp_output = tempfile.NamedTemporaryFile()
@@ -936,6 +946,8 @@ class TestFTPStorage(TestCase):
         self.assertEqual(1, mock_ftp.retrbinary.call_count)
         self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
 
+        mock_ftp.sendcmd.assert_not_called()
+
         self.assertEqual("foobar", out_file.getvalue())
 
     @mock.patch("ftplib.FTP", autospec=True)
@@ -962,6 +974,46 @@ class TestFTPStorage(TestCase):
         mock_ftp.login.assert_called_with("user", "password")
 
         mock_ftp.cwd.assert_called_with("some/dir")
+        self.assertEqual(1, mock_ftp.retrbinary.call_count)
+        self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
+
+        self.assertEqual("foobar", out_file.getvalue())
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_save_to_file_sends_echo_when_command_keepalive_enabled(self, mock_ftp_class):
+        out_file = StringIO()
+
+        mock_results = ["foo", "bar"]
+
+        def mock_retrbinary(command, callback):
+            for chunk in mock_results:
+                callback(chunk)
+
+            return "226"
+
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.retrbinary.side_effect = mock_retrbinary
+
+        mock_ftp.sendcmd.side_effect = ftplib.Error
+
+        storagelib.storage.ENABLE_FTP_CMD_KEEPALIVE = True
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        storage.save_to_file(out_file)
+
+        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.cwd.assert_called_with("some/dir")
+
+        self.assertEqual(2, mock_ftp.sendcmd.call_count)
+        mock_ftp.sendcmd.assert_has_calls([
+            mock.call("NOOP"),
+            mock.call("NOOP")
+        ])
+
         self.assertEqual(1, mock_ftp.retrbinary.call_count)
         self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
 
@@ -1103,7 +1155,7 @@ class TestFTPStorage(TestCase):
 
         mock_open.assert_called_with("some_file", "rb")
         mock_ftp.storbinary.assert_called_with(
-            "STOR file", mock_open.return_value.__enter__.return_value)
+            "STOR file", mock_open.return_value.__enter__.return_value, callback=mock.ANY)
 
     @mock.patch("__builtin__.open", autospec=True)
     @mock.patch("ftplib.FTP", autospec=True)
@@ -1122,12 +1174,19 @@ class TestFTPStorage(TestCase):
 
         mock_open.assert_called_with("some_file", "rb")
         mock_ftp.storbinary.assert_called_with(
-            "STOR file", mock_open.return_value.__enter__.return_value)
+            "STOR file", mock_open.return_value.__enter__.return_value, callback=mock.ANY)
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_load_from_file(self, mock_ftp_class):
         mock_ftp = mock_ftp_class.return_value
         in_file = StringIO("foobar")
+
+        def mock_storbinary(command, fp, callback=None):
+            if callback is not None:
+                callback("foo")
+                callback("bar")
+
+        mock_ftp.storbinary.side_effect = mock_storbinary
 
         storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
 
@@ -1139,7 +1198,43 @@ class TestFTPStorage(TestCase):
 
         mock_ftp.cwd.assert_called_with("some/dir")
 
-        mock_ftp.storbinary.assert_called_with("STOR file", in_file)
+        mock_ftp.storbinary.assert_called_with("STOR file", in_file, callback=mock.ANY)
+
+        mock_ftp.sendcmd.assert_not_called()
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_load_from_file_sends_noop_when_command_keepalive_enabled(self, mock_ftp_class):
+        mock_ftp = mock_ftp_class.return_value
+        in_file = StringIO("foobar")
+
+        mock_ftp.sendcmd.side_effect = ftplib.Error
+
+        def mock_storbinary(command, fp, callback=None):
+            if callback is not None:
+                callback("foo")
+                callback("bar")
+
+        mock_ftp.storbinary.side_effect = mock_storbinary
+
+        storagelib.storage.ENABLE_FTP_CMD_KEEPALIVE = True
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        storage.load_from_file(in_file)
+
+        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
+        mock_ftp.login.assert_called_with("user", "password")
+
+        mock_ftp.cwd.assert_called_with("some/dir")
+
+        mock_ftp.storbinary.assert_called_with("STOR file", in_file, callback=mock.ANY)
+
+        self.assertEqual(2, mock_ftp.sendcmd.call_count)
+        mock_ftp.sendcmd.assert_has_calls([
+            mock.call("NOOP"),
+            mock.call("NOOP")
+        ])
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_load_from_directory_creates_directories_from_storage_URI_if_not_present(

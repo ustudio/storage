@@ -404,6 +404,10 @@ class CloudFilesStorage(SwiftStorage):
 DEFAULT_FTP_TIMEOUT = 60.0
 
 
+"""Send NOOP commands after every transfer chunk, to keep the command socket alive."""
+ENABLE_FTP_CMD_KEEPALIVE = False
+
+
 @register_storage_protocol("ftp")
 class FTPStorage(Storage):
     """FTP storage.
@@ -500,7 +504,18 @@ class FTPStorage(Storage):
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
 
-        ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
+        if ENABLE_FTP_CMD_KEEPALIVE:
+            def chunk_callback(chunk):
+                out_file.write(chunk)
+
+                try:
+                    ftp_client.sendcmd("NOOP")
+                except ftplib.Error:
+                    pass
+        else:
+            chunk_callback = out_file.write
+
+        ftp_client.retrbinary("RETR {0}".format(filename), callback=chunk_callback)
 
     def save_to_directory(self, destination_directory):
         ftp_client = self._connect()
@@ -528,7 +543,16 @@ class FTPStorage(Storage):
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
 
-        ftp_client.storbinary("STOR {0}".format(filename), in_file)
+        if ENABLE_FTP_CMD_KEEPALIVE:
+            def chunk_callback(chunk):
+                try:
+                    ftp_client.sendcmd("NOOP")
+                except ftplib.Error:
+                    pass
+        else:
+            chunk_callback = None
+
+        ftp_client.storbinary("STOR {0}".format(filename), in_file, callback=chunk_callback)
 
     def load_from_directory(self, source_directory):
         ftp_client = self._connect()
