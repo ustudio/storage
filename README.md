@@ -15,7 +15,7 @@ Install via pip:
 pip install object_storage
 ```
 
-The current version is `0.8.0`.
+The current version is `0.9.0`.
 
 ## Quick Start ##
 
@@ -178,6 +178,11 @@ accept the following optional parameters:
 | `api_key`       | API key to be used during authentication.                               |
 | `temp_url_key`  | Key to be used when retrieving a temp download url to the storage object from the **Swift** object store (see `get_download_url()`)|
 
+**Note** The connection will have a default 60 second timeout on network
+ operations, which can be set by changing
+ `storage.storage.DEFAULT_SWIFT_TIMEOUT`, specified in seconds. The
+ timeout is per data chunk, not for transfer of the entire object.
+
 
 #### cloudfiles ####
 
@@ -207,6 +212,11 @@ region in Rackspace; there is no way to specify a region at this
 time. It is possible that the URI scheme will change when this support
 is added.
 
+**Note** The connection will have a default 60 second timeout on network
+ operations, which can be set by changing
+ `storage.storage.DEFAULT_SWIFT_TIMEOUT`, specified in seconds. The
+ timeout is per data chunk, not for transfer of the entire object.
+
 ### Amazon S3 ###
 
 A reference to an object in an Amazon S3 bucket.  The `s3` scheme can be used when storing
@@ -214,7 +224,7 @@ files using the Amazon S3 service.
 
 A `region` parameter is not required, but can be specified.
 
-**NOTE:** Chunked transfer encoding is only used for
+**Note:** Chunked transfer encoding is only used for
 `save_to_filename` and `load_from_filename`. If you use `save_to_file`
 or `load_from_file`, the entire contents of the file will be loaded
 into memory.
@@ -244,7 +254,7 @@ ftp://username:password@my-ftp-server/directory/awesome-file.txt[?download_url_b
 
 ```
 
-*NOTE* The FTP connection will have a default 60 second timeout on
+**Note** The FTP connection will have a default 60 second timeout on
  network operations, which can be set by changing
  `storage.storage.DEFAULT_FTP_TIMEOUT`, specified in seconds. The
  timeout is per data chunk, not for transfer of the entire object.
@@ -260,7 +270,7 @@ Example:
 ftps://username:password@my-secure-ftp-server/directory/awesome-file.txt[?download_url_base=<ENCODED-URL>]
 ```
 
-*NOTE* The FTP_TLS connection will have a default timeout specified in
+**Note** The FTP_TLS connection will have a default timeout specified in
  the same manner as the `ftp` protocol (see above).
 
 ### retry ###
