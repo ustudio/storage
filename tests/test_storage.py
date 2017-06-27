@@ -2,6 +2,7 @@ import mock
 import os.path
 import storage as storagelib
 from storage.storage import DownloadUrlBaseUndefinedError
+import signal
 import tempfile
 import urllib
 from unittest import TestCase
@@ -62,6 +63,31 @@ def create_mock_ftp_directory_listing(directory_listings):
                 map(callback, listing)
 
     return mock_directory_listing
+
+
+class TestTimeout(TestCase):
+    @mock.patch("signal.signal")
+    @mock.patch("signal.alarm")
+    def test_registers_signal_handler_and_sets_alarm_when_entered(self, mock_alarm, mock_signal):
+        with storagelib.storage.timeout(5):
+            mock_signal.assert_called_once_with(signal.SIGALRM, mock.ANY)
+            mock_alarm.assert_called_once_with(5)
+
+        with self.assertRaises(storagelib.storage.TimeoutError):
+            mock_signal.call_args_list[0][0][1](signal.SIGALRM, None)
+
+        mock_signal.assert_called_with(signal.SIGALRM, mock_signal.return_value)
+        mock_alarm.assert_called_with(0)
+
+    @mock.patch("signal.signal")
+    @mock.patch("signal.alarm")
+    def test_restores_signal_handler_after_context_raises(self, mock_alarm, mock_signal):
+        with self.assertRaisesRegexp(Exception, "^test error$"):
+            with storagelib.storage.timeout(5):
+                raise Exception("test error")
+
+        mock_signal.assert_called_with(signal.SIGALRM, mock_signal.return_value)
+        mock_alarm.assert_called_with(0)
 
 
 class TestRegisterStorageProtocol(TestCase):
@@ -350,18 +376,24 @@ class TestSwiftStorage(TestCase):
             "download_url_key": "super_secret_key"
         }
 
-    def _assert_login_correct(self, mock_create_context, username=None, password=None, region=None,
-                              public=True, tenant_id=None, api_key=None):
+    def _assert_login_correct(self, mock_create_context, mock_timeout, username=None, password=None,
+                              region=None, public=True, tenant_id=None, api_key=None):
         mock_context = mock_create_context.return_value
         mock_create_context.assert_called_with(id_type="pyrax.base_identity.BaseIdentity",
                                                username=username, password=password,
                                                tenant_id=tenant_id, api_key=api_key)
+        mock_timeout.assert_called_with(storagelib.storage.DEFAULT_SWIFT_TIMEOUT)
         mock_context.authenticate.assert_called_with()
         mock_context.get_client.assert_called_with("swift", region, public=public)
+        self.assertEqual(
+            storagelib.storage.DEFAULT_SWIFT_TIMEOUT,
+            mock_context.get_client.return_value.timeout)
 
-    def _assert_default_login_correct(self, mock_create_context, api_key=False, public=True):
+    def _assert_default_login_correct(
+            self, mock_create_context, mock_timeout, api_key=False, public=True):
         self._assert_login_correct(
             mock_create_context,
+            mock_timeout,
             api_key=self.params["api_key"] if api_key is True else None,
             password=self.params["password"],
             public=public,
@@ -371,7 +403,8 @@ class TestSwiftStorage(TestCase):
         )
 
     @mock.patch("pyrax.create_context")
-    def test_swift_authenticates_with_full_uri(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_authenticates_with_full_uri(self, mock_timeout, mock_create_context):
         mock_context = mock_create_context.return_value
         mock_swift = mock_context.get_client.return_value
 
@@ -384,12 +417,13 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.save_to_filename(temp_output.name)
 
-        self._assert_default_login_correct(mock_create_context, api_key=True)
+        self._assert_default_login_correct(mock_create_context, mock_timeout, api_key=True)
         mock_swift.fetch_object.assert_called_with(
             self.params["container"], self.params["file"], chunk_size=EXPECTED_CHUNK_SIZE)
 
     @mock.patch("pyrax.create_context")
-    def test_swift_authenticates_with_partial_uri(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_authenticates_with_partial_uri(self, mock_timeout, mock_create_context):
         mock_context = mock_create_context.return_value
         mock_swift = mock_context.get_client.return_value
 
@@ -402,7 +436,7 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.save_to_filename(temp_output.name)
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.fetch_object.assert_called_with(self.params["container"],
                                                    self.params["file"],
                                                    chunk_size=EXPECTED_CHUNK_SIZE)
@@ -437,7 +471,8 @@ class TestSwiftStorage(TestCase):
             storage.save_to_filename(temp_output.name)
 
     @mock.patch("pyrax.create_context")
-    def test_swift_save_to_filename(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_save_to_filename(self, mock_timeout, mock_create_context):
         mock_context = mock_create_context.return_value
         mock_swift = mock_context.get_client.return_value
 
@@ -450,7 +485,7 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.save_to_filename(temp_output.name)
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.fetch_object.assert_called_with(
             self.params["container"], self.params["file"], chunk_size=EXPECTED_CHUNK_SIZE)
 
@@ -458,7 +493,8 @@ class TestSwiftStorage(TestCase):
             self.assertEqual("FOOBAR", output_fp.read())
 
     @mock.patch("pyrax.create_context")
-    def test_swift_save_to_file(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_save_to_file(self, mock_timeout, mock_create_context):
         mock_context = mock_create_context.return_value
         mock_swift = mock_context.get_client.return_value
 
@@ -472,7 +508,7 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.save_to_file(out_file)
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.fetch_object.assert_called_with(
             self.params["container"], self.params["file"], chunk_size=EXPECTED_CHUNK_SIZE)
 
@@ -481,7 +517,9 @@ class TestSwiftStorage(TestCase):
     @mock.patch("os.path.exists", return_value=False)
     @mock.patch("os.makedirs")
     @mock.patch("pyrax.create_context")
-    def test_swift_save_to_directory(self, mock_create_context, mock_makedirs, mock_path_exists):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_save_to_directory(
+            self, mock_timeout, mock_create_context, mock_makedirs, mock_path_exists):
 
         expected_jpg = self.RackspaceObject("file/a/0.jpg", "image/jpg")
         expected_mp4 = self.RackspaceObject("file/a/b/c/1.mp4", "video/mp4")
@@ -501,7 +539,7 @@ class TestSwiftStorage(TestCase):
 
         storagelib.get_storage(uri).save_to_directory("/tmp/cat/pants")
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.list_container_objects.assert_called_with(
             self.params["container"], prefix=self.params["file"])
 
@@ -516,8 +554,9 @@ class TestSwiftStorage(TestCase):
     @mock.patch("os.path.exists", return_value=False)
     @mock.patch("os.makedirs")
     @mock.patch("pyrax.create_context")
+    @mock.patch("storage.storage.timeout")
     def test_swift_save_to_directory_works_with_empty_directories(
-            self, mock_create_context, mock_makedirs, mock_path_exists):
+            self, mock_timeout, mock_create_context, mock_makedirs, mock_path_exists):
 
         expected_jpg = self.RackspaceObject("a/0.jpg", "image/jpg")
         expected_mp4 = self.RackspaceObject("a/b/c/1.mp4", "video/mp4")
@@ -541,7 +580,7 @@ class TestSwiftStorage(TestCase):
 
         storagelib.get_storage(uri).save_to_directory("/tmp/cat/pants")
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.list_container_objects.assert_called_with(
             self.params["container"], prefix=self.params["file"])
 
@@ -557,7 +596,8 @@ class TestSwiftStorage(TestCase):
             self.params["container"], expected_mp4, "a/b/c", structure=False)
 
     @mock.patch("pyrax.create_context")
-    def test_swift_load_from_filename(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_load_from_filename(self, mock_timeout, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
         temp_input = tempfile.NamedTemporaryFile()
@@ -570,12 +610,14 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.load_from_filename(temp_input.name)
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.upload_file.assert_called_with(
             self.params["container"], temp_input.name, self.params["file"])
 
     @mock.patch("pyrax.create_context")
-    def test_swift_load_from_filename_provides_content_type(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_load_from_filename_provides_content_type(
+            self, mock_timeout, mock_create_context):
         self.params["file"] = "foobar.mp4"
         mock_swift = mock_create_context.return_value.get_client.return_value
 
@@ -590,13 +632,14 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.load_from_filename(temp_input.name)
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.upload_file.assert_called_with(
             self.params["container"], temp_input.name, self.params["file"],
             content_type="video/mp4")
 
     @mock.patch("pyrax.create_context")
-    def test_swift_load_from_file(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_load_from_file(self, mock_timeout, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
         mock_input = mock.Mock()
@@ -607,12 +650,13 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.load_from_file(mock_input)
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.upload_file.assert_called_with(
             self.params["container"], mock_input, self.params["file"])
 
     @mock.patch("pyrax.create_context")
-    def test_swift_load_from_directory(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_load_from_directory(self, mock_timeout, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
         uri = "swift://{username}:{password}@{container}/{file}?" \
@@ -624,7 +668,7 @@ class TestSwiftStorage(TestCase):
         temp_directory = create_temp_nested_directory_with_files()
         storage.load_from_directory(temp_directory["temp_directory"]["path"])
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
 
         mock_swift.upload_file.assert_has_calls([
             mock.call(
@@ -641,7 +685,8 @@ class TestSwiftStorage(TestCase):
         ], any_order=True)
 
     @mock.patch("pyrax.create_context")
-    def test_swift_delete(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_delete(self, mock_timeout, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
@@ -650,7 +695,7 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.delete()
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.delete_object.assert_called_with(self.params["container"], self.params["file"])
 
     @mock.patch("pyrax.create_context")
@@ -679,7 +724,8 @@ class TestSwiftStorage(TestCase):
         ], any_order=True)
 
     @mock.patch("pyrax.create_context")
-    def test_swift_uses_servicenet_when_requested(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_uses_servicenet_when_requested(self, mock_timeout, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
@@ -688,11 +734,12 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.delete()
 
-        self._assert_default_login_correct(mock_create_context, public=False)
+        self._assert_default_login_correct(mock_create_context, mock_timeout, public=False)
         mock_swift.delete_object.assert_called_with(self.params["container"], self.params["file"])
 
     @mock.patch("pyrax.create_context")
-    def test_swift_get_download_url(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_get_download_url(self, mock_timeout, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
@@ -701,13 +748,14 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.get_download_url()
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.get_temp_url.assert_called_with(
             self.params["container"], self.params["file"],
             seconds=60, method="GET", key="super_secret_key")
 
     @mock.patch("pyrax.create_context")
-    def test_swift_get_download_url_without_temp_url_key(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_get_download_url_without_temp_url_key(self, mock_timeout, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
@@ -716,12 +764,13 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.get_download_url()
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.get_temp_url.assert_called_with(
             self.params["container"], self.params["file"], seconds=60, method="GET", key=None)
 
     @mock.patch("pyrax.create_context")
-    def test_swift_get_download_url_with_override(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_get_download_url_with_override(self, mock_timeout, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
@@ -731,13 +780,15 @@ class TestSwiftStorage(TestCase):
 
         storage.get_download_url(key="NOT-THE-URI-KEY")
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.get_temp_url.assert_called_with(
             self.params["container"], self.params["file"],
             seconds=60, method="GET", key="NOT-THE-URI-KEY")
 
     @mock.patch("pyrax.create_context")
-    def test_swift_get_download_url_with_non_default_expiration(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_swift_get_download_url_with_non_default_expiration(
+            self, mock_timeout, mock_create_context):
         mock_swift = mock_create_context.return_value.get_client.return_value
 
         uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
@@ -746,7 +797,7 @@ class TestSwiftStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.get_download_url(seconds=10 * 60)
 
-        self._assert_default_login_correct(mock_create_context)
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
         mock_swift.get_temp_url.assert_called_with(
             self.params["container"], self.params["file"],
             seconds=600, method="GET", key=None)
@@ -822,14 +873,20 @@ class TestRegisterSwiftProtocol(TestCase):
 
 
 class TestRackspaceStorage(TestCase):
-    def _assert_login_correct(self, mock_create_context, username, password, region, public):
+    def _assert_login_correct(
+            self, mock_create_context, mock_timeout, username, password, region, public):
         mock_context = mock_create_context.return_value
         mock_create_context.assert_called_with("rackspace", username=username, password=password)
+        mock_timeout.assert_called_with(storagelib.storage.DEFAULT_SWIFT_TIMEOUT)
         mock_context.authenticate.assert_called_with()
         mock_context.get_client.assert_called_with("cloudfiles", region, public=public)
+        self.assertEqual(
+            storagelib.storage.DEFAULT_SWIFT_TIMEOUT,
+            mock_context.get_client.return_value.timeout)
 
     @mock.patch("pyrax.create_context")
-    def test_rackspace_authenticate_with_defaults(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_rackspace_authenticate_with_defaults(self, mock_timeout, mock_create_context):
         uri = "cloudfiles://{username}:{api_key}@{container}/{file}".format(
             username="username", api_key="apikey", container="container", file="file.txt")
 
@@ -838,10 +895,12 @@ class TestRackspaceStorage(TestCase):
 
         self.assertEqual(None, storage.download_url_key)
         self._assert_login_correct(
-            mock_create_context, username="username", password="apikey", region="DFW", public=True)
+            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
+            public=True)
 
     @mock.patch("pyrax.create_context")
-    def test_rackspace_authenticate_with_download_url_key(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_rackspace_authenticate_with_download_url_key(self, mock_timeout, mock_create_context):
         uri = "cloudfiles://{username}:{api_key}@{container}/{file}?download_url_key={key}".format(
             username="username", api_key="apikey", container="container", file="file.txt",
             key="super_secret_key")
@@ -851,10 +910,12 @@ class TestRackspaceStorage(TestCase):
 
         self.assertEqual("super_secret_key", storage.download_url_key)
         self._assert_login_correct(
-            mock_create_context, username="username", password="apikey", region="DFW", public=True)
+            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
+            public=True)
 
     @mock.patch("pyrax.create_context")
-    def test_rackspace_authenticate_with_public_false(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_rackspace_authenticate_with_public_false(self, mock_timeout, mock_create_context):
         uri = "cloudfiles://{username}:{api_key}@{container}/{file}?public=False".format(
             username="username", api_key="apikey", container="container", file="file.txt")
 
@@ -862,11 +923,12 @@ class TestRackspaceStorage(TestCase):
         storage.delete()
 
         self._assert_login_correct(
-            mock_create_context, username="username", password="apikey", region="DFW",
+            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
             public=False)
 
     @mock.patch("pyrax.create_context")
-    def test_rackspace_authenticate_with_region(self, mock_create_context):
+    @mock.patch("storage.storage.timeout")
+    def test_rackspace_authenticate_with_region(self, mock_timeout, mock_create_context):
         uri = "cloudfiles://{username}:{api_key}@{container}/{file}?region=ORD".format(
             username="username", api_key="apikey", container="container", file="file.txt")
 
@@ -874,7 +936,7 @@ class TestRackspaceStorage(TestCase):
         storage.delete()
 
         self._assert_login_correct(
-            mock_create_context, username="username", password="apikey", region="ORD",
+            mock_create_context, mock_timeout, username="username", password="apikey", region="ORD",
             public=True)
 
 

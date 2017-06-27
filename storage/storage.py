@@ -1,13 +1,16 @@
 import boto3
 import boto3.s3.transfer
+import contextlib
 import distutils.dir_util
 import ftplib
 import functools
 import mimetypes
 import os
 import os.path
+import pyrax
 import re
 import shutil
+import signal
 import urllib
 import urlparse
 
@@ -35,6 +38,25 @@ class DownloadUrlBaseUndefinedError(Exception):
     This exception is used with local file storage and FTP file storage objects.
     """
     pass
+
+
+class TimeoutError(IOError):
+    """Exception raised by timeout when a blocking operation times out."""
+    pass
+
+
+@contextlib.contextmanager
+def timeout(seconds):
+    def handler(signum, stackframe):
+        raise TimeoutError()
+
+    try:
+        old_signal = signal.signal(signal.SIGALRM, handler)
+        signal.alarm(seconds)
+        yield
+    finally:
+        signal.signal(signal.SIGALRM, old_signal)
+        signal.alarm(0)
 
 
 class Storage(object):
@@ -175,12 +197,12 @@ def _generate_download_url_from_base(base, object_name):
     return urlparse.urljoin(base, object_name)
 
 
-import pyrax
-
-
 class InvalidStorageUri(RuntimeError):
     """Invalid storage URI was specified."""
     pass
+
+
+DEFAULT_SWIFT_TIMEOUT = 60
 
 
 @register_storage_protocol("swift")
@@ -237,8 +259,10 @@ class SwiftStorage(Storage):
                                        username=username, password=password,
                                        api_key=api_key, tenant_id=tenant_id)
         context.auth_endpoint = auth_endpoint
-        context.authenticate()
+        with timeout(DEFAULT_SWIFT_TIMEOUT):
+            context.authenticate()
         self._cloudfiles = context.get_client("swift", region, public=public)
+        self._cloudfiles.timeout = DEFAULT_SWIFT_TIMEOUT
 
     def _get_container_and_object_names(self):
         _, container_name = self._parsed_storage_uri.netloc.split("@")
@@ -396,8 +420,10 @@ class CloudFilesStorage(SwiftStorage):
         self.download_url_key = query.get("download_url_key", [None])[0]
 
         context = pyrax.create_context("rackspace", username=username, password=password)
-        context.authenticate()
+        with timeout(DEFAULT_SWIFT_TIMEOUT):
+            context.authenticate()
         self._cloudfiles = context.get_client("cloudfiles", region, public=public)
+        self._cloudfiles.timeout = DEFAULT_SWIFT_TIMEOUT
 
 
 """Socket timeout (float seconds) for FTP transfers."""

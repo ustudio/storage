@@ -15,7 +15,7 @@ Install via pip:
 pip install object_storage
 ```
 
-The current version is `0.8.0`.
+The current version is `0.9.0`.
 
 ## Quick Start ##
 
@@ -178,6 +178,11 @@ accept the following optional parameters:
 | `api_key`       | API key to be used during authentication.                               |
 | `temp_url_key`  | Key to be used when retrieving a temp download url to the storage object from the **Swift** object store (see `get_download_url()`)|
 
+*NOTE* The connection will have a default 60 second timeout on network
+ operations, which can be set by changing
+ `storage.storage.DEFAULT_SWIFT_TIMEOUT`, specified in seconds. The
+ timeout is per data chunk, not for transfer of the entire object.
+
 
 #### cloudfiles ####
 
@@ -206,6 +211,11 @@ created automatically if they do not exist.
 region in Rackspace; there is no way to specify a region at this
 time. It is possible that the URI scheme will change when this support
 is added.
+
+*NOTE* The connection will have a default 60 second timeout on network
+ operations, which can be set by changing
+ `storage.storage.DEFAULT_SWIFT_TIMEOUT`, specified in seconds. The
+ timeout is per data chunk, not for transfer of the entire object.
 
 ### Amazon S3 ###
 
