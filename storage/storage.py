@@ -1,6 +1,5 @@
 import boto3
 import boto3.s3.transfer
-import contextlib
 import distutils.dir_util
 import ftplib
 import functools
@@ -8,9 +7,10 @@ import mimetypes
 import os
 import os.path
 import pyrax
+import Queue
 import re
 import shutil
-import signal
+import threading
 import urllib
 import urlparse
 
@@ -45,18 +45,27 @@ class TimeoutError(IOError):
     pass
 
 
-@contextlib.contextmanager
-def timeout(seconds):
-    def handler(signum, stackframe):
-        raise TimeoutError()
+def timeout(seconds, worker):
+    result_queue = Queue.Queue()
+
+    def wrapper():
+        try:
+            result_queue.put(worker())
+        except BaseException as e:
+            result_queue.put(e)
+
+    thread = threading.Thread(target=wrapper)
+    thread.daemon = True
+    thread.start()
 
     try:
-        old_signal = signal.signal(signal.SIGALRM, handler)
-        signal.alarm(seconds)
-        yield
-    finally:
-        signal.signal(signal.SIGALRM, old_signal)
-        signal.alarm(0)
+        result = result_queue.get(True, seconds)
+    except Queue.Empty:
+        raise TimeoutError()
+
+    if isinstance(result, BaseException):
+        raise result
+    return result
 
 
 class Storage(object):
@@ -255,12 +264,15 @@ class SwiftStorage(Storage):
         if not tenant_id:
             raise InvalidStorageUri("tenant_id is required.")
 
-        context = pyrax.create_context(id_type="pyrax.base_identity.BaseIdentity",
-                                       username=username, password=password,
-                                       api_key=api_key, tenant_id=tenant_id)
-        context.auth_endpoint = auth_endpoint
-        with timeout(DEFAULT_SWIFT_TIMEOUT):
+        def create_swift_context_and_authenticate():
+            context = pyrax.create_context(id_type="pyrax.base_identity.BaseIdentity",
+                                           username=username, password=password,
+                                           api_key=api_key, tenant_id=tenant_id)
+            context.auth_endpoint = auth_endpoint
             context.authenticate()
+            return context
+
+        context = timeout(DEFAULT_SWIFT_TIMEOUT, create_swift_context_and_authenticate)
         self._cloudfiles = context.get_client("swift", region, public=public)
         self._cloudfiles.timeout = DEFAULT_SWIFT_TIMEOUT
 
@@ -419,9 +431,12 @@ class CloudFilesStorage(SwiftStorage):
         region = query.get("region", ["DFW"])[0]
         self.download_url_key = query.get("download_url_key", [None])[0]
 
-        context = pyrax.create_context("rackspace", username=username, password=password)
-        with timeout(DEFAULT_SWIFT_TIMEOUT):
+        def create_cloudfiles_context_and_authenticate():
+            context = pyrax.create_context("rackspace", username=username, password=password)
             context.authenticate()
+            return context
+
+        context = timeout(DEFAULT_SWIFT_TIMEOUT, create_cloudfiles_context_and_authenticate)
         self._cloudfiles = context.get_client("cloudfiles", region, public=public)
         self._cloudfiles.timeout = DEFAULT_SWIFT_TIMEOUT
 
