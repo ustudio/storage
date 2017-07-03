@@ -329,7 +329,12 @@ class SwiftStorage(Storage):
             if not os.path.exists(directory):
                 os.makedirs(directory)
 
-            self._cloudfiles.download_object(container_name, file, directory, structure=False)
+            retry.attempt(
+                self._cloudfiles.download_object,
+                container_name,
+                file,
+                directory,
+                structure=False)
 
     def _upload_file(self, file_or_path, object_path=None):
         self._authenticate()
@@ -707,8 +712,11 @@ class S3Storage(Storage):
                 if not os.path.exists(directory_path + file_path):
                     os.makedirs(directory_path + file_path)
 
-                client.download_file(
-                    self._bucket, file["Key"], directory_path + file_key)
+                retry.attempt(
+                    client.download_file,
+                    self._bucket,
+                    file["Key"],
+                    directory_path + file_key)
 
     def load_from_filename(self, file_path):
         client = self._connect()
