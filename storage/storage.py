@@ -9,6 +9,7 @@ import os.path
 import pyrax
 import Queue
 import re
+import retry
 import shutil
 import threading
 import urllib
@@ -356,8 +357,10 @@ class SwiftStorage(Storage):
             container_path = root.replace(source_directory, object_name, 1)
 
             for file in files:
-                self._upload_file(
-                    os.path.join(root, file), object_path=os.path.join(container_path, file))
+                retry.attempt(
+                    self._upload_file,
+                    os.path.join(root, file),
+                    object_path=os.path.join(container_path, file))
 
     def delete(self):
         self._authenticate()
@@ -726,7 +729,11 @@ class S3Storage(Storage):
 
             for file in files:
                 upload_path = os.path.join(relative_path, file)
-                client.upload_file(os.path.join(root, file), self._bucket, upload_path)
+                retry.attempt(
+                    client.upload_file,
+                    os.path.join(root, file),
+                    self._bucket,
+                    upload_path)
 
     def delete(self):
         client = self._connect()

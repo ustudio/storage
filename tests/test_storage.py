@@ -690,6 +690,102 @@ class TestSwiftStorage(TestCase):
                     temp_directory["nested_temp_input"]["name"]))
         ], any_order=True)
 
+    @mock.patch("storage.retry.time.sleep", autospec=True)
+    @mock.patch("storage.retry.random.uniform", autospec=True)
+    @mock.patch("pyrax.create_context")
+    @mock.patch("storage.storage.timeout", wraps=storagelib.storage.timeout)
+    def test_swift_load_from_directory_retries_failed_file_uploads(
+            self, mock_timeout, mock_create_context, mock_uniform, mock_sleep):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        mock_swift.upload_file.side_effect = [
+            None,
+            storagelib.storage.TimeoutError,
+            None,
+            None
+        ]
+
+        uri = "swift://{username}:{password}@{container}/{file}?" \
+              "auth_endpoint={auth_endpoint}&region={region}" \
+              "&tenant_id={tenant_id}".format(**self.params)
+
+        storage = storagelib.get_storage(uri)
+
+        temp_directory = create_temp_nested_directory_with_files()
+        storage.load_from_directory(temp_directory["temp_directory"]["path"])
+
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
+
+        self.assertEqual(4, mock_swift.upload_file.call_count)
+        mock_swift.upload_file.assert_has_calls([
+            mock.call(
+                self.params["container"], temp_directory["temp_input_two"]["path"],
+                os.path.join(self.params["file"], temp_directory["temp_input_two"]["name"])),
+            mock.call(
+                self.params["container"], temp_directory["temp_input_one"]["path"],
+                os.path.join(self.params["file"], temp_directory["temp_input_one"]["name"])),
+            mock.call(
+                self.params["container"], temp_directory["nested_temp_input"]["path"],
+                os.path.join(
+                    self.params["file"], temp_directory["nested_temp_directory"]["name"],
+                    temp_directory["nested_temp_input"]["name"]))
+        ], any_order=True)
+        self.assertEqual(
+            mock_swift.upload_file.call_args_list[1], mock_swift.upload_file.call_args_list[2])
+
+        mock_uniform.assert_called_once_with(0, 1)
+
+        mock_sleep.assert_called_once_with(mock_uniform.return_value)
+
+    @mock.patch("storage.retry.time.sleep", autospec=True)
+    @mock.patch("storage.retry.random.uniform", autospec=True)
+    @mock.patch("pyrax.create_context")
+    @mock.patch("storage.storage.timeout", wraps=storagelib.storage.timeout)
+    def test_swift_load_from_directory_fails_after_five_failed_file_upload_retries(
+            self, mock_timeout, mock_create_context, mock_uniform, mock_sleep):
+        mock_swift = mock_create_context.return_value.get_client.return_value
+
+        mock_swift.upload_file.side_effect = [
+            storagelib.storage.TimeoutError,
+            storagelib.storage.TimeoutError,
+            IOError,
+            IOError,
+            IOError
+        ]
+
+        uri = "swift://{username}:{password}@{container}/{file}?" \
+              "auth_endpoint={auth_endpoint}&region={region}" \
+              "&tenant_id={tenant_id}".format(**self.params)
+
+        storage = storagelib.get_storage(uri)
+
+        temp_directory = create_temp_nested_directory_with_files()
+
+        with self.assertRaises(IOError):
+            storage.load_from_directory(temp_directory["temp_directory"]["path"])
+
+        self._assert_default_login_correct(mock_create_context, mock_timeout)
+
+        self.assertEqual(5, mock_swift.upload_file.call_count)
+        self.assertEqual(
+            mock_swift.upload_file.call_args, mock_swift.upload_file.call_args_list[0])
+        self.assertEqual(
+            mock_swift.upload_file.call_args, mock_swift.upload_file.call_args_list[1])
+        self.assertEqual(
+            mock_swift.upload_file.call_args, mock_swift.upload_file.call_args_list[2])
+        self.assertEqual(
+            mock_swift.upload_file.call_args, mock_swift.upload_file.call_args_list[3])
+
+        mock_uniform.assert_has_calls([
+            mock.call(0, 1),
+            mock.call(0, 3),
+            mock.call(0, 7),
+            mock.call(0, 15)
+        ])
+
+        self.assertEqual(4, mock_sleep.call_count)
+        mock_sleep.assert_called_with(mock_uniform.return_value)
+
     @mock.patch("pyrax.create_context")
     @mock.patch("storage.storage.timeout", wraps=storagelib.storage.timeout)
     def test_swift_delete(self, mock_timeout, mock_create_context):
@@ -1722,6 +1818,96 @@ class TestS3Storage(TestCase):
                     "dir", temp_directory["nested_temp_directory"]["name"],
                     temp_directory["nested_temp_input"]["name"]))
         ], any_order=True)
+
+    @mock.patch("storage.retry.time.sleep", autospec=True)
+    @mock.patch("storage.retry.random.uniform", autospec=True)
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_load_from_directory_retries_failed_file_uploads(
+            self, mock_session_class, mock_transfer_class, mock_uniform, mock_sleep):
+        mock_session = mock_session_class.return_value
+        mock_s3_client = mock_session.client.return_value
+
+        mock_s3_client.upload_file.side_effect = [
+            None,
+            IOError,
+            None,
+            None
+        ]
+
+        temp_directory = create_temp_nested_directory_with_files()
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/dir?region=US_EAST")
+
+        storage.load_from_directory(temp_directory["temp_directory"]["path"])
+
+        self.assertEqual(4, mock_s3_client.upload_file.call_count)
+        mock_s3_client.upload_file.assert_has_calls([
+            mock.call(
+                temp_directory["temp_input_two"]["path"], "bucket",
+                os.path.join("dir", temp_directory["temp_input_two"]["name"])),
+            mock.call(
+                temp_directory["temp_input_one"]["path"], "bucket",
+                os.path.join("dir", temp_directory["temp_input_one"]["name"])),
+            mock.call(
+                temp_directory["nested_temp_input"]["path"], "bucket",
+                os.path.join(
+                    "dir", temp_directory["nested_temp_directory"]["name"],
+                    temp_directory["nested_temp_input"]["name"]))
+        ], any_order=True)
+        self.assertEqual(
+            mock_s3_client.upload_file.call_args_list[1],
+            mock_s3_client.upload_file.call_args_list[2])
+
+        mock_uniform.assert_called_once_with(0, 1)
+
+        mock_sleep.assert_called_once_with(mock_uniform.return_value)
+
+    @mock.patch("storage.retry.time.sleep", autospec=True)
+    @mock.patch("storage.retry.random.uniform", autospec=True)
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_load_from_directory_fails_after_five_failed_file_upload_retries(
+            self, mock_session_class, mock_transfer_class, mock_uniform, mock_sleep):
+        mock_session = mock_session_class.return_value
+        mock_s3_client = mock_session.client.return_value
+
+        mock_s3_client.upload_file.side_effect = [
+            IOError,
+            IOError,
+            IOError,
+            IOError,
+            RuntimeError
+        ]
+
+        temp_directory = create_temp_nested_directory_with_files()
+
+        storage = storagelib.get_storage(
+            "s3://access_key:access_secret@bucket/dir?region=US_EAST")
+
+        with self.assertRaises(RuntimeError):
+            storage.load_from_directory(temp_directory["temp_directory"]["path"])
+
+        self.assertEqual(5, mock_s3_client.upload_file.call_count)
+        self.assertEqual(
+            mock_s3_client.upload_file.call_args, mock_s3_client.upload_file.call_args_list[0])
+        self.assertEqual(
+            mock_s3_client.upload_file.call_args, mock_s3_client.upload_file.call_args_list[1])
+        self.assertEqual(
+            mock_s3_client.upload_file.call_args, mock_s3_client.upload_file.call_args_list[2])
+        self.assertEqual(
+            mock_s3_client.upload_file.call_args, mock_s3_client.upload_file.call_args_list[3])
+
+        mock_uniform.assert_has_calls([
+            mock.call(0, 1),
+            mock.call(0, 3),
+            mock.call(0, 7),
+            mock.call(0, 15)
+        ])
+
+        self.assertEqual(4, mock_sleep.call_count)
+        mock_sleep.assert_called_with(mock_uniform.return_value)
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_delete(self, mock_session_class):
