@@ -9,6 +9,7 @@ import os.path
 import pyrax
 import Queue
 import re
+import retry
 import shutil
 import threading
 import urllib
@@ -328,7 +329,12 @@ class SwiftStorage(Storage):
             if not os.path.exists(directory):
                 os.makedirs(directory)
 
-            self._cloudfiles.download_object(container_name, file, directory, structure=False)
+            retry.attempt(
+                self._cloudfiles.download_object,
+                container_name,
+                file,
+                directory,
+                structure=False)
 
     def _upload_file(self, file_or_path, object_path=None):
         self._authenticate()
@@ -356,8 +362,10 @@ class SwiftStorage(Storage):
             container_path = root.replace(source_directory, object_name, 1)
 
             for file in files:
-                self._upload_file(
-                    os.path.join(root, file), object_path=os.path.join(container_path, file))
+                retry.attempt(
+                    self._upload_file,
+                    os.path.join(root, file),
+                    object_path=os.path.join(container_path, file))
 
     def delete(self):
         self._authenticate()
@@ -704,8 +712,11 @@ class S3Storage(Storage):
                 if not os.path.exists(directory_path + file_path):
                     os.makedirs(directory_path + file_path)
 
-                client.download_file(
-                    self._bucket, file["Key"], directory_path + file_key)
+                retry.attempt(
+                    client.download_file,
+                    self._bucket,
+                    file["Key"],
+                    directory_path + file_key)
 
     def load_from_filename(self, file_path):
         client = self._connect()
@@ -726,7 +737,11 @@ class S3Storage(Storage):
 
             for file in files:
                 upload_path = os.path.join(relative_path, file)
-                client.upload_file(os.path.join(root, file), self._bucket, upload_path)
+                retry.attempt(
+                    client.upload_file,
+                    os.path.join(root, file),
+                    self._bucket,
+                    upload_path)
 
     def delete(self):
         client = self._connect()
