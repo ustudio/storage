@@ -1,5 +1,6 @@
 dependencies:
   pre:
+    - pip install pip==9.0.1
     - pip install coverage
   override:
     - pip install -r pyrax-requirements.txt
