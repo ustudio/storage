@@ -1,5 +1,6 @@
 import mock
 import os.path
+import socket
 import storage as storagelib
 from storage.storage import DownloadUrlBaseUndefinedError
 import tempfile
@@ -1162,7 +1163,61 @@ class TestFTPStorage(TestCase):
     def assert_connected(self, mock_ftp_class, mock_ftp, expected_port=21):
         mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
         mock_ftp.connect.assert_called_with("ftp.foo.com", port=expected_port)
+        mock_ftp.sock.setsockopt.assert_any_call(
+            socket.SOL_SOCKET, socket.SO_KEEPALIVE, storagelib.storage.DEFAULT_FTP_KEEPALIVE_ENABLE)
         mock_ftp.login.assert_called_with("user", "password")
+
+    @mock.patch("storage.storage.socket")
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_connect_sets_tcp_keepalive_options_when_supported(self, mock_ftp_class, mock_socket):
+        mock_socket.SOL_SOCKET = socket.SOL_SOCKET
+        mock_socket.SOL_TCP = socket.SOL_TCP
+        mock_socket.SO_KEEPALIVE = socket.SO_KEEPALIVE
+
+        mock_socket.TCP_KEEPCNT = 1
+        mock_socket.TCP_KEEPIDLE = 2
+        mock_socket.TCP_KEEPINTVL = 3
+
+        mock_ftp = mock_ftp_class.return_value
+        in_file = StringIO("foobar")
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        storage.load_from_file(in_file)
+
+        mock_ftp.sock.setsockopt.assert_has_calls([
+            mock.call(
+                socket.SOL_SOCKET, socket.SO_KEEPALIVE,
+                storagelib.storage.DEFAULT_FTP_KEEPALIVE_ENABLE),
+            mock.call(
+                socket.SOL_TCP, mock_socket.TCP_KEEPCNT, storagelib.storage.DEFAULT_FTP_KEEPCNT),
+            mock.call(
+                socket.SOL_TCP, mock_socket.TCP_KEEPIDLE, storagelib.storage.DEFAULT_FTP_KEEPIDLE),
+            mock.call(
+                socket.SOL_TCP, mock_socket.TCP_KEEPINTVL, storagelib.storage.DEFAULT_FTP_KEEPINTVL)
+        ])
+
+    @mock.patch("storage.storage.socket")
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_connect_only_enables_tcp_keepalive_options_when_options_not_supported(
+            self, mock_ftp_class, mock_socket):
+        mock_socket.SOL_SOCKET = socket.SOL_SOCKET
+        mock_socket.SOL_TCP = socket.SOL_TCP
+        mock_socket.SO_KEEPALIVE = socket.SO_KEEPALIVE
+
+        del mock_socket.TCP_KEEPCNT
+        del mock_socket.TCP_KEEPIDLE
+        del mock_socket.TCP_KEEPINTVL
+
+        mock_ftp = mock_ftp_class.return_value
+        in_file = StringIO("foobar")
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        storage.load_from_file(in_file)
+
+        mock_ftp.sock.setsockopt.assert_called_once_with(
+            socket.SOL_SOCKET, socket.SO_KEEPALIVE, storagelib.storage.DEFAULT_FTP_KEEPALIVE_ENABLE)
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_save_to_filename(self, mock_ftp_class):
