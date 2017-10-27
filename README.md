@@ -15,7 +15,7 @@ Install via pip:
 pip install object_storage
 ```
 
-The current version is `0.10.0`.
+The current version is `0.11.0`.
 
 ## Quick Start ##
 
@@ -259,6 +259,12 @@ ftp://username:password@my-ftp-server/directory/awesome-file.txt[?download_url_b
  `storage.storage.DEFAULT_FTP_TIMEOUT`, specified in seconds. The
  timeout is per data chunk, not for transfer of the entire object.
 
+**Note** The FTP connection's command socket will have TCP_KEEPALIVE
+  turned on by default, as configurable by
+  `storage.storage.DEFAULT_FTP_KEEPALIVE_ENABLE`, and will configure
+  TCP keepalive options when the platform supports them, using
+  similar configuration globals.
+
 #### ftps ####
 
 A reference to a file on an FTP server, served using the FTPS
@@ -270,8 +276,9 @@ Example:
 ftps://username:password@my-secure-ftp-server/directory/awesome-file.txt[?download_url_base=<ENCODED-URL>]
 ```
 
-**Note** The FTP_TLS connection will have a default timeout specified in
- the same manner as the `ftp` protocol (see above).
+**Note** The FTP_TLS connection will have a default timeout and TCP
+ keepalive specified in the same manner as the `ftp` protocol (see
+ above).
 
 ### retry ###
 
