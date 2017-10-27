@@ -11,6 +11,7 @@ import Queue
 import re
 import retry
 import shutil
+import socket
 import threading
 import urllib
 import urlparse
@@ -452,6 +453,18 @@ class CloudFilesStorage(SwiftStorage):
 """Socket timeout (float seconds) for FTP transfers."""
 DEFAULT_FTP_TIMEOUT = 60.0
 
+"""Enable (1) or disable (0) KEEPALIVE probes for FTP command socket"""
+DEFAULT_FTP_KEEPALIVE_ENABLE = 1
+
+"""Socket KEEPALIVE Probes count for FTP transfers."""
+DEFAULT_FTP_KEEPCNT = 5
+
+"""Socket KEEPALIVE idle timeout for FTP transfers."""
+DEFAULT_FTP_KEEPIDLE = 60
+
+"""Socket KEEPALIVE interval for FTP transfers."""
+DEFAULT_FTP_KEEPINTVL = 60
+
 
 @register_storage_protocol("ftp")
 class FTPStorage(Storage):
@@ -477,9 +490,25 @@ class FTPStorage(Storage):
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
         self._download_url_base = query.get("download_url_base", [None])[0]
 
+    def _configure_keepalive(self, ftp_client):
+        ftp_client.sock.setsockopt(
+            socket.SOL_SOCKET, socket.SO_KEEPALIVE, DEFAULT_FTP_KEEPALIVE_ENABLE)
+
+        if hasattr(socket, "TCP_KEEPCNT"):
+            ftp_client.sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT, DEFAULT_FTP_KEEPCNT)
+
+        if hasattr(socket, "TCP_KEEPIDLE"):
+            ftp_client.sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, DEFAULT_FTP_KEEPIDLE)
+
+        if hasattr(socket, "TCP_KEEPINTVL"):
+            ftp_client.sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, DEFAULT_FTP_KEEPINTVL)
+
     def _connect(self):
         ftp_client = ftplib.FTP(timeout=DEFAULT_FTP_TIMEOUT)
         ftp_client.connect(self._hostname, port=self._port)
+
+        self._configure_keepalive(ftp_client)
+
         ftp_client.login(self._username, self._password)
 
         return ftp_client
@@ -655,6 +684,7 @@ class FTPSStorage(FTPStorage):
     def _connect(self):
         ftp_client = ftplib.FTP_TLS(timeout=DEFAULT_FTP_TIMEOUT)
         ftp_client.connect(self._hostname, port=self._port)
+        self._configure_keepalive(ftp_client)
         ftp_client.login(self._username, self._password)
         ftp_client.prot_p()
 

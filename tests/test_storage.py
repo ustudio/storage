@@ -1,5 +1,6 @@
 import mock
 import os.path
+import socket
 import storage as storagelib
 from storage.storage import DownloadUrlBaseUndefinedError
 import tempfile
@@ -1159,6 +1160,65 @@ class TestRackspaceStorage(TestCase):
 
 
 class TestFTPStorage(TestCase):
+    def assert_connected(self, mock_ftp_class, mock_ftp, expected_port=21):
+        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
+        mock_ftp.connect.assert_called_with("ftp.foo.com", port=expected_port)
+        mock_ftp.sock.setsockopt.assert_any_call(
+            socket.SOL_SOCKET, socket.SO_KEEPALIVE, storagelib.storage.DEFAULT_FTP_KEEPALIVE_ENABLE)
+        mock_ftp.login.assert_called_with("user", "password")
+
+    @mock.patch("storage.storage.socket")
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_connect_sets_tcp_keepalive_options_when_supported(self, mock_ftp_class, mock_socket):
+        mock_socket.SOL_SOCKET = socket.SOL_SOCKET
+        mock_socket.SOL_TCP = socket.SOL_TCP
+        mock_socket.SO_KEEPALIVE = socket.SO_KEEPALIVE
+
+        mock_socket.TCP_KEEPCNT = 1
+        mock_socket.TCP_KEEPIDLE = 2
+        mock_socket.TCP_KEEPINTVL = 3
+
+        mock_ftp = mock_ftp_class.return_value
+        in_file = StringIO("foobar")
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        storage.load_from_file(in_file)
+
+        mock_ftp.sock.setsockopt.assert_has_calls([
+            mock.call(
+                socket.SOL_SOCKET, socket.SO_KEEPALIVE,
+                storagelib.storage.DEFAULT_FTP_KEEPALIVE_ENABLE),
+            mock.call(
+                socket.SOL_TCP, mock_socket.TCP_KEEPCNT, storagelib.storage.DEFAULT_FTP_KEEPCNT),
+            mock.call(
+                socket.SOL_TCP, mock_socket.TCP_KEEPIDLE, storagelib.storage.DEFAULT_FTP_KEEPIDLE),
+            mock.call(
+                socket.SOL_TCP, mock_socket.TCP_KEEPINTVL, storagelib.storage.DEFAULT_FTP_KEEPINTVL)
+        ])
+
+    @mock.patch("storage.storage.socket")
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_connect_only_enables_tcp_keepalive_options_when_options_not_supported(
+            self, mock_ftp_class, mock_socket):
+        mock_socket.SOL_SOCKET = socket.SOL_SOCKET
+        mock_socket.SOL_TCP = socket.SOL_TCP
+        mock_socket.SO_KEEPALIVE = socket.SO_KEEPALIVE
+
+        del mock_socket.TCP_KEEPCNT
+        del mock_socket.TCP_KEEPIDLE
+        del mock_socket.TCP_KEEPINTVL
+
+        mock_ftp = mock_ftp_class.return_value
+        in_file = StringIO("foobar")
+
+        storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        storage.load_from_file(in_file)
+
+        mock_ftp.sock.setsockopt.assert_called_once_with(
+            socket.SOL_SOCKET, socket.SO_KEEPALIVE, storagelib.storage.DEFAULT_FTP_KEEPALIVE_ENABLE)
+
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_save_to_filename(self, mock_ftp_class):
         temp_output = tempfile.NamedTemporaryFile()
@@ -1178,9 +1238,7 @@ class TestFTPStorage(TestCase):
 
         storage.save_to_filename(temp_output.name)
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         mock_ftp.cwd.assert_called_with("some/dir")
         self.assertEqual(1, mock_ftp.retrbinary.call_count)
@@ -1208,9 +1266,7 @@ class TestFTPStorage(TestCase):
 
         storage.save_to_file(out_file)
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         mock_ftp.cwd.assert_called_with("some/dir")
         self.assertEqual(1, mock_ftp.retrbinary.call_count)
@@ -1237,9 +1293,7 @@ class TestFTPStorage(TestCase):
 
         storage.save_to_file(out_file)
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=12345)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp, 12345)
 
         mock_ftp.cwd.assert_called_with("some/dir")
         self.assertEqual(1, mock_ftp.retrbinary.call_count)
@@ -1265,9 +1319,7 @@ class TestFTPStorage(TestCase):
 
         storage.save_to_directory("/cat/pants")
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         mock_ftp.cwd.assert_has_calls([
             mock.call("/some/dir/file"),
@@ -1327,9 +1379,7 @@ class TestFTPStorage(TestCase):
 
         storage.save_to_directory("/cat/pants")
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         self.assertEqual(5, mock_ftp.cwd.call_count)
         mock_ftp.cwd.assert_has_calls([
@@ -1375,9 +1425,7 @@ class TestFTPStorage(TestCase):
 
         storage.load_from_filename("some_file")
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         mock_ftp.cwd.assert_called_with("some/dir")
 
@@ -1394,9 +1442,7 @@ class TestFTPStorage(TestCase):
 
         storage.load_from_filename("some_file")
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=12345)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp, 12345)
 
         mock_ftp.cwd.assert_called_with("some/dir")
 
@@ -1413,9 +1459,7 @@ class TestFTPStorage(TestCase):
 
         storage.load_from_file(in_file)
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         mock_ftp.cwd.assert_called_with("some/dir")
 
@@ -1433,9 +1477,7 @@ class TestFTPStorage(TestCase):
         # empty folder
         storage.load_from_directory(tempfile.mkdtemp())
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         mock_ftp.mkd.assert_has_calls([
             mock.call("some"),
@@ -1458,9 +1500,8 @@ class TestFTPStorage(TestCase):
         # empty folder
         storage.load_from_directory(tempfile.mkdtemp())
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
+
         self.assertEqual(1, mock_ftp.mkd.call_count)
         mock_ftp.mkd.assert_has_calls([mock.call("file")])
         mock_ftp.cwd.assert_has_calls([
@@ -1492,9 +1533,7 @@ class TestFTPStorage(TestCase):
         # empty folder
         storage.load_from_directory(temp_directory["temp_directory"]["path"])
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         mock_ftp.mkd.assert_has_calls([
             mock.call(temp_directory["nested_temp_directory"]["name"])
@@ -1534,9 +1573,8 @@ class TestFTPStorage(TestCase):
         # empty folder
         storage.load_from_directory(temp_directory["temp_directory"]["path"])
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
+
         mock_ftp.mkd.assert_not_called()
 
         mock_ftp.cwd.assert_has_calls([
@@ -1574,9 +1612,7 @@ class TestFTPStorage(TestCase):
         # empty folder
         storage.load_from_directory(temp_directory["temp_directory"]["path"])
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         mock_ftp.storbinary.assert_has_calls([
             mock.call(
@@ -1602,9 +1638,7 @@ class TestFTPStorage(TestCase):
         storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
         storage.delete()
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         mock_ftp.cwd.assert_called_with("some/dir")
         mock_ftp.delete.assert_called_with("file")
@@ -1641,9 +1675,7 @@ class TestFTPStorage(TestCase):
         storage = storagelib.get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
         storage.delete_directory()
 
-        mock_ftp_class.assert_called_with(timeout=storagelib.storage.DEFAULT_FTP_TIMEOUT)
-        mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
-        mock_ftp.login.assert_called_with("user", "password")
+        self.assert_connected(mock_ftp_class, mock_ftp)
 
         mock_ftp.cwd.assert_has_calls([
             mock.call("/some/dir/file"),
@@ -1711,6 +1743,16 @@ class TestFTPSStorage(TestCase):
 
         mock_ftp = mock_ftp_tls_class.return_value
         mock_ftp.retrbinary.side_effect = mock_retrbinary
+
+        def assert_tcp_keepalive_already_enabled(username, password):
+            # It is important that these already be called before
+            # login is called, because FTP_TLS.login replaces the
+            # socket instance with an SSL-wrapped socket.
+            mock_ftp.sock.setsockopt.assert_any_call(
+                socket.SOL_SOCKET, socket.SO_KEEPALIVE,
+                storagelib.storage.DEFAULT_FTP_KEEPALIVE_ENABLE)
+
+        mock_ftp.login.side_effect = assert_tcp_keepalive_already_enabled
 
         storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
 
