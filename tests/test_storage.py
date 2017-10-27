@@ -1744,6 +1744,16 @@ class TestFTPSStorage(TestCase):
         mock_ftp = mock_ftp_tls_class.return_value
         mock_ftp.retrbinary.side_effect = mock_retrbinary
 
+        def assert_tcp_keepalive_already_enabled(username, password):
+            # It is important that these already be called before
+            # login is called, because FTP_TLS.login replaces the
+            # socket instance with an SSL-wrapped socket.
+            mock_ftp.sock.setsockopt.assert_any_call(
+                socket.SOL_SOCKET, socket.SO_KEEPALIVE,
+                storagelib.storage.DEFAULT_FTP_KEEPALIVE_ENABLE)
+
+        mock_ftp.login.side_effect = assert_tcp_keepalive_already_enabled
+
         storage = storagelib.get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
 
         storage.save_to_filename(temp_output.name)

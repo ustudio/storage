@@ -490,9 +490,7 @@ class FTPStorage(Storage):
         query = urlparse.parse_qs(self._parsed_storage_uri.query)
         self._download_url_base = query.get("download_url_base", [None])[0]
 
-    def _connect(self):
-        ftp_client = ftplib.FTP(timeout=DEFAULT_FTP_TIMEOUT)
-        ftp_client.connect(self._hostname, port=self._port)
+    def _configure_keepalive(self, ftp_client):
         ftp_client.sock.setsockopt(
             socket.SOL_SOCKET, socket.SO_KEEPALIVE, DEFAULT_FTP_KEEPALIVE_ENABLE)
 
@@ -504,6 +502,12 @@ class FTPStorage(Storage):
 
         if hasattr(socket, "TCP_KEEPINTVL"):
             ftp_client.sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, DEFAULT_FTP_KEEPINTVL)
+
+    def _connect(self):
+        ftp_client = ftplib.FTP(timeout=DEFAULT_FTP_TIMEOUT)
+        ftp_client.connect(self._hostname, port=self._port)
+
+        self._configure_keepalive(ftp_client)
 
         ftp_client.login(self._username, self._password)
 
@@ -680,6 +684,7 @@ class FTPSStorage(FTPStorage):
     def _connect(self):
         ftp_client = ftplib.FTP_TLS(timeout=DEFAULT_FTP_TIMEOUT)
         ftp_client.connect(self._hostname, port=self._port)
+        self._configure_keepalive(ftp_client)
         ftp_client.login(self._username, self._password)
         ftp_client.prot_p()
 
