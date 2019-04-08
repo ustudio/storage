@@ -1,0 +1,98 @@
+version: 2
+jobs:
+  test:
+    docker:
+      - image: circleci/python:2.7
+
+    working_directory: ~/repo
+
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "pyrax-requirements.txt" }}-{{ checksum "setup.py" }}-{{ checksum "requirements.txt" }}
+            - v1-dependencies-{{ checksum "pyrax-requirements.txt" }}-{{ checksum "setup.py" }}-
+            - v1-dependencies-{{ checksum "pyrax-requirements.txt" }}-
+            - v1-dependencies-
+
+      - run:
+          name: install dependencies
+          command: |
+            python -m venv ~/venv
+            . ~/venv/bin/activate
+            pip install -r requirements.txt
+            mkdir -p test-reports
+
+      - save_cache:
+          paths:
+            - ~/venv
+          key: v1-dependencies-{{ checksum "pyrax-requirements.txt" }}-{{ checksum "setup.py" }}-{{ checksum "requirements.txt" }}
+
+      - run:
+          name: Run Tests
+          command: |
+            . ~/venv/bin/activate
+            nosetests --verbose --with-xunit --xunit-file=test-reports/nosetests.xml tests
+
+      - run:
+          name: Run Integration Tests
+          command: |
+            . ~/venv/bin/activate
+            python integration-tests.py
+      - run:
+          name: Run Linter
+          command: |
+            . ~/venv/bin/activate
+            flake8
+
+      - store_artifacts:
+          path: test-reports
+
+      - store_test_results:
+          path: test-reports
+  publish:
+    docker:
+      - image: circleci/python:2.7
+    working_directory: ~/repo
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+          - v1-publish-dependencies-
+
+      - run:
+          name: install dependencies
+          command: |
+            python -m venv ~/venv
+            . ~/venv/bin/activate
+            pip install twine
+
+      - save_cache:
+          paths:
+            - ~/venv
+          key: v1-publish-dependencies-
+
+      - run:
+          name: Publish to PyPI
+          command: |
+            . ~/venv/bin/activate
+            ./publish_to_pypi.sh
+workflows:
+  version: 2
+  test-and-build:
+    jobs:
+      - test:
+          filters:
+            tags:
+              only: /.*/
+      - publish:
+          requires:
+            - test
+          filters:
+            tags:
+              only: /^v[0-9]+(\.[0-9]+)*.*/
+            branches:
+              ignore: /.*/
+          context: org-global
