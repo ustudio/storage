@@ -1,9 +1,9 @@
 mock
 nose
-enum34-1.1.6
-flake8-3.7.7
-functools32-3.2.3.post2
-mccabe-0.6.1
-pycodestyle-2.5.0
-pyflakes-2.1.1
-typing-3.6.6
+enum34==1.1.6
+flake8==3.7.7
+functools32==3.2.3.post2
+mccabe==0.6.1
+pycodestyle==2.5.0
+pyflakes==2.1.1
+typing==3.6.6
