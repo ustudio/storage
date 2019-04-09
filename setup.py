@@ -6,7 +6,8 @@ except ImportError:
 
 install_requires = [
     "boto3 >= 1.0.1",
-    "pyrax >= 1.9.2"
+    "pyrax >= 1.9.2",
+    "google-cloud-storage"
 ]
 
 setup(name="object_storage",
