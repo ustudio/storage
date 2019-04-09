@@ -3,6 +3,14 @@ jobs:
   test:
     docker:
       - image: circleci/python:2.7
+      - image: onjin/alpine-vsftpd:latest
+        environment:
+          PASSWORD: password
+        command: >
+          sh -c
+          "sed -i -e 's#/home/./files#/home/files/./#' /etc/passwd;
+          echo 'allow_writeable_chroot=YES' >> /etc/vsftpd/vsftpd.conf;
+          /docker-entrypoint.sh"
 
     working_directory: ~/repo
 
