@@ -2,8 +2,6 @@ storage
 =======
 
 [![build status](https://circleci.com/gh/ustudio/storage.png?circle-token=3b3e87d02777a6e2ef90bcb9651457a215b6d333)](https://circleci.com/gh/ustudio/storage)
-[![code coverage](https://codecov.io/gh/ustudio/storage/branch/master/graph/badge.svg)](https://codecov.io/gh/ustudio/storage)
-
 
 Python library for accessing files over various file transfer protocols.
 
