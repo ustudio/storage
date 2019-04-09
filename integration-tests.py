@@ -6,6 +6,10 @@ import shutil
 import tempfile
 import time
 import unittest
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
 
 from storage import get_storage
 
@@ -39,7 +43,10 @@ class IntegrationTests(unittest.TestCase):
         if not uri:
             raise unittest.SkipTest("Skipping {} - define {} to test".format(transport, variable))
 
-        print("Testing using:", uri)
+        parsed_url = urlparse(uri)
+        print(
+            "Testing using:", parsed_url.scheme, parsed_url.hostname, parsed_url.port,
+            parsed_url.path)
         storage = get_storage(uri)
 
         print("Transport:", transport)
@@ -51,21 +58,22 @@ class IntegrationTests(unittest.TestCase):
         print("\t* Downloading")
         storage.save_to_directory(target_directory)
 
-        with open(os.devnull, 'w') as devnull:
-            print("\t* Checking")
-            child = subprocess.Popen(
-                ["diff", "-r", self.directory, target_directory], stderr=devnull, stdout=devnull)
+        print("\t* Checking")
+        try:
+            subprocess.check_output(
+                ["diff", "-r", self.directory, target_directory], stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as error:
+            print("Diff output:\n{}".format(error.output))
+            raise
 
-            self.assertEqual(0, child.wait())
-
-    def test_file_transport(self):
+    def test_file_transport_can_upload_and_download_directories(self):
         self.assert_transport_handles_directories("FILE")
 
-    def test_ftp_transport(self):
+    def test_ftp_transport_can_upload_and_download_directories(self):
         self.assert_transport_handles_directories("FTP")
 
-    def test_s3_transport(self):
+    def test_s3_transport_can_upload_and_download_directories(self):
         self.assert_transport_handles_directories("S3")
 
-    def test_swift_transport(self):
+    def test_swift_transport_can_upload_and_download_directories(self):
         self.assert_transport_handles_directories("SWIFT")
