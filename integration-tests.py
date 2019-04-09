@@ -1,8 +1,10 @@
 from __future__ import print_function
 
 import os
+import random
 import subprocess
 import shutil
+import string
 import tempfile
 import time
 import unittest
@@ -17,18 +19,24 @@ from storage import get_storage
 class IntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.directory = tempfile.mkdtemp()
+        cls.dest_prefix = "".join([random.choice(string.letters) for i in range(16)])
+        cls.directory = tempfile.mkdtemp(prefix="source-root")
         contents = "storage-test-{}".format(time.time()).encode("utf8")
 
         for i in range(3):
-            tempfile.mkstemp(dir=tempfile.mkdtemp(dir=cls.directory))
+            tempfile.mkstemp(
+                prefix="source-empty",
+                dir=tempfile.mkdtemp(prefix="source-emptyfiledir", dir=cls.directory))
 
             handle, _ = tempfile.mkstemp(
-                prefix="spaces rock", dir=tempfile.mkdtemp(dir=cls.directory))
+                prefix="spaces rock",
+                dir=tempfile.mkdtemp(prefix="source-spacedir", dir=cls.directory))
             os.write(handle, contents)
             os.close(handle)
 
-            handle, _ = tempfile.mkstemp(dir=tempfile.mkdtemp(dir=cls.directory))
+            handle, _ = tempfile.mkstemp(
+                prefix="source-contentfile",
+                dir=tempfile.mkdtemp(prefix="source-contentdir", dir=cls.directory))
             os.write(handle, contents)
             os.close(handle)
 
@@ -43,6 +51,7 @@ class IntegrationTests(unittest.TestCase):
         if not uri:
             raise unittest.SkipTest("Skipping {} - define {} to test".format(transport, variable))
 
+        uri += "/{}".format(self.dest_prefix)
         parsed_url = urlparse(uri)
         print(
             "Testing using:", parsed_url.scheme, parsed_url.hostname, parsed_url.port,
@@ -53,7 +62,7 @@ class IntegrationTests(unittest.TestCase):
         print("\t* Uploading")
         storage.load_from_directory(self.directory)
 
-        target_directory = tempfile.mkdtemp()
+        target_directory = tempfile.mkdtemp(prefix="dest-root")
 
         print("\t* Downloading")
         storage.save_to_directory(target_directory)
