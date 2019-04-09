@@ -1,62 +1,71 @@
+from __future__ import print_function
+
 import os
 import subprocess
+import shutil
 import tempfile
 import time
+import unittest
 
-import storage as storagelib
-
-TRANSPORTS = [
-    "FILE",
-    "FTP",
-    "S3",
-    "SWIFT",
-]
+from storage import get_storage
 
 
-def test_transport(transport, uri, source_directory):
-    storage = storagelib.get_storage(uri)
+class IntegrationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.directory = tempfile.mkdtemp()
+        contents = "storage-test-{}".format(time.time()).encode("utf8")
 
-    print "Transport:", transport
-    print "\t* Uploading"
-    storage.load_from_directory(source_directory)
+        for i in range(3):
+            tempfile.mkstemp(dir=tempfile.mkdtemp(dir=cls.directory))
 
-    target_directory = tempfile.mkdtemp()
+            handle, _ = tempfile.mkstemp(
+                prefix="spaces rock", dir=tempfile.mkdtemp(dir=cls.directory))
+            os.write(handle, contents)
+            os.close(handle)
 
-    print "\t* Downloading"
-    storage.save_to_directory(target_directory)
+            handle, _ = tempfile.mkstemp(dir=tempfile.mkdtemp(dir=cls.directory))
+            os.write(handle, contents)
+            os.close(handle)
 
-    with open(os.devnull, 'w') as devnull:
-        print "\t* Checking"
-        child = subprocess.Popen(
-            ["diff", "-r", source_directory, target_directory], stderr=devnull, stdout=devnull)
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.directory)
 
-        return child.wait()
-
-
-if __name__ == '__main__':
-    directory = tempfile.mkdtemp()
-    contents = "storage-test-{}".format(time.time())
-
-    for i in xrange(3):
-        tempfile.mkstemp(dir=tempfile.mkdtemp(dir=directory))
-
-        handle, _ = tempfile.mkstemp(prefix="spaces rock", dir=tempfile.mkdtemp(dir=directory))
-        os.write(handle, contents)
-        os.close(handle)
-
-        handle, _ = tempfile.mkstemp(dir=tempfile.mkdtemp(dir=directory))
-        os.write(handle, contents)
-        os.close(handle)
-
-    for transport in TRANSPORTS:
+    def assert_transport_handles_directories(self, transport):
         variable = "TEST_STORAGE_{}_URI".format(transport)
         uri = os.getenv(variable, None)
 
         if not uri:
-            print "Skipping {} - define {} to test".format(transport, variable)
-            continue
+            raise unittest.SkipTest("Skipping {} - define {} to test".format(transport, variable))
 
-        exit_code = test_transport(transport, uri, directory)
-        status = "PASSED" if exit_code == 0 else "FAILED ({})".format(exit_code)
+        print("Testing using:", uri)
+        storage = get_storage(uri)
 
-        print "{0}: {1}".format(transport, status)
+        print("Transport:", transport)
+        print("\t* Uploading")
+        storage.load_from_directory(self.directory)
+
+        target_directory = tempfile.mkdtemp()
+
+        print("\t* Downloading")
+        storage.save_to_directory(target_directory)
+
+        with open(os.devnull, 'w') as devnull:
+            print("\t* Checking")
+            child = subprocess.Popen(
+                ["diff", "-r", self.directory, target_directory], stderr=devnull, stdout=devnull)
+
+            self.assertEqual(0, child.wait())
+
+    def test_file_transport(self):
+        self.assert_transport_handles_directories("FILE")
+
+    def test_ftp_transport(self):
+        self.assert_transport_handles_directories("FTP")
+
+    def test_s3_transport(self):
+        self.assert_transport_handles_directories("S3")
+
+    def test_swift_transport(self):
+        self.assert_transport_handles_directories("SWIFT")

@@ -35,13 +35,8 @@ jobs:
           name: Run Tests
           command: |
             . ~/venv/bin/activate
-            nosetests --verbose --with-xunit --xunit-file=test-reports/nosetests.xml tests
+            nosetests --verbose --with-xunit --xunit-file=test-reports/nosetests.xml
 
-      - run:
-          name: Run Integration Tests
-          command: |
-            . ~/venv/bin/activate
-            python integration-tests.py
       - run:
           name: Run Linter
           command: |
