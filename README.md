@@ -13,7 +13,7 @@ Install via pip:
 pip install object_storage
 ```
 
-The current version is `0.11.0`.
+The current version is `0.12.0`.
 
 ## Quick Start ##
 
@@ -277,6 +277,20 @@ ftps://username:password@my-secure-ftp-server/directory/awesome-file.txt[?downlo
 **Note** The FTP_TLS connection will have a default timeout and TCP
  keepalive specified in the same manner as the `ftp` protocol (see
  above).
+
+#### Google Cloud Storage ####
+
+A reference to an object in a Google Cloud Storage bucket. The `gs` scheme can
+be used when storing files using the Google Cloud Storage service.
+
+Example:
+
+```
+gs://SERVICE-ACCOUNT-DATA@bucket/path/to/file
+```
+
+Note that the `SERVICE-ACCOUNT-DATA` should be a URL-safe base64 encoding of
+the JSON key for the service account to be used when accessing the storage.
 
 ### retry ###
 
