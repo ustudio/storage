@@ -51,7 +51,7 @@ class GoogleStorage(Storage):
 
         prefix = self._parsed_storage_uri.path[1:] + "/"
         for blob in bucket.list_blobs(prefix=prefix):
-            relative_path = blob.path.replace(prefix, "", 1)
+            relative_path = blob.name.replace(prefix, "", 1)
             local_file_path = os.path.join(directory_path, relative_path)
             local_directory = os.path.dirname(local_file_path)
 
