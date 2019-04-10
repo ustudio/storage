@@ -30,13 +30,16 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket = self.mock_client.get_bucket.return_value
         self.mock_blob = self.mock_bucket.blob.return_value
 
+    def assert_gets_bucket_with_credentials(self):
+        self.mock_from_service_account_info.assert_called_once_with({"SOME": "CREDENTIALS"})
+        self.mock_client_class.assert_called_once_with(credentials=self.mock_credentials)
+        self.mock_client.get_bucket.assert_called_once_with("bucketname")
+
     def test_save_to_filename_downloads_blob_to_file_location(self):
         self.storage.save_to_filename("SOME-FILE")
 
-        self.mock_from_service_account_info.assert_called_once_with({"SOME": "CREDENTIALS"})
+        self.assert_gets_bucket_with_credentials()
 
-        self.mock_client_class.assert_called_once_with(credentials=self.mock_credentials)
-        self.mock_client.get_bucket.assert_called_once_with("bucketname")
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.download_to_filename.assert_called_once_with("SOME-FILE")
 
@@ -45,20 +48,16 @@ class TestGoogleStorage(TestCase):
 
         self.storage.save_to_file(mock_file)
 
-        self.mock_from_service_account_info.assert_called_once_with({"SOME": "CREDENTIALS"})
+        self.assert_gets_bucket_with_credentials()
 
-        self.mock_client_class.assert_called_once_with(credentials=self.mock_credentials)
-        self.mock_client.get_bucket.assert_called_once_with("bucketname")
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.download_to_file.assert_called_once_with(mock_file)
 
     def test_load_from_filename_uploads_blob_from_file_location(self):
         self.storage.load_from_filename("SOME-FILE")
 
-        self.mock_from_service_account_info.assert_called_once_with({"SOME": "CREDENTIALS"})
+        self.assert_gets_bucket_with_credentials()
 
-        self.mock_client_class.assert_called_once_with(credentials=self.mock_credentials)
-        self.mock_client.get_bucket.assert_called_once_with("bucketname")
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.upload_from_filename.assert_called_once_with("SOME-FILE")
 
@@ -67,20 +66,16 @@ class TestGoogleStorage(TestCase):
 
         self.storage.load_from_file(mock_file)
 
-        self.mock_from_service_account_info.assert_called_once_with({"SOME": "CREDENTIALS"})
+        self.assert_gets_bucket_with_credentials()
 
-        self.mock_client_class.assert_called_once_with(credentials=self.mock_credentials)
-        self.mock_client.get_bucket.assert_called_once_with("bucketname")
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.upload_from_file.assert_called_once_with(mock_file)
 
     def test_delete_deletes_blob(self):
         self.storage.delete()
 
-        self.mock_from_service_account_info.assert_called_once_with({"SOME": "CREDENTIALS"})
+        self.assert_gets_bucket_with_credentials()
 
-        self.mock_client_class.assert_called_once_with(credentials=self.mock_credentials)
-        self.mock_client.get_bucket.assert_called_once_with("bucketname")
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.delete.assert_called_once_with()
 
@@ -91,10 +86,8 @@ class TestGoogleStorage(TestCase):
 
         self.assertEqual(mock_signed_url, result)
 
-        self.mock_from_service_account_info.assert_called_once_with({"SOME": "CREDENTIALS"})
+        self.assert_gets_bucket_with_credentials()
 
-        self.mock_client_class.assert_called_once_with(credentials=self.mock_credentials)
-        self.mock_client.get_bucket.assert_called_once_with("bucketname")
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=60))
 
@@ -128,10 +121,8 @@ class TestGoogleStorage(TestCase):
 
         self.storage.save_to_directory("directory-name")
 
-        self.mock_from_service_account_info.assert_called_once_with({"SOME": "CREDENTIALS"})
+        self.assert_gets_bucket_with_credentials()
 
-        self.mock_client_class.assert_called_once_with(credentials=self.mock_credentials)
-        self.mock_client.get_bucket.assert_called_once_with("bucketname")
         self.mock_bucket.list_blobs.assert_called_once_with(prefix="path/filename/")
 
         mock_blobs[0].download_to_filename.assert_called_once_with("directory-name/file1")
