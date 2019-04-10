@@ -12,7 +12,10 @@ class TestGoogleStorage(TestCase):
     def setUp(self):
         super(TestGoogleStorage, self).setUp()
 
-        credentials = base64.urlsafe_b64encode(json.dumps({"SOME": "CREDENTIALS"}))
+        credentials = base64.urlsafe_b64encode(json.dumps({
+            "SOME": "CREDENTIALS",
+            "project_id": "PROJECT-ID"
+        }))
 
         self.storage = get_storage("gs://{}@bucketname/path/filename".format(credentials))
 
@@ -31,8 +34,10 @@ class TestGoogleStorage(TestCase):
         self.mock_blob = self.mock_bucket.blob.return_value
 
     def assert_gets_bucket_with_credentials(self):
-        self.mock_from_service_account_info.assert_called_once_with({"SOME": "CREDENTIALS"})
-        self.mock_client_class.assert_called_once_with(credentials=self.mock_credentials)
+        self.mock_from_service_account_info.assert_called_once_with(
+            {"SOME": "CREDENTIALS", "project_id": "PROJECT-ID"})
+        self.mock_client_class.assert_called_once_with(
+            project="PROJECT-ID", credentials=self.mock_credentials)
         self.mock_client.get_bucket.assert_called_once_with("bucketname")
 
     def test_save_to_filename_downloads_blob_to_file_location(self):
