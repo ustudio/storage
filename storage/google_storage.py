@@ -58,4 +58,5 @@ class GoogleStorage(Storage):
             if not os.path.exists(local_directory):
                 os.makedirs(local_directory)
 
-            retry.attempt(blob.download_to_filename, local_file_path)
+            if not relative_path[-1] == "/":
+                retry.attempt(blob.download_to_filename, local_file_path)

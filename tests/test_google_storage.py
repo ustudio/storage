@@ -108,16 +108,22 @@ class TestGoogleStorage(TestCase):
 
         self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=60))
 
+    def _mock_blob(self, name):
+        blob = mock.Mock()
+        blob.name = name
+        return blob
+
     @mock.patch("os.path.exists")
     @mock.patch("os.makedirs")
     def test_save_to_directory_downloads_blobs_matching_prefix_to_directory_location(
             self, mock_makedirs, mock_exists):
         mock_exists.side_effect = [True, False, False]
 
-        mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock()]
-        mock_blobs[0].name = "path/filename/file1"
-        mock_blobs[1].name = "path/filename/subdir1/subdir2/file2"
-        mock_blobs[2].name = "path/filename/subdir3/path/filename/file3"
+        mock_blobs = [
+            self._mock_blob("path/filename/file1"),
+            self._mock_blob("path/filename/subdir1/subdir2/file2"),
+            self._mock_blob("path/filename/subdir3/path/filename/file3")
+        ]
         self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
 
         self.storage.save_to_directory("directory-name")
@@ -150,16 +156,56 @@ class TestGoogleStorage(TestCase):
             mock_makedirs.call_args_list)
 
     @mock.patch("os.path.exists")
+    @mock.patch("os.makedirs")
+    def test_save_to_directory_ignores_placeholder_directory_entries_when_present(
+            self, mock_makedirs, mock_exists):
+        mock_exists.side_effect = [False, True, False, False]
+
+        mock_blobs = [
+            self._mock_blob("path/filename/dir/"),
+            self._mock_blob("path/filename/dir/file.txt"),
+            self._mock_blob("path/filename/dir/emptysubdir/"),
+            self._mock_blob("path/filename/emptydir/")
+        ]
+        self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
+
+        self.storage.save_to_directory("directory-name")
+
+        self.assertEqual(0, mock_blobs[0].download_to_filename.call_count)
+        mock_blobs[1].download_to_filename.assert_called_once_with(
+            "directory-name/dir/file.txt")
+        self.assertEqual(0, mock_blobs[2].download_to_filename.call_count)
+        self.assertEqual(0, mock_blobs[3].download_to_filename.call_count)
+
+        self.assertEqual(
+            [
+                mock.call("directory-name/dir"),
+                mock.call("directory-name/dir"),
+                mock.call("directory-name/dir/emptysubdir"),
+                mock.call("directory-name/emptydir")
+            ],
+            mock_exists.call_args_list)
+
+        self.assertEqual(
+            [
+                mock.call("directory-name/dir"),
+                mock.call("directory-name/dir/emptysubdir"),
+                mock.call("directory-name/emptydir")
+            ],
+            mock_makedirs.call_args_list)
+
+    @mock.patch("os.path.exists")
     @mock.patch("random.uniform")
     @mock.patch("time.sleep")
     def test_save_to_directory_retries_file_download_on_error(
             self, mock_sleep, mock_uniform, mock_exists):
         mock_exists.return_value = True
 
-        mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock()]
-        mock_blobs[0].name = "path/filename/file1"
-        mock_blobs[1].name = "path/filename/subdir1/subdir2/file2"
-        mock_blobs[2].name = "path/filename/subdir3/path/filename/file3"
+        mock_blobs = [
+            self._mock_blob("path/filename/file1"),
+            self._mock_blob("path/filename/subdir1/subdir2/file2"),
+            self._mock_blob("path/filename/subdir3/path/filename/file3")
+        ]
         mock_blobs[1].download_to_filename.side_effect = [Exception, None]
         self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
 
@@ -186,10 +232,11 @@ class TestGoogleStorage(TestCase):
         mock_uniform.side_effect = mock_uniform_results
         mock_exists.return_value = True
 
-        mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock()]
-        mock_blobs[0].name = "path/filename/file1"
-        mock_blobs[1].name = "path/filename/subdir1/subdir2/file2"
-        mock_blobs[2].name = "path/filename/subdir3/path/filename/file3"
+        mock_blobs = [
+            self._mock_blob("path/filename/file1"),
+            self._mock_blob("path/filename/subdir1/subdir2/file2"),
+            self._mock_blob("path/filename/subdir3/path/filename/file3")
+        ]
         mock_blobs[1].download_to_filename.side_effect = Exception
         self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
 
