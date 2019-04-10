@@ -72,3 +72,9 @@ class GoogleStorage(Storage):
             for filename in files:
                 blob = bucket.blob("/".join([remote_path, filename]))
                 retry.attempt(blob.upload_from_filename, os.path.join(root, filename))
+
+    def delete_directory(self):
+        bucket = self._get_bucket()
+
+        for blob in bucket.list_blobs(self._parsed_storage_uri.path[1:] + "/"):
+            blob.delete()

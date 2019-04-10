@@ -361,3 +361,17 @@ class TestGoogleStorage(TestCase):
         mock_blobs[1].upload_from_filename.assert_called_with("/dir/file2")
 
         self.assertEqual(0, mock_blobs[2].upload_from_filename.call_count)
+
+    def test_delete_directory_deletes_blobs_with_prefix(self):
+        mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock()]
+        self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
+
+        self.storage.delete_directory()
+
+        self.assert_gets_bucket_with_credentials()
+
+        self.mock_bucket.list_blobs.assert_called_once_with("path/filename/")
+
+        mock_blobs[0].delete.assert_called_once_with()
+        mock_blobs[1].delete.assert_called_once_with()
+        mock_blobs[2].delete.assert_called_once_with()
