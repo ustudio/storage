@@ -107,3 +107,115 @@ class TestGoogleStorage(TestCase):
         self.storage.get_download_url(key="KEY")
 
         self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=60))
+
+    @mock.patch("os.path.exists")
+    @mock.patch("os.makedirs")
+    def test_save_to_directory_downloads_blobs_matching_prefix_to_directory_location(
+            self, mock_makedirs, mock_exists):
+        mock_exists.side_effect = [True, False, False]
+
+        mock_blobs = [
+            mock.Mock(path="path/filename/file1"),
+            mock.Mock(path="path/filename/subdir1/subdir2/file2"),
+            mock.Mock(path="path/filename/subdir3/path/filename/file3")
+        ]
+        self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
+
+        self.storage.save_to_directory("directory-name")
+
+        self.mock_from_service_account_info.assert_called_once_with({"SOME": "CREDENTIALS"})
+
+        self.mock_client_class.assert_called_once_with(credentials=self.mock_credentials)
+        self.mock_client.get_bucket.assert_called_once_with("bucketname")
+        self.mock_bucket.list_blobs.assert_called_once_with(prefix="path/filename/")
+
+        mock_blobs[0].download_to_filename.assert_called_once_with("directory-name/file1")
+        mock_blobs[1].download_to_filename.assert_called_once_with(
+            "directory-name/subdir1/subdir2/file2")
+        mock_blobs[2].download_to_filename.assert_called_once_with(
+            "directory-name/subdir3/path/filename/file3")
+
+        self.assertEqual(
+            [
+                mock.call("directory-name"),
+                mock.call("directory-name/subdir1/subdir2"),
+                mock.call("directory-name/subdir3/path/filename")
+            ],
+            mock_exists.call_args_list)
+
+        self.assertEqual(
+            [
+                mock.call("directory-name/subdir1/subdir2"),
+                mock.call("directory-name/subdir3/path/filename")
+            ],
+            mock_makedirs.call_args_list)
+
+    @mock.patch("os.path.exists")
+    @mock.patch("random.uniform")
+    @mock.patch("time.sleep")
+    def test_save_to_directory_retries_file_download_on_error(
+            self, mock_sleep, mock_uniform, mock_exists):
+        mock_exists.return_value = True
+
+        mock_blobs = [
+            mock.Mock(path="path/filename/file1"),
+            mock.Mock(path="path/filename/subdir1/subdir2/file2"),
+            mock.Mock(path="path/filename/subdir3/path/filename/file3")
+        ]
+        mock_blobs[1].download_to_filename.side_effect = [Exception, None]
+        self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
+
+        self.storage.save_to_directory("directory-name")
+
+        mock_blobs[0].download_to_filename.assert_called_once_with("directory-name/file1")
+
+        self.assertEqual(2, mock_blobs[1].download_to_filename.call_count)
+        mock_blobs[1].download_to_filename.assert_called_with(
+            "directory-name/subdir1/subdir2/file2")
+
+        mock_blobs[2].download_to_filename.assert_called_once_with(
+            "directory-name/subdir3/path/filename/file3")
+
+        mock_uniform.assert_called_once_with(0, 1)
+        mock_sleep.assert_called_once_with(mock_uniform.return_value)
+
+    @mock.patch("os.path.exists")
+    @mock.patch("random.uniform")
+    @mock.patch("time.sleep")
+    def test_save_to_directory_fails_after_five_unsuccessful_download_attempts(
+            self, mock_sleep, mock_uniform, mock_exists):
+        mock_uniform_results = [mock.Mock() for i in range(4)]
+        mock_uniform.side_effect = mock_uniform_results
+        mock_exists.return_value = True
+
+        mock_blobs = [
+            mock.Mock(path="path/filename/file1"),
+            mock.Mock(path="path/filename/subdir1/subdir2/file2"),
+            mock.Mock(path="path/filename/subdir3/path/filename/file3")
+        ]
+        mock_blobs[1].download_to_filename.side_effect = Exception
+        self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
+
+        with self.assertRaises(Exception):
+            self.storage.save_to_directory("directory-name")
+
+        mock_blobs[0].download_to_filename.assert_called_once_with("directory-name/file1")
+
+        self.assertEqual(5, mock_blobs[1].download_to_filename.call_count)
+        mock_blobs[1].download_to_filename.assert_called_with(
+            "directory-name/subdir1/subdir2/file2")
+
+        self.assertEqual(0, mock_blobs[2].download_to_filename.call_count)
+
+        mock_uniform.assert_has_calls([
+            mock.call(0, 1),
+            mock.call(0, 3),
+            mock.call(0, 7),
+            mock.call(0, 15)
+        ])
+        mock_sleep.assert_has_calls([
+            mock.call(mock_uniform_results[0]),
+            mock.call(mock_uniform_results[1]),
+            mock.call(mock_uniform_results[2]),
+            mock.call(mock_uniform_results[3])
+        ])
