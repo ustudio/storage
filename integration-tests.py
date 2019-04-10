@@ -86,3 +86,6 @@ class IntegrationTests(unittest.TestCase):
 
     def test_swift_transport_can_upload_and_download_directories(self):
         self.assert_transport_handles_directories("SWIFT")
+
+    def test_gs_transport_can_upload_and_download_directories(self):
+        self.assert_transport_handles_directories("GS")
