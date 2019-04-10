@@ -60,3 +60,15 @@ class GoogleStorage(Storage):
 
             if not relative_path[-1] == "/":
                 retry.attempt(blob.download_to_filename, local_file_path)
+
+    def load_from_directory(self, directory_path):
+        bucket = self._get_bucket()
+
+        prefix = self._parsed_storage_uri.path[1:]
+
+        for root, _, files in os.walk(directory_path):
+            remote_path = root.replace(directory_path, prefix, 1)
+
+            for filename in files:
+                blob = bucket.blob("/".join([remote_path, filename]))
+                retry.attempt(blob.upload_from_filename, os.path.join(root, filename))

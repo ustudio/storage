@@ -254,3 +254,110 @@ class TestGoogleStorage(TestCase):
             mock.call(mock_uniform_results[2]),
             mock.call(mock_uniform_results[3])
         ])
+
+    @mock.patch("os.walk")
+    def test_load_from_directory_uploads_files_to_bucket_with_prefix(self, mock_walk):
+        mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock(), mock.Mock()]
+        self.mock_bucket.blob.side_effect = mock_blobs
+
+        mock_walk.return_value = [
+            ("/path/to/directory-name", ["subdir", "emptysubdir"], ["root1"]),
+            ("/path/to/directory-name/subdir", ["nesteddir"], ["sub1", "sub2"]),
+            ("/path/to/directory-name/subdir/nesteddir", [], ["nested1"]),
+            ("/path/to/directory-name/emptysubdir", [], [])
+        ]
+
+        self.storage.load_from_directory("/path/to/directory-name")
+
+        self.assert_gets_bucket_with_credentials()
+
+        mock_walk.assert_called_once_with("/path/to/directory-name")
+
+        self.mock_bucket.blob.assert_has_calls([
+            mock.call("path/filename/root1"),
+            mock.call("path/filename/subdir/sub1"),
+            mock.call("path/filename/subdir/sub2"),
+            mock.call("path/filename/subdir/nesteddir/nested1")
+        ])
+
+        mock_blobs[0].upload_from_filename.assert_called_once_with("/path/to/directory-name/root1")
+        mock_blobs[1].upload_from_filename.assert_called_once_with(
+            "/path/to/directory-name/subdir/sub1")
+        mock_blobs[2].upload_from_filename.assert_called_once_with(
+            "/path/to/directory-name/subdir/sub2")
+        mock_blobs[3].upload_from_filename.assert_called_once_with(
+            "/path/to/directory-name/subdir/nesteddir/nested1")
+
+    @mock.patch("os.walk")
+    def test_load_from_directory_handles_repeated_directory_structure(self, mock_walk):
+        mock_blobs = [mock.Mock(), mock.Mock()]
+        self.mock_bucket.blob.side_effect = mock_blobs
+
+        mock_walk.return_value = [
+            ("dir/name", ["dir"], []),
+            ("dir/name/dir", ["name"], []),
+            ("dir/name/dir/name", ["foo"], ["file1"]),
+            ("dir/name/dir/name/foo", [], ["file2"])
+        ]
+
+        self.storage.load_from_directory("dir/name")
+
+        self.assert_gets_bucket_with_credentials()
+
+        mock_walk.assert_called_once_with("dir/name")
+
+        self.mock_bucket.blob.assert_has_calls([
+            mock.call("path/filename/dir/name/file1"),
+            mock.call("path/filename/dir/name/foo/file2")
+        ])
+
+        mock_blobs[0].upload_from_filename.assert_called_once_with("dir/name/dir/name/file1")
+        mock_blobs[1].upload_from_filename.assert_called_once_with("dir/name/dir/name/foo/file2")
+
+    @mock.patch("os.walk")
+    @mock.patch("time.sleep")
+    def test_load_from_directory_retries_file_upload_on_error(self, mock_sleep, mock_walk):
+        mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock()]
+        mock_blobs[1].upload_from_filename.side_effect = [Exception, None]
+        self.mock_bucket.blob.side_effect = mock_blobs
+
+        mock_walk.return_value = [
+            ("/dir", [], ["file1", "file2", "file3"])
+        ]
+
+        self.storage.load_from_directory("/dir")
+
+        self.mock_bucket.blob.assert_has_calls([
+            mock.call("path/filename/file1"),
+            mock.call("path/filename/file2"),
+            mock.call("path/filename/file3")
+        ])
+
+        mock_blobs[0].upload_from_filename.assert_called_once_with("/dir/file1")
+
+        self.assertEqual(2, mock_blobs[1].upload_from_filename.call_count)
+        mock_blobs[1].upload_from_filename.assert_called_with("/dir/file2")
+
+        mock_blobs[2].upload_from_filename.assert_called_once_with("/dir/file3")
+
+    @mock.patch("os.walk")
+    @mock.patch("time.sleep")
+    def test_load_from_directory_fails_after_five_unsuccessful_upload_attempts(
+            self, mock_sleep, mock_walk):
+        mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock()]
+        mock_blobs[1].upload_from_filename.side_effect = Exception
+        self.mock_bucket.blob.side_effect = mock_blobs
+
+        mock_walk.return_value = [
+            ("/dir", [], ["file1", "file2", "file3"])
+        ]
+
+        with self.assertRaises(Exception):
+            self.storage.load_from_directory("/dir")
+
+        mock_blobs[0].upload_from_filename.assert_called_once_with("/dir/file1")
+
+        self.assertEqual(5, mock_blobs[1].upload_from_filename.call_count)
+        mock_blobs[1].upload_from_filename.assert_called_with("/dir/file2")
+
+        self.assertEqual(0, mock_blobs[2].upload_from_filename.call_count)
