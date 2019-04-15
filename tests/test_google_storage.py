@@ -412,3 +412,13 @@ class TestGoogleStorage(TestCase):
         mock_blobs[0].delete.assert_called_once_with()
         mock_blobs[1].delete.assert_called_once_with()
         mock_blobs[2].delete.assert_called_once_with()
+
+    def test_storage_uris_can_be_unicode(self):
+        storage = get_storage(u"gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.save_to_filename("SOME-FILE")
+
+        self.assert_gets_bucket_with_credentials()
+
+        self.mock_bucket.blob.assert_called_once_with("path/filename")
+        self.mock_blob.download_to_filename.assert_called_once_with("SOME-FILE")
