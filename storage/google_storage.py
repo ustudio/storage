@@ -13,7 +13,8 @@ from .storage import Storage, register_storage_protocol
 @register_storage_protocol("gs")
 class GoogleStorage(Storage):
     def _get_bucket(self):
-        credentials_data = json.loads(base64.urlsafe_b64decode(self._parsed_storage_uri.username))
+        credentials_data = json.loads(base64.urlsafe_b64decode(
+            self._parsed_storage_uri.username.encode("utf8")))
         credentials = google.oauth2.service_account.Credentials.from_service_account_info(
             credentials_data)
         client = google.cloud.storage.client.Client(

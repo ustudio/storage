@@ -243,3 +243,11 @@ class CloudFilesStorage(SwiftStorage):
         context = timeout(DEFAULT_SWIFT_TIMEOUT, create_cloudfiles_context_and_authenticate)
         self._cloudfiles = context.get_client("cloudfiles", region, public=public)
         self._cloudfiles.timeout = DEFAULT_SWIFT_TIMEOUT
+
+        if self.download_url_key is None:
+            temp_url_keys = filter(
+                lambda (k, v): k.lower() == "temp_url_key",
+                self._cloudfiles.get_account_metadata().items())
+
+            if len(temp_url_keys) > 0:
+                self.download_url_key = temp_url_keys[0][1]

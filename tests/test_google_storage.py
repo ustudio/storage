@@ -12,12 +12,10 @@ class TestGoogleStorage(TestCase):
     def setUp(self):
         super(TestGoogleStorage, self).setUp()
 
-        credentials = base64.urlsafe_b64encode(json.dumps({
+        self.credentials = base64.urlsafe_b64encode(json.dumps({
             "SOME": "CREDENTIALS",
             "project_id": "PROJECT-ID"
         }))
-
-        self.storage = get_storage("gs://{}@bucketname/path/filename".format(credentials))
 
         service_account_patcher = mock.patch(
             "google.oauth2.service_account.Credentials.from_service_account_info")
@@ -41,7 +39,9 @@ class TestGoogleStorage(TestCase):
         self.mock_client.get_bucket.assert_called_once_with("bucketname")
 
     def test_save_to_filename_downloads_blob_to_file_location(self):
-        self.storage.save_to_filename("SOME-FILE")
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.save_to_filename("SOME-FILE")
 
         self.assert_gets_bucket_with_credentials()
 
@@ -51,7 +51,9 @@ class TestGoogleStorage(TestCase):
     def test_save_to_file_downloads_blob_to_file_object(self):
         mock_file = mock.Mock()
 
-        self.storage.save_to_file(mock_file)
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.save_to_file(mock_file)
 
         self.assert_gets_bucket_with_credentials()
 
@@ -59,7 +61,9 @@ class TestGoogleStorage(TestCase):
         self.mock_blob.download_to_file.assert_called_once_with(mock_file)
 
     def test_load_from_filename_uploads_blob_from_file_location(self):
-        self.storage.load_from_filename("SOME-FILE")
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.load_from_filename("SOME-FILE")
 
         self.assert_gets_bucket_with_credentials()
 
@@ -69,7 +73,9 @@ class TestGoogleStorage(TestCase):
     def test_load_from_file_uploads_blob_from_file_object(self):
         mock_file = mock.Mock()
 
-        self.storage.load_from_file(mock_file)
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.load_from_file(mock_file)
 
         self.assert_gets_bucket_with_credentials()
 
@@ -77,7 +83,9 @@ class TestGoogleStorage(TestCase):
         self.mock_blob.upload_from_file.assert_called_once_with(mock_file)
 
     def test_delete_deletes_blob(self):
-        self.storage.delete()
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.delete()
 
         self.assert_gets_bucket_with_credentials()
 
@@ -87,7 +95,9 @@ class TestGoogleStorage(TestCase):
     def test_get_download_url_returns_signed_url_with_default_expiration(self):
         mock_signed_url = self.mock_blob.generate_signed_url.return_value
 
-        result = self.storage.get_download_url()
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        result = storage.get_download_url()
 
         self.assertEqual(mock_signed_url, result)
 
@@ -97,12 +107,16 @@ class TestGoogleStorage(TestCase):
         self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=60))
 
     def test_get_download_url_returns_signed_url_with_provided_expiration(self):
-        self.storage.get_download_url(1000)
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.get_download_url(1000)
 
         self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=1000))
 
     def test_get_download_url_does_not_use_key_when_provided(self):
-        self.storage.get_download_url(key="KEY")
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.get_download_url(key="KEY")
 
         self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=60))
 
@@ -124,7 +138,9 @@ class TestGoogleStorage(TestCase):
         ]
         self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
 
-        self.storage.save_to_directory("directory-name")
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.save_to_directory("directory-name")
 
         self.assert_gets_bucket_with_credentials()
 
@@ -165,7 +181,9 @@ class TestGoogleStorage(TestCase):
         ]
         self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
 
-        self.storage.save_to_directory("directory-name")
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.save_to_directory("directory-name")
 
         self.assertEqual(0, mock_blobs[0].download_to_filename.call_count)
         mock_blobs[1].download_to_filename.assert_called_once_with(
@@ -205,7 +223,9 @@ class TestGoogleStorage(TestCase):
         mock_blobs[1].download_to_filename.side_effect = [Exception, None]
         self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
 
-        self.storage.save_to_directory("directory-name")
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.save_to_directory("directory-name")
 
         mock_blobs[0].download_to_filename.assert_called_once_with("directory-name/file1")
 
@@ -236,8 +256,10 @@ class TestGoogleStorage(TestCase):
         mock_blobs[1].download_to_filename.side_effect = Exception
         self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
 
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
         with self.assertRaises(Exception):
-            self.storage.save_to_directory("directory-name")
+            storage.save_to_directory("directory-name")
 
         mock_blobs[0].download_to_filename.assert_called_once_with("directory-name/file1")
 
@@ -272,7 +294,9 @@ class TestGoogleStorage(TestCase):
             ("/path/to/directory-name/emptysubdir", [], [])
         ]
 
-        self.storage.load_from_directory("/path/to/directory-name")
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.load_from_directory("/path/to/directory-name")
 
         self.assert_gets_bucket_with_credentials()
 
@@ -305,7 +329,9 @@ class TestGoogleStorage(TestCase):
             ("dir/name/dir/name/foo", [], ["file2"])
         ]
 
-        self.storage.load_from_directory("dir/name")
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.load_from_directory("dir/name")
 
         self.assert_gets_bucket_with_credentials()
 
@@ -330,7 +356,9 @@ class TestGoogleStorage(TestCase):
             ("/dir", [], ["file1", "file2", "file3"])
         ]
 
-        self.storage.load_from_directory("/dir")
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.load_from_directory("/dir")
 
         self.mock_bucket.blob.assert_has_calls([
             mock.call("path/filename/file1"),
@@ -357,8 +385,10 @@ class TestGoogleStorage(TestCase):
             ("/dir", [], ["file1", "file2", "file3"])
         ]
 
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
         with self.assertRaises(Exception):
-            self.storage.load_from_directory("/dir")
+            storage.load_from_directory("/dir")
 
         mock_blobs[0].upload_from_filename.assert_called_once_with("/dir/file1")
 
@@ -371,7 +401,9 @@ class TestGoogleStorage(TestCase):
         mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock()]
         self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
 
-        self.storage.delete_directory()
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.delete_directory()
 
         self.assert_gets_bucket_with_credentials()
 
@@ -380,3 +412,13 @@ class TestGoogleStorage(TestCase):
         mock_blobs[0].delete.assert_called_once_with()
         mock_blobs[1].delete.assert_called_once_with()
         mock_blobs[2].delete.assert_called_once_with()
+
+    def test_storage_uris_can_be_unicode(self):
+        storage = get_storage(u"gs://{}@bucketname/path/filename".format(self.credentials))
+
+        storage.save_to_filename("SOME-FILE")
+
+        self.assert_gets_bucket_with_credentials()
+
+        self.mock_bucket.blob.assert_called_once_with("path/filename")
+        self.mock_blob.download_to_filename.assert_called_once_with("SOME-FILE")
