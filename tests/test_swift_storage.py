@@ -763,22 +763,6 @@ class TestRackspaceStorage(TestCase):
         storage = storagelib.get_storage(uri)
         storage.delete()
 
-        self.assertEqual(None, storage.download_url_key)
-        self._assert_login_correct(
-            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
-            public=True)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_rackspace_authenticate_with_download_url_key(self, mock_timeout, mock_create_context):
-        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?download_url_key={key}".format(
-            username="username", api_key="apikey", container="container", file="file.txt",
-            key="super_secret_key")
-
-        storage = storagelib.get_storage(uri)
-        storage.delete()
-
-        self.assertEqual("super_secret_key", storage.download_url_key)
         self._assert_login_correct(
             mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
             public=True)
@@ -808,3 +792,91 @@ class TestRackspaceStorage(TestCase):
         self._assert_login_correct(
             mock_create_context, mock_timeout, username="username", password="apikey", region="ORD",
             public=True)
+
+    @mock.patch("pyrax.create_context")
+    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
+    def test_rackspace_uses_download_url_key_when_provided_in_url(
+            self, mock_timeout, mock_create_context):
+        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?download_url_key={key}".format(
+            username="username", api_key="apikey", container="container", file="file.txt",
+            key="super_secret_key")
+
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+
+        storage = storagelib.get_storage(uri)
+        storage.get_download_url()
+
+        self._assert_login_correct(
+            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
+            public=True)
+
+        mock_cloudfiles.get_temp_url.assert_called_once_with(
+            "container", "file.txt", seconds=60, method="GET", key="super_secret_key")
+
+    @mock.patch("pyrax.create_context")
+    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
+    def test_rackspace_uses_download_url_key_when_provided_call(
+            self, mock_timeout, mock_create_context):
+        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?download_url_key={key}".format(
+            username="username", api_key="apikey", container="container", file="file.txt",
+            key="super_secret_key")
+
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+
+        storage = storagelib.get_storage(uri)
+        storage.get_download_url(key="other_key")
+
+        self._assert_login_correct(
+            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
+            public=True)
+
+        mock_cloudfiles.get_temp_url.assert_called_once_with(
+            "container", "file.txt", seconds=60, method="GET", key="other_key")
+
+    @mock.patch("pyrax.create_context")
+    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
+    def test_rackspace_fetches_download_url_key_when_not_provided(
+            self, mock_timeout, mock_create_context):
+        uri = "cloudfiles://{username}:{api_key}@{container}/{file}".format(
+            username="username", api_key="apikey", container="container", file="file.txt")
+
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+
+        mock_cloudfiles.get_account_metadata.return_value = {
+            "some_metadata": "values",
+            "temp_url_key": "secret_key_from_server"
+        }
+
+        storage = storagelib.get_storage(uri)
+        storage.get_download_url()
+
+        self._assert_login_correct(
+            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
+            public=True)
+
+        mock_cloudfiles.get_temp_url.assert_called_once_with(
+            "container", "file.txt", seconds=60, method="GET", key="secret_key_from_server")
+
+    @mock.patch("pyrax.create_context")
+    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
+    def test_rackspace_ignores_case_of_metadata_when_fetching_download_url_key(
+            self, mock_timeout, mock_create_context):
+        uri = "cloudfiles://{username}:{api_key}@{container}/{file}".format(
+            username="username", api_key="apikey", container="container", file="file.txt")
+
+        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
+
+        mock_cloudfiles.get_account_metadata.return_value = {
+            "some_metadata": "values",
+            "Temp_Url_Key": "secret_key_from_server"
+        }
+
+        storage = storagelib.get_storage(uri)
+        storage.get_download_url()
+
+        self._assert_login_correct(
+            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
+            public=True)
+
+        mock_cloudfiles.get_temp_url.assert_called_once_with(
+            "container", "file.txt", seconds=60, method="GET", key="secret_key_from_server")
