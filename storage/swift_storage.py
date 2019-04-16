@@ -246,7 +246,7 @@ class CloudFilesStorage(SwiftStorage):
 
         if self.download_url_key is None:
             temp_url_keys = filter(
-                lambda (k, v): k.lower() == "temp_url_key",
+                lambda (k, v): k.lower().endswith("temp_url_key"),
                 self._cloudfiles.get_account_metadata().items())
 
             if len(temp_url_keys) > 0:

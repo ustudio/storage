@@ -859,7 +859,7 @@ class TestRackspaceStorage(TestCase):
 
     @mock.patch("pyrax.create_context")
     @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_rackspace_ignores_case_of_metadata_when_fetching_download_url_key(
+    def test_rackspace_handles_incorrectly_filtered_metadata_when_fetching_download_url_key(
             self, mock_timeout, mock_create_context):
         uri = "cloudfiles://{username}:{api_key}@{container}/{file}".format(
             username="username", api_key="apikey", container="container", file="file.txt")
@@ -868,7 +868,7 @@ class TestRackspaceStorage(TestCase):
 
         mock_cloudfiles.get_account_metadata.return_value = {
             "some_metadata": "values",
-            "Temp_Url_Key": "secret_key_from_server"
+            "X_Account_Meta_Temp_Url_Key": "secret_key_from_server"
         }
 
         storage = storagelib.get_storage(uri)
