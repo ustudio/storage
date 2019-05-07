@@ -131,12 +131,19 @@ class TestGoogleStorage(TestCase):
             self, mock_makedirs, mock_exists):
         mock_exists.side_effect = [True, False, False]
 
-        mock_blobs = [
+        mock_listed_blobs = [
             self._mock_blob("path/filename/file1"),
             self._mock_blob("path/filename/subdir1/subdir2/file2"),
             self._mock_blob("path/filename/subdir3/path/filename/file3")
         ]
-        self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
+        self.mock_bucket.list_blobs.return_value = iter(mock_listed_blobs)
+
+        mock_unversioned_blobs = [
+            self._mock_blob("path/filename/file1"),
+            self._mock_blob("path/filename/subdir1/subdir2/file2"),
+            self._mock_blob("path/filename/subdir3/path/filename/file3")
+        ]
+        self.mock_bucket.blob.side_effect = mock_unversioned_blobs
 
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
@@ -146,10 +153,18 @@ class TestGoogleStorage(TestCase):
 
         self.mock_bucket.list_blobs.assert_called_once_with(prefix="path/filename/")
 
-        mock_blobs[0].download_to_filename.assert_called_once_with("directory-name/file1")
-        mock_blobs[1].download_to_filename.assert_called_once_with(
+        self.assertEqual(3, self.mock_bucket.blob.call_count)
+        self.mock_bucket.blob.assert_has_calls([
+            mock.call("path/filename/file1"),
+            mock.call("path/filename/subdir1/subdir2/file2"),
+            mock.call("path/filename/subdir3/path/filename/file3")
+        ])
+
+        mock_unversioned_blobs[0].download_to_filename.assert_called_once_with(
+            "directory-name/file1")
+        mock_unversioned_blobs[1].download_to_filename.assert_called_once_with(
             "directory-name/subdir1/subdir2/file2")
-        mock_blobs[2].download_to_filename.assert_called_once_with(
+        mock_unversioned_blobs[2].download_to_filename.assert_called_once_with(
             "directory-name/subdir3/path/filename/file3")
 
         self.assertEqual(
@@ -173,23 +188,25 @@ class TestGoogleStorage(TestCase):
             self, mock_makedirs, mock_exists):
         mock_exists.side_effect = [False, True, False, False]
 
-        mock_blobs = [
+        mock_listed_blobs = [
             self._mock_blob("path/filename/dir/"),
             self._mock_blob("path/filename/dir/file.txt"),
             self._mock_blob("path/filename/dir/emptysubdir/"),
             self._mock_blob("path/filename/emptydir/")
         ]
-        self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
+        self.mock_bucket.list_blobs.return_value = iter(mock_listed_blobs)
+
+        mock_unversioned_blobs = [
+            self._mock_blob("path/filename/dir/file.txt")
+        ]
+        self.mock_bucket.blob.side_effect = mock_unversioned_blobs
 
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         storage.save_to_directory("directory-name")
 
-        self.assertEqual(0, mock_blobs[0].download_to_filename.call_count)
-        mock_blobs[1].download_to_filename.assert_called_once_with(
+        mock_unversioned_blobs[0].download_to_filename.assert_called_once_with(
             "directory-name/dir/file.txt")
-        self.assertEqual(0, mock_blobs[2].download_to_filename.call_count)
-        self.assertEqual(0, mock_blobs[3].download_to_filename.call_count)
 
         self.assertEqual(
             [
@@ -215,25 +232,33 @@ class TestGoogleStorage(TestCase):
             self, mock_sleep, mock_uniform, mock_exists):
         mock_exists.return_value = True
 
-        mock_blobs = [
+        mock_listed_blobs = [
             self._mock_blob("path/filename/file1"),
             self._mock_blob("path/filename/subdir1/subdir2/file2"),
             self._mock_blob("path/filename/subdir3/path/filename/file3")
         ]
-        mock_blobs[1].download_to_filename.side_effect = [Exception, None]
-        self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
+        self.mock_bucket.list_blobs.return_value = iter(mock_listed_blobs)
+
+        mock_unversioned_blobs = [
+            self._mock_blob("path/filename/file1"),
+            self._mock_blob("path/filename/subdir1/subdir2/file2"),
+            self._mock_blob("path/filename/subdir3/path/filename/file3")
+        ]
+        self.mock_bucket.blob.side_effect = mock_unversioned_blobs
+        mock_unversioned_blobs[1].download_to_filename.side_effect = [Exception, None]
 
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         storage.save_to_directory("directory-name")
 
-        mock_blobs[0].download_to_filename.assert_called_once_with("directory-name/file1")
+        mock_unversioned_blobs[0].download_to_filename.assert_called_once_with(
+            "directory-name/file1")
 
-        self.assertEqual(2, mock_blobs[1].download_to_filename.call_count)
-        mock_blobs[1].download_to_filename.assert_called_with(
+        self.assertEqual(2, mock_unversioned_blobs[1].download_to_filename.call_count)
+        mock_unversioned_blobs[1].download_to_filename.assert_called_with(
             "directory-name/subdir1/subdir2/file2")
 
-        mock_blobs[2].download_to_filename.assert_called_once_with(
+        mock_unversioned_blobs[2].download_to_filename.assert_called_once_with(
             "directory-name/subdir3/path/filename/file3")
 
         mock_uniform.assert_called_once_with(0, 1)
@@ -248,26 +273,33 @@ class TestGoogleStorage(TestCase):
         mock_uniform.side_effect = mock_uniform_results
         mock_exists.return_value = True
 
-        mock_blobs = [
+        mock_listed_blobs = [
             self._mock_blob("path/filename/file1"),
             self._mock_blob("path/filename/subdir1/subdir2/file2"),
             self._mock_blob("path/filename/subdir3/path/filename/file3")
         ]
-        mock_blobs[1].download_to_filename.side_effect = Exception
-        self.mock_bucket.list_blobs.return_value = iter(mock_blobs)
+        self.mock_bucket.list_blobs.return_value = iter(mock_listed_blobs)
+
+        mock_unversioned_blobs = [
+            self._mock_blob("path/filename/file1"),
+            self._mock_blob("path/filename/subdir1/subdir2/file2")
+        ]
+        self.mock_bucket.blob.side_effect = mock_unversioned_blobs
+        mock_unversioned_blobs[1].download_to_filename.side_effect = Exception
 
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         with self.assertRaises(Exception):
             storage.save_to_directory("directory-name")
 
-        mock_blobs[0].download_to_filename.assert_called_once_with("directory-name/file1")
+        self.assertEqual(2, self.mock_bucket.blob.call_count)
 
-        self.assertEqual(5, mock_blobs[1].download_to_filename.call_count)
-        mock_blobs[1].download_to_filename.assert_called_with(
+        mock_unversioned_blobs[0].download_to_filename.assert_called_once_with(
+            "directory-name/file1")
+
+        self.assertEqual(5, mock_unversioned_blobs[1].download_to_filename.call_count)
+        mock_unversioned_blobs[1].download_to_filename.assert_called_with(
             "directory-name/subdir1/subdir2/file2")
-
-        self.assertEqual(0, mock_blobs[2].download_to_filename.call_count)
 
         mock_uniform.assert_has_calls([
             mock.call(0, 1),

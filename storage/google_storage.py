@@ -62,7 +62,8 @@ class GoogleStorage(Storage):
                 os.makedirs(local_directory)
 
             if not relative_path[-1] == "/":
-                retry.attempt(blob.download_to_filename, local_file_path)
+                unversioned_blob = bucket.blob(blob.name)
+                retry.attempt(unversioned_blob.download_to_filename, local_file_path)
 
     def load_from_directory(self, directory_path):
         bucket = self._get_bucket()
