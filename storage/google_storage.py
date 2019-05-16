@@ -80,5 +80,6 @@ class GoogleStorage(Storage):
     def delete_directory(self):
         bucket = self._get_bucket()
 
-        for blob in bucket.list_blobs(self._parsed_storage_uri.path[1:] + "/"):
-            blob.delete()
+        for blob in bucket.list_blobs(prefix=self._parsed_storage_uri.path[1:] + "/"):
+            unversioned_blob = bucket.blob(blob.name)
+            unversioned_blob.delete()
