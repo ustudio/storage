@@ -439,7 +439,7 @@ class TestGoogleStorage(TestCase):
 
         self.assert_gets_bucket_with_credentials()
 
-        self.mock_bucket.list_blobs.assert_called_once_with("path/filename/")
+        self.mock_bucket.list_blobs.assert_called_once_with(prefix="path/filename/")
 
         mock_blobs[0].delete.assert_called_once_with()
         mock_blobs[1].delete.assert_called_once_with()
