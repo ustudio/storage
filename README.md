@@ -13,7 +13,7 @@ Install via pip:
 pip install object_storage
 ```
 
-The current version is `0.12.4`.
+The current version is `0.12.5`.
 
 ## Quick Start ##
 
