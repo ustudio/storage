@@ -85,38 +85,38 @@ class Storage(object):
 
     def save_to_filename(self, file_path):
         raise NotImplementedError(
-            "{0} does not implement 'save_to_filename'".format(self._class_name()))
+            "{} does not implement 'save_to_filename'".format(self._class_name()))
 
     def save_to_file(self, out_file):
         raise NotImplementedError(
-            "{0} does not implement 'save_to_file'".format(self._class_name()))
+            "{} does not implement 'save_to_file'".format(self._class_name()))
 
     def save_to_directory(self, directory_path):
         raise NotImplementedError(
-            "{0} does not implement 'save_to_directory'".format(self._class_name()))
+            "{} does not implement 'save_to_directory'".format(self._class_name()))
 
     def load_from_filename(self, file_path):
         raise NotImplementedError(
-            "{0} does not implement 'load_from_filename'".format(self._class_name()))
+            "{} does not implement 'load_from_filename'".format(self._class_name()))
 
     def load_from_file(self, in_file):
         raise NotImplementedError(
-            "{0} does not implement 'load_from_file'".format(self._class_name()))
+            "{} does not implement 'load_from_file'".format(self._class_name()))
 
     def load_from_directory(self, directory_path):
         raise NotImplementedError(
-            "{0} does not implement 'load_from_directory'".format(self._class_name()))
+            "{} does not implement 'load_from_directory'".format(self._class_name()))
 
     def delete(self):
-        raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
+        raise NotImplementedError("{} does not implement 'delete'".format(self._class_name()))
 
     def delete_directory(self):
         raise NotImplementedError(
-            "{0} does not implement 'delete_directory'".format(self._class_name()))
+            "{} does not implement 'delete_directory'".format(self._class_name()))
 
     def get_download_url(self, seconds=60, key=None):
         raise NotImplementedError(
-            "{0} does not implement 'get_download_url'".format(self._class_name()))
+            "{} does not implement 'get_download_url'".format(self._class_name()))
 
 
 def _generate_download_url_from_base(base, object_name):
