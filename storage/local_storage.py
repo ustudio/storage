@@ -1,7 +1,7 @@
 import distutils.dir_util
 import os
 import shutil
-import urlparse
+from urllib.parse import parse_qs
 
 from .storage import Storage, register_storage_protocol, _generate_download_url_from_base
 
@@ -20,7 +20,7 @@ class LocalStorage(Storage):
 
     def __init__(self, storage_uri):
         super(LocalStorage, self).__init__(storage_uri)
-        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        query = parse_qs(self._parsed_storage_uri.query)
         self._download_url_base = query.get("download_url_base", [None])[0]
 
     def save_to_filename(self, file_path):

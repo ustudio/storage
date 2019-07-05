@@ -4,7 +4,7 @@ import unittest
 from storage import retry
 
 
-class UnRetriableError(StandardError):
+class UnRetriableError(Exception):
     do_not_retry = True
 
 

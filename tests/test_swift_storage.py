@@ -1,5 +1,5 @@
 import os
-from StringIO import StringIO
+from io import StringIO
 import tempfile
 from unittest import TestCase
 

@@ -19,7 +19,7 @@ class TestTimeout(TestCase):
         def worker():
             raise Exception("some error")
 
-        with self.assertRaisesRegexp(Exception, "^some error$"):
+        with self.assertRaisesRegex(Exception, "^some error$"):
             storagelib.storage.timeout(5, worker)
 
     def test_raises_timeout_error_when_worker_does_not_complete_within_timeout(self):

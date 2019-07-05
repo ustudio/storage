@@ -1,8 +1,8 @@
 import os
-from StringIO import StringIO
+from io import StringIO
 import tempfile
 from unittest import TestCase
-import urllib
+from urllib.parse import quote_plus
 
 import mock
 
@@ -203,7 +203,7 @@ class TestLocalStorage(TestCase):
         temp_input.flush()
 
         download_url_base = "http://host:123/path/to/"
-        download_url_base_encoded = urllib.quote_plus(download_url_base)
+        download_url_base_encoded = quote_plus(download_url_base)
 
         storage_uri = "file://{fpath}?download_url_base={download_url_base}".format(
             fpath=temp_input.name,
@@ -221,7 +221,7 @@ class TestLocalStorage(TestCase):
         temp_input.flush()
 
         download_url_base = "http://host:123/path/to/"
-        download_url_base_encoded = urllib.quote_plus(download_url_base)
+        download_url_base_encoded = quote_plus(download_url_base)
 
         storage_uri = "file://{fpath}?download_url_base={download_url_base}".format(
             fpath=temp_input.name,

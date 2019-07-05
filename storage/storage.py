@@ -1,6 +1,6 @@
-import Queue
+import queue
 import threading
-import urlparse
+from urllib.parse import urljoin, urlparse, uses_query
 
 
 _STORAGE_TYPES = {}         # maintains supported storage protocols
@@ -31,7 +31,7 @@ def register_storage_protocol(scheme):
     def decorate_storage_protocol(aClass):
 
         _STORAGE_TYPES[scheme] = aClass
-        urlparse.uses_query.append(scheme)
+        uses_query.append(scheme)
         return aClass
 
     return decorate_storage_protocol
@@ -52,7 +52,7 @@ class TimeoutError(IOError):
 
 
 def timeout(seconds, worker):
-    result_queue = Queue.Queue()
+    result_queue = queue.Queue()
 
     def wrapper():
         try:
@@ -66,7 +66,7 @@ def timeout(seconds, worker):
 
     try:
         result = result_queue.get(True, seconds)
-    except Queue.Empty:
+    except queue.Empty:
         raise TimeoutError()
 
     if isinstance(result, BaseException):
@@ -78,7 +78,7 @@ class Storage(object):
 
     def __init__(self, storage_uri):
         self._storage_uri = storage_uri
-        self._parsed_storage_uri = urlparse.urlparse(storage_uri)
+        self._parsed_storage_uri = urlparse(storage_uri)
 
     def _class_name(self):
         return self.__class__.__name__
@@ -127,7 +127,7 @@ def _generate_download_url_from_base(base, object_name):
     if base is None:
         raise DownloadUrlBaseUndefinedError("The storage uri has no download_url_base defined.")
 
-    return urlparse.urljoin(base, object_name)
+    return urljoin(base, object_name)
 
 
 class InvalidStorageUri(RuntimeError):

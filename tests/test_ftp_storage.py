@@ -1,8 +1,10 @@
 import socket
-from StringIO import StringIO
+from io import StringIO
 import tempfile
+
+
 from unittest import TestCase
-import urllib
+from urllib.parse import quote_plus
 
 import mock
 
@@ -17,10 +19,10 @@ def create_mock_ftp_directory_listing(directory_listings):
         if len(directory_listings):
             listing = directory_listings.pop(0)
 
-            if isinstance(listing, basestring):
+            if isinstance(listing, str):
                 callback(listing)
             else:
-                map(callback, listing)
+                list(map(callback, listing))
 
     return mock_directory_listing
 
@@ -571,7 +573,7 @@ class TestFTPStorage(TestCase):
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_get_download_url(self, mock_ftp_class):
-        download_url_base = urllib.quote_plus("http://hostname/path/to/")
+        download_url_base = quote_plus("http://hostname/path/to/")
 
         ftpuri = "ftp://user:password@ftp.foo.com/some/dir/file.txt?download_url_base={0}".format(
             download_url_base)

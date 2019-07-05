@@ -1,6 +1,6 @@
 import os
 from unittest import TestCase
-import urllib
+from urllib.parse import quote
 
 import mock
 
@@ -18,8 +18,8 @@ class TestS3Storage(TestCase):
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_handles_urlencoded_keys(self, mock_session_class):
-        encoded_key = urllib.quote("access/key", safe="")
-        encoded_secret = urllib.quote("access/secret", safe="")
+        encoded_key = quote("access/key", safe="")
+        encoded_secret = quote("access/secret", safe="")
 
         storage = storagelib.get_storage(
             "s3://{0}:{1}@bucket/some/file?region=US_EAST".format(encoded_key, encoded_secret))

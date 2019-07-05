@@ -1,8 +1,7 @@
 import functools
 import mimetypes
 import os
-import urllib
-import urlparse
+from urllib.parse import parse_qs, quote, urlparse, urlunparse
 
 import pyrax
 
@@ -35,7 +34,7 @@ class SwiftStorage(Storage):
         auth, _ = self._parsed_storage_uri.netloc.split("@")
         username, password = auth.split(":", 1)
 
-        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        query = parse_qs(self._parsed_storage_uri.query)
         public = query.get("public", ["True"])[0].lower() != "false"
         api_key = query.get("api_key", [None])[0]
         tenant_id = query.get("tenant_id", [None])[0]
@@ -186,10 +185,10 @@ class SwiftStorage(Storage):
         download_url = self._cloudfiles.get_temp_url(
             container_name, object_name, seconds=seconds, method="GET", key=temp_url_key)
 
-        parsed_url = urlparse.urlparse(download_url)
-        parsed_url = parsed_url._replace(path=urllib.quote(parsed_url.path))
+        parsed_url = urlparse(download_url)
+        parsed_url = parsed_url._replace(path=quote(parsed_url.path))
 
-        return urlparse.urlunparse(parsed_url)
+        return urlunparse(parsed_url)
 
 
 def register_swift_protocol(scheme, auth_endpoint):
@@ -230,7 +229,7 @@ class CloudFilesStorage(SwiftStorage):
         auth, _ = self._parsed_storage_uri.netloc.split("@")
         username, password = auth.split(":", 1)
 
-        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        query = parse_qs(self._parsed_storage_uri.query)
         public = query.get("public", ["True"])[0].lower() != "false"
         region = query.get("region", ["DFW"])[0]
         self.download_url_key = query.get("download_url_key", [None])[0]
@@ -245,9 +244,9 @@ class CloudFilesStorage(SwiftStorage):
         self._cloudfiles.timeout = DEFAULT_SWIFT_TIMEOUT
 
         if self.download_url_key is None:
-            temp_url_keys = filter(
-                lambda (k, v): k.lower().endswith("temp_url_key"),
-                self._cloudfiles.get_account_metadata().items())
+            temp_url_keys = [
+                k_v for k_v in list(self._cloudfiles.get_account_metadata().items())
+                if k_v[0].lower().endswith("temp_url_key")]
 
             if len(temp_url_keys) > 0:
                 self.download_url_key = temp_url_keys[0][1]

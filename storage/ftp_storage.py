@@ -2,7 +2,7 @@ import ftplib
 import os
 import re
 import socket
-import urlparse
+from urllib.parse import parse_qs
 
 from .storage import Storage, register_storage_protocol, _generate_download_url_from_base, \
     DEFAULT_FTP_TIMEOUT, DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT, \
@@ -30,7 +30,7 @@ class FTPStorage(Storage):
         self._hostname = self._parsed_storage_uri.hostname
         self._port = \
             self._parsed_storage_uri.port if self._parsed_storage_uri.port is not None else 21
-        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        query = parse_qs(self._parsed_storage_uri.query)
         self._download_url_base = query.get("download_url_base", [None])[0]
 
     def _configure_keepalive(self, ftp_client):

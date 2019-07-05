@@ -1,4 +1,4 @@
-from __future__ import print_function
+
 
 import os
 import random
@@ -11,7 +11,7 @@ import unittest
 try:
     from urllib.parse import urlparse
 except ImportError:
-    from urlparse import urlparse
+    from urllib.parse import urlparse
 
 from storage import get_storage
 

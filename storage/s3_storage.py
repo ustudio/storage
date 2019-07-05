@@ -1,6 +1,5 @@
 import os
-import urllib
-import urlparse
+from urllib.parse import parse_qs, unquote
 
 import boto3
 import boto3.s3.transfer
@@ -13,11 +12,11 @@ from .storage import Storage, register_storage_protocol, _LARGE_CHUNK
 class S3Storage(Storage):
     def __init__(self, storage_uri):
         super(S3Storage, self).__init__(storage_uri)
-        self._access_key = urllib.unquote(self._parsed_storage_uri.username)
-        self._access_secret = urllib.unquote(self._parsed_storage_uri.password)
+        self._access_key = unquote(self._parsed_storage_uri.username)
+        self._access_secret = unquote(self._parsed_storage_uri.password)
         self._bucket = self._parsed_storage_uri.hostname
         self._keyname = self._parsed_storage_uri.path.replace("/", "", 1)
-        query = urlparse.parse_qs(self._parsed_storage_uri.query)
+        query = parse_qs(self._parsed_storage_uri.query)
         self._region = query.get("region", [None])[0]
 
     def _connect(self):
