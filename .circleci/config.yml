@@ -50,7 +50,7 @@ jobs:
           name: run typechecks
           command: |
             . ~/venv/bin/activate
-            mypy --disallow-untyped-calls --disallow-untyped-defs --disallow-untyped-decorators --disallow-incomplete-defs
+            mypy --disallow-untyped-calls --disallow-untyped-defs --disallow-untyped-decorators --disallow-incomplete-defs storage/ tests/
 
       - run:
           name: Run Tests
