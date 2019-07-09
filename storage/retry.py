@@ -1,11 +1,16 @@
 import random
 import time
 
+from typing import Any, Callable, TypeVar
 
-max_attempts = 5
+
+max_attempts: int = 5
 
 
-def attempt(f, *args, **kwargs):
+T = TypeVar("T")
+
+
+def attempt(f: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     attempts = 0
 
     while True:
