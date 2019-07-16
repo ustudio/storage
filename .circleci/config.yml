@@ -19,9 +19,8 @@ jobs:
 
       - restore_cache:
           keys:
-            - v1-dependencies-{{ checksum "pyrax-requirements.txt" }}-{{ checksum "setup.py" }}-{{ checksum "requirements.txt" }}
-            - v1-dependencies-{{ checksum "pyrax-requirements.txt" }}-{{ checksum "setup.py" }}-
-            - v1-dependencies-{{ checksum "pyrax-requirements.txt" }}-
+            - v1-dependencies-{{ checksum "setup.py" }}-{{ checksum "requirements.txt" }}
+            - v1-dependencies-{{ checksum "setup.py" }}-
             - v1-dependencies-
 
       - run:
@@ -29,7 +28,6 @@ jobs:
           command: |
             python -m virtualenv ~/venv
             . ~/venv/bin/activate
-            pip install -r pyrax-requirements.txt
             pip install -e .
             pip install -r requirements.txt
             mkdir -p test-reports
@@ -37,7 +35,7 @@ jobs:
       - save_cache:
           paths:
             - ~/venv
-          key: v1-dependencies-{{ checksum "pyrax-requirements.txt" }}-{{ checksum "setup.py" }}-{{ checksum "requirements.txt" }}
+          key: v1-dependencies-{{ checksum "setup.py" }}-{{ checksum "requirements.txt" }}
 
       - run:
           name: run typechecks
