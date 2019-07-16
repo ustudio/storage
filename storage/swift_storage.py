@@ -80,4 +80,6 @@ class SwiftStorage(Storage):
 
         resource = f"{path}/{container_name}/{object_name}"
 
-        return generate_temp_url(resource, seconds, self.download_url_key, "GET")
+        tmp_key = key if key is not None else self.download_url_key
+
+        return generate_temp_url(resource, seconds, tmp_key, "GET")

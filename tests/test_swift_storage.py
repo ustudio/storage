@@ -112,3 +112,29 @@ class TestSwiftStorage(TestCase):
 
         mock_generate_url.assert_called_once_with(
             "/v1/AUTH_account/containername/path/to/file.mp4", 60, "super_secret_key", "GET")
+
+    @mock.patch("storage.swift_storage.generate_temp_url")
+    def test_get_download_url_returns_signed_url_with_provided_expiration(self, mock_generate_url):
+        base_url = self._swift_storage_url()
+
+        storage = get_storage(f"{base_url}&download_url_key=super_secret_key")
+
+        storage.get_download_url(seconds=1000)
+
+        self.assert_create_connection_with_credentials()
+
+        mock_generate_url.assert_called_once_with(
+            "/v1/AUTH_account/containername/path/to/file.mp4", 1000, "super_secret_key", "GET")
+
+    @mock.patch("storage.swift_storage.generate_temp_url")
+    def test_get_download_url_does_not_use_key_when_provided(self, mock_generate_url):
+        base_url = self._swift_storage_url()
+
+        storage = get_storage(f"{base_url}&download_url_key=super_secret_key")
+
+        storage.get_download_url(key="ALT_KEY")
+
+        self.assert_create_connection_with_credentials()
+
+        mock_generate_url.assert_called_once_with(
+            "/v1/AUTH_account/containername/path/to/file.mp4", 60, "ALT_KEY", "GET")
