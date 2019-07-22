@@ -65,8 +65,9 @@ class Service(object):
                 f"No handler registered for {method} "
                 f"localhost:{self.port}{path}")
             start_response("404 Not Found", [("Content-type", "text/plain")])
-            return [f"No handler registerd for {identifier}".encode("utf8")]
+            return [f"No handler registered for {identifier}".encode("utf8")]
 
+        environ["REQUEST_PATH"] = path
         return self.handlers[identifier](environ, start_response)
 
     def start(self):
@@ -91,6 +92,7 @@ class Service(object):
         if self.event is not None:
             self.event.set()
             self.thread.join()
+        self.event = None
 
     def loop(self, event):
         httpd = make_server("localhost", self.port, self.handler)
