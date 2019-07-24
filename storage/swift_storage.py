@@ -110,6 +110,11 @@ class SwiftStorage(Storage):
         with open(file_path, "wb") as out_file:
             self.save_to_file(out_file)
 
+    def load_from_file(self, in_file: BinaryIO) -> None:
+        connection = self.get_connection()
+        container, object_name = self.get_container_and_object_names()
+        connection.put_object(container, object_name, in_file)
+
 #    def load_from_file(self, in_file: BinaryIO) -> None:
 #        connection = self.get_connection()
 #        container, object_name = self.get_container_and_object_names()

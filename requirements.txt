@@ -1,3 +1,5 @@
 flake8
+keystoneauth
 mypy
 pytest
+python-swiftclient

@@ -42,6 +42,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         self.file_fetches = {}
         self.file_contents = {}
+        self.file_uploads = {}
 
         self.keystone_credentials = {
             "username": "USER",
@@ -74,6 +75,14 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.file_contents[filepath] = file_content
         self.swift_service.add_handler(
             "GET", f"/v2.0/1234/CONTAINER{filepath}", self.swift_object_handler)
+
+    @contextlib.contextmanager
+    def _expect_file(self, filepath, file_content):
+        self.swift_service.add_handler(
+            "PUT", f"/v2.0/1234/CONTAINER{filepath}",
+            self.swift_object_put_handler)
+        yield
+        self.assertEqual(file_content, self.file_uploads[filepath])
 
     def identity_handler(self, environ, start_response):
         start_response("200 OK", [("Content-Type", "application/json")])
@@ -178,6 +187,16 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         start_response("200 OK", [("Content-Type", "video/mp4")])
         return [self.file_contents[path]]
+
+    def swift_object_put_handler(self, environ, start_response):
+        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
+        header = b""
+        while not header.endswith(b"\r\n"):
+            header += environ["wsgi.input"].read(1)
+        body_size = int(header.strip())
+        self.file_uploads[path] = environ["wsgi.input"].read(body_size)
+        start_response("201 OK", [("Content-Type", "text/plain")])
+        return [b""]
 
     def _generate_swift_uri(self, filename):
         base_uri = f"swift://USER:KEY@CONTAINER{filename}"
@@ -367,76 +386,6 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.assert_requires_all_parameters(
             "/path/to/file.mp4", lambda x: x.save_to_filename(tmp_file.name))
 
-    def test_save_to_filename_raises_exception_when_missing_region(self) -> None:
-        base_uri = f"swift://USER:KEY@CONTAINER"
-        uri_params = urlencode({
-            "auth_endpoint": self.identity_service.url("/v2.0"),
-            "tenant_id": "1234",
-        })
-
-        swift_uri = f"{base_uri}?{uri_params}"
-
-        storage_object = get_storage(swift_uri)
-
-        tmp_file = tempfile.NamedTemporaryFile()
-
-        with self.run_services():
-            with self.assertRaises(SwiftStorageError):
-                storage_object.save_to_filename(tmp_file.name)
-
-    def test_save_to_filename_raises_exception_when_missing_tenant_id(self) -> None:
-        base_uri = f"swift://USER:KEY@CONTAINER"
-        uri_params = urlencode({
-            "auth_endpoint": self.identity_service.url("/v2.0"),
-            "region": "DFW"
-        })
-
-        swift_uri = f"{base_uri}?{uri_params}"
-
-        storage_object = get_storage(swift_uri)
-
-        tmp_file = tempfile.NamedTemporaryFile()
-
-        with self.run_services():
-            with self.assertRaises(SwiftStorageError):
-                storage_object.save_to_filename(tmp_file.name)
-
-    def test_save_to_filename_raises_exception_when_missing_username(self) -> None:
-        base_uri = f"swift://:KEY@CONTAINER"
-
-        uri_params = urlencode({
-            "auth_endpoint": self.identity_service.url("/v2.0"),
-            "tenant_id": "1234",
-            "region": "DFW"
-        })
-
-        swift_uri = f"{base_uri}?{uri_params}"
-        storage_object = get_storage(swift_uri)
-
-        tmp_file = tempfile.NamedTemporaryFile()
-
-        with self.run_services():
-            with self.assertRaises(SwiftStorageError):
-                storage_object.save_to_filename(tmp_file.name)
-
-    def test_save_to_filename_raises_exception_when_missing_password(self) -> None:
-        base_uri = f"swift://USER:@CONTAINER"
-        uri_params = urlencode({
-            "auth_endpoint": self.identity_service.url("/v2.0"),
-            "tenant_id": "1234",
-            "region": "DFW"
-        })
-
-        swift_uri = f"{base_uri}?{uri_params}"
-
-        storage_object = get_storage(swift_uri)
-
-        tmp_file = tempfile.NamedTemporaryFile()
-
-        with self.run_services():
-            with self.assertRaises(SwiftStorageError):
-                storage_object.save_to_filename(tmp_file.name)
-
     def test_save_to_filename_writes_file_contents_to_file_object(self) -> None:
         tmp_file = tempfile.NamedTemporaryFile()
 
@@ -577,3 +526,17 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.assert_fetched_file_n_times("/path/to/filename.mp4", 2)
         tmp_file.seek(0)
         self.assertEqual(b"FOOBAR", tmp_file.read())
+
+    def test_load_from_file_raises_when_missing_required_parameters(self):
+        tmp_file = BytesIO(b"FOOBAR")
+        self.assert_requires_all_parameters(
+            "/path/to/file.mp4", lambda x: x.load_from_file(tmp_file))
+
+    def test_load_from_file_puts_file_contents_at_object_endpoint(self):
+        tmp_file = BytesIO(b"FOOBAR")
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_file("/path/to/file.mp4", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_file(tmp_file)
