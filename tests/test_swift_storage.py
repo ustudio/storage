@@ -39,10 +39,13 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         self.remaining_auth_failures = []
         self.remaining_file_failures = []
+        self.remaining_file_put_failures = []
 
+        self.auth_fetches = 0
         self.file_fetches = {}
         self.file_contents = {}
         self.file_uploads = {}
+        self.file_put_fetches = {}
 
         self.keystone_credentials = {
             "username": "USER",
@@ -120,6 +123,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
             return False
 
     def authentication_handler(self, environ, start_response):
+        self.auth_fetches += 1
         body_size = int(environ.get('CONTENT_LENGTH', 0))
         body = json.loads(environ["wsgi.input"].read(body_size))
 
@@ -190,6 +194,14 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
     def swift_object_put_handler(self, environ, start_response):
         path = environ["REQUEST_PATH"].split("CONTAINER")[1]
+        self.file_put_fetches.setdefault(path, 0)
+        self.file_put_fetches[path] += 1
+
+        if len(self.remaining_file_put_failures) > 0:
+            failure = self.remaining_file_put_failures.pop(0)
+            start_response(failure, [("Content-type", "text/plain")])
+            return [b"Internal server error."]
+
         header = b""
         while not header.endswith(b"\r\n"):
             header += environ["wsgi.input"].read(1)
@@ -540,3 +552,99 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self._expect_file("/path/to/file.mp4", b"FOOBAR"):
             with self.run_services():
                 storage_object.load_from_file(tmp_file)
+
+    def test_load_from_file_retries_on_error(self):
+        self.remaining_file_put_failures.append("500 Internal server error")
+        tmp_file = BytesIO(b"FOOBAR")
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_file("/path/to/file.mp4", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_file(tmp_file)
+
+        self.assertEqual(2, self.file_put_fetches["/path/to/file.mp4"])
+
+    def test_load_from_file_does_not_retry_with_invalid_keystone_creds(self) -> None:
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+        tmp_file = BytesIO(b"FOOBAR")
+        with self.assert_raises_on_forbidden_keystone_access():
+            storage_object.load_from_file(tmp_file)
+        with self.assert_raises_on_unauthorized_keystone_access():
+            storage_object.load_from_file(tmp_file)
+        self.assertEqual(0, self.file_put_fetches.get("/path/to/file.mp4", 0))
+
+    def test_load_from_file_retries_on_authentication_server_errors(self) -> None:
+        self.remaining_auth_failures = ["500 Error", "500 Error"]
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+        tmp_file = BytesIO(b"FOOBAR")
+        with self._expect_file("/path/to/file.mp4", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_file(tmp_file)
+        self.assertEqual(3, self.auth_fetches)
+
+    def test_load_from_filename_raises_when_missing_required_parameters(self):
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        self.assert_requires_all_parameters(
+            "/path/to/file.mp4", lambda x: x.load_from_filename(tmp_file.name))
+
+    def test_load_from_filename_puts_file_contents_at_object_endpoint(self):
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_file("/path/to/file.mp4", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_filename(tmp_file.name)
+
+    def test_load_from_filename_retries_on_error(self):
+        self.remaining_file_put_failures.append("500 Internal server error")
+
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_file("/path/to/file.mp4", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_filename(tmp_file.name)
+
+        self.assertEqual(2, self.file_put_fetches["/path/to/file.mp4"])
+
+    def test_load_from_filename_does_not_retry_with_invalid_keystone_creds(self) -> None:
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        with self.assert_raises_on_forbidden_keystone_access():
+            storage_object.load_from_filename(tmp_file.name)
+        with self.assert_raises_on_unauthorized_keystone_access():
+            storage_object.load_from_filename(tmp_file.name)
+        self.assertEqual(0, self.file_put_fetches.get("/path/to/file.mp4", 0))
+
+    def test_load_from_filename_retries_on_authentication_server_errors(self) -> None:
+        self.remaining_auth_failures = ["500 Error", "500 Error"]
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        with self._expect_file("/path/to/file.mp4", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_filename(tmp_file.name)
+        self.assertEqual(3, self.auth_fetches)

@@ -113,17 +113,14 @@ class SwiftStorage(Storage):
     def load_from_file(self, in_file: BinaryIO) -> None:
         connection = self.get_connection()
         container, object_name = self.get_container_and_object_names()
-        connection.put_object(container, object_name, in_file)
 
-#    def load_from_file(self, in_file: BinaryIO) -> None:
-#        connection = self.get_connection()
-#        container, object_name = self.get_container_and_object_names()
-#
-#        def put_object():
-#            in_file.seek(0)
-#            resp_headers, object_contents = connection.put_object(
-#                container, object_name, in_file, resp_chunk_size=_LARGE_CHUNK)
-#
-#        retry_swift_operation(
-#            f"Failed to upload Swift object {object_name} to container {container}",
-#            put_object)
+        def put_object():
+            connection.put_object(container, object_name, in_file)
+
+        retry_swift_operation(
+            f"Failed to store Swift object {object_name} in container {container}",
+            put_object)
+
+    def load_from_filename(self, in_path: str) -> None:
+        with open(in_path, "rb") as fp:
+            self.load_from_file(fp)
