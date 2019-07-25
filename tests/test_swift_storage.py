@@ -298,6 +298,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
     def test_save_to_file_raises_exception_when_missing_required_parameters(self) -> None:
         tmp_file = BytesIO()
+
         self._add_file("/path/to/file.mp4", b"FOOBAR")
         self.assert_requires_all_parameters("/path/to/file.mp4", lambda x: x.save_to_file(tmp_file))
 
@@ -305,7 +306,6 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self._add_file("/path/to/file.mp4", "FOOBAR".encode("utf8"))
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
-
         storage_object = get_storage(swift_uri)
 
         tmp_file = BytesIO()
@@ -321,7 +321,6 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self._add_file("/path/to/other/file.mp4", "BARFOO".encode("utf8"))
 
         swift_uri = self._generate_swift_uri("/path/to/other/file.mp4")
-
         storage_object = get_storage(swift_uri)
 
         tmp_file = BytesIO()
@@ -338,7 +337,6 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self._add_file("/path/to/large/file.mp4", file_contents)
 
         swift_uri = self._generate_swift_uri("/path/to/large/file.mp4")
-
         storage_object = get_storage(swift_uri)
 
         tmp_file = FileSpy()
@@ -354,6 +352,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
+
         tmp_file = BytesIO()
 
         with self.assert_raises_on_forbidden_keystone_access():
@@ -371,6 +370,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
+
         tmp_file = BytesIO()
 
         with self.run_services():
@@ -388,6 +388,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
+
         tmp_file = BytesIO()
 
         with self.run_services():
@@ -399,8 +400,10 @@ class TestSwiftStorageProvider(ServiceTestCase):
     def test_save_to_file_raises_storage_error_on_swift_service_not_found(self):
         self._add_file_error("404 Not Found")
         self._add_file("/path/to/file.mp4", b"FOOBAR")
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
+
         tmp_file = BytesIO()
 
         with self.run_services():
@@ -415,6 +418,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
+
         tmp_file = BytesIO()
         tmp_file.write(b"EXTRA")
 
@@ -422,12 +426,15 @@ class TestSwiftStorageProvider(ServiceTestCase):
             storage_object.save_to_file(tmp_file)
 
         self.assert_fetched_file_n_times("/path/to/file.mp4", 2)
+
         tmp_file.seek(0)
         self.assertEqual(b"FOOBAR", tmp_file.read())
 
     def test_save_to_filename_raises_exception_when_missing_parameters(self) -> None:
         tmp_file = tempfile.NamedTemporaryFile()
+
         self._add_file("/path/to/file.mp4", b"FOOBAR")
+
         self.assert_requires_all_parameters(
             "/path/to/file.mp4", lambda x: x.save_to_filename(tmp_file.name))
 
@@ -562,23 +569,25 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self._add_file("/path/to/filename.mp4", "FOOBAR".encode("utf8"))
 
         swift_uri = self._generate_swift_uri("/path/to/filename.mp4")
-
         storage_object = get_storage(swift_uri)
 
         with self.run_services():
             storage_object.save_to_filename(tmp_file.name)
 
         self.assert_fetched_file_n_times("/path/to/filename.mp4", 2)
+
         tmp_file.seek(0)
         self.assertEqual(b"FOOBAR", tmp_file.read())
 
     def test_load_from_file_raises_when_missing_required_parameters(self):
         tmp_file = BytesIO(b"FOOBAR")
+
         self.assert_requires_all_parameters(
             "/path/to/file.mp4", lambda x: x.load_from_file(tmp_file))
 
     def test_load_from_file_puts_file_contents_at_object_endpoint(self):
         tmp_file = BytesIO(b"FOOBAR")
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
@@ -588,7 +597,9 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
     def test_load_from_file_retries_on_error(self):
         self.remaining_file_put_failures.append("500 Internal server error")
+
         tmp_file = BytesIO(b"FOOBAR")
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
@@ -601,21 +612,29 @@ class TestSwiftStorageProvider(ServiceTestCase):
     def test_load_from_file_does_not_retry_with_invalid_keystone_creds(self) -> None:
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
+
         tmp_file = BytesIO(b"FOOBAR")
+
         with self.assert_raises_on_forbidden_keystone_access():
             storage_object.load_from_file(tmp_file)
+
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.load_from_file(tmp_file)
+
         self.assertEqual(0, self.file_put_fetches.get("/path/to/file.mp4", 0))
 
     def test_load_from_file_retries_on_authentication_server_errors(self) -> None:
         self.remaining_auth_failures = ["500 Error", "500 Error"]
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
+
         tmp_file = BytesIO(b"FOOBAR")
+
         with self._expect_file("/path/to/file.mp4", b"FOOBAR"):
             with self.run_services():
                 storage_object.load_from_file(tmp_file)
+
         self.assertEqual(3, self.auth_fetches)
 
     def test_load_from_filename_raises_when_missing_required_parameters(self):
@@ -664,12 +683,15 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         with self.assert_raises_on_forbidden_keystone_access():
             storage_object.load_from_filename(tmp_file.name)
+
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.load_from_filename(tmp_file.name)
+
         self.assertEqual(0, self.file_put_fetches.get("/path/to/file.mp4", 0))
 
     def test_load_from_filename_retries_on_authentication_server_errors(self) -> None:
         self.remaining_auth_failures = ["500 Error", "500 Error"]
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
@@ -680,24 +702,26 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self._expect_file("/path/to/file.mp4", b"FOOBAR"):
             with self.run_services():
                 storage_object.load_from_filename(tmp_file.name)
+
         self.assertEqual(3, self.auth_fetches)
 
     def test_delete_raises_on_missing_parameters(self) -> None:
         self.file_uploads["/path/to/file.mp4"] = b"UNDELETED"
-        self.assert_requires_all_parameters(
-            "/path/to/file.mp4", lambda x: x.delete())
-        self.assertEqual(
-            b"UNDELETED", self.file_uploads["/path/to/file.mp4"])
+
+        self.assert_requires_all_parameters("/path/to/file.mp4", lambda x: x.delete())
+        self.assertEqual(b"UNDELETED", self.file_uploads["/path/to/file.mp4"])
 
     def test_delete_makes_delete_request_against_swift_service(self) -> None:
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
+
         with self._expect_delete("/path/to/file.mp4"):
             with self.run_services():
                 storage_object.delete()
 
     def test_delete_retries_on_authentication_server_errors(self) -> None:
         self.remaining_auth_failures = ["500 Error", "500 Error"]
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
@@ -709,6 +733,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
     def test_delete_retries_on_swift_server_errors(self) -> None:
         self.remaining_file_delete_failures = ["500 Error", "500 Error"]
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
@@ -721,6 +746,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
     @mock.patch("time.time")
     def test_get_download_url_raises_with_missing_download_url_key(self, mock_time) -> None:
         mock_time.return_value = 9000
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
@@ -731,6 +757,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
     @mock.patch("time.time")
     def test_get_download_url_returns_signed_url(self, mock_time) -> None:
         mock_time.return_value = 9000
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4", "KEY")
         storage_object = get_storage(swift_uri)
 
@@ -738,18 +765,20 @@ class TestSwiftStorageProvider(ServiceTestCase):
             url = storage_object.get_download_url()
 
         parsed = urlparse(url)
-        expected = urlparse(
-            self.swift_service.url(
-                "/v1/AUTH_account/CONTAINER/path/to/file.mp4"))
+        expected = urlparse(self.swift_service.url("/v1/AUTH_account/CONTAINER/path/to/file.mp4"))
+
         self.assertEqual(parsed.path, expected.path)
         self.assertEqual(parsed.netloc, expected.netloc)
+
         query = dict(parse_qsl(parsed.query))
+
         self.assertEqual("9060", query["temp_url_expires"])
         self.assertTrue("temp_url_sig" in query)
 
     @mock.patch("time.time")
     def test_get_download_url_accepts_variable_seconds(self, mock_time) -> None:
         mock_time.return_value = 9000
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4", "KEY")
         storage_object = get_storage(swift_uri)
 
@@ -758,6 +787,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         parsed = urlparse(url)
         query = dict(parse_qsl(parsed.query))
+
         self.assertEqual("9120", query["temp_url_expires"])
 
     def generate_signature(self, path, key, expires=60):
@@ -768,6 +798,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
     @mock.patch("time.time")
     def test_get_download_url_uses_download_url_key_by_default(self, mock_time) -> None:
         mock_time.return_value = 9000
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4", "KEY")
         storage_object = get_storage(swift_uri)
 
@@ -783,6 +814,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
     @mock.patch("time.time")
     def test_get_download_url_uses_alternate_download_url_key(self, mock_time) -> None:
         mock_time.return_value = 9000
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4", "FOOBAR")
         storage_object = get_storage(swift_uri)
 
@@ -798,6 +830,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
     @mock.patch("time.time")
     def test_get_download_url_uses_provided_key(self, mock_time) -> None:
         mock_time.return_value = 9000
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
@@ -811,9 +844,9 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.assertEqual(expected_signature, signature)
 
     @mock.patch("time.time")
-    def test_get_download_url_overrides_download_url_key_with_provided_key(
-            self, mock_time) -> None:
+    def test_get_download_url_overrides_download_url_key_with_provided_key(self, mock_time) -> None:
         mock_time.return_value = 9000
+
         swift_uri = self._generate_swift_uri("/path/to/file.mp4", "FOOBAR")
         storage_object = get_storage(swift_uri)
 
