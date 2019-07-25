@@ -1,9 +1,12 @@
 import contextlib
 from io import BytesIO
+from hashlib import sha1
+import hmac
 import json
 import tempfile
+import time
 from unittest import mock
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse, parse_qsl
 
 from storage import get_storage
 from storage.swift_storage import SwiftStorageError
@@ -40,12 +43,14 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.remaining_auth_failures = []
         self.remaining_file_failures = []
         self.remaining_file_put_failures = []
+        self.remaining_file_delete_failures = []
 
         self.auth_fetches = 0
         self.file_fetches = {}
         self.file_contents = {}
         self.file_uploads = {}
         self.file_put_fetches = {}
+        self.file_delete_fetches = {}
 
         self.keystone_credentials = {
             "username": "USER",
@@ -86,6 +91,17 @@ class TestSwiftStorageProvider(ServiceTestCase):
             self.swift_object_put_handler)
         yield
         self.assertEqual(file_content, self.file_uploads[filepath])
+
+    @contextlib.contextmanager
+    def _expect_delete(self, filepath):
+        self.file_uploads[filepath] = b"UNDELETED!"
+        self.swift_service.add_handler(
+            "DELETE", f"/v2.0/1234/CONTAINER{filepath}",
+            self.swift_object_delete_handler)
+        yield
+        self.assertNotIn(
+            filepath, self.file_uploads,
+            f"File {filepath} was not deleted as expected.")
 
     def identity_handler(self, environ, start_response):
         start_response("200 OK", [("Content-Type", "application/json")])
@@ -210,15 +226,32 @@ class TestSwiftStorageProvider(ServiceTestCase):
         start_response("201 OK", [("Content-Type", "text/plain")])
         return [b""]
 
-    def _generate_swift_uri(self, filename):
+    def swift_object_delete_handler(self, environ, start_response):
+        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
+        self.file_delete_fetches.setdefault(path, 0)
+        self.file_delete_fetches[path] += 1
+
+        if len(self.remaining_file_delete_failures) > 0:
+            failure = self.remaining_file_delete_failures.pop(0)
+            start_response(failure, [("Content-type", "text/plain")])
+            return [b"Internal server error."]
+
+        del self.file_uploads[path]
+        start_response("204 OK", [("Content-type", "text/plain")])
+        return [b""]
+
+    def _generate_swift_uri(self, filename, download_url_key=None):
         base_uri = f"swift://USER:KEY@CONTAINER{filename}"
-        uri_params = urlencode({
+        uri_params = {
             "auth_endpoint": self.identity_service.url("/v2.0"),
             "tenant_id": "1234",
             "region": "DFW"
-        })
+        }
 
-        return f"{base_uri}?{uri_params}"
+        if download_url_key is not None:
+            uri_params["download_url_key"] = download_url_key
+
+        return f"{base_uri}?{urlencode(uri_params)}"
 
     @contextlib.contextmanager
     def assert_raises_on_forbidden_keystone_access(self) -> None:
@@ -648,3 +681,147 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.load_from_filename(tmp_file.name)
         self.assertEqual(3, self.auth_fetches)
+
+    def test_delete_raises_on_missing_parameters(self) -> None:
+        self.file_uploads["/path/to/file.mp4"] = b"UNDELETED"
+        self.assert_requires_all_parameters(
+            "/path/to/file.mp4", lambda x: x.delete())
+        self.assertEqual(
+            b"UNDELETED", self.file_uploads["/path/to/file.mp4"])
+
+    def test_delete_makes_delete_request_against_swift_service(self) -> None:
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+        with self._expect_delete("/path/to/file.mp4"):
+            with self.run_services():
+                storage_object.delete()
+
+    def test_delete_retries_on_authentication_server_errors(self) -> None:
+        self.remaining_auth_failures = ["500 Error", "500 Error"]
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_delete("/path/to/file.mp4"):
+            with self.run_services():
+                storage_object.delete()
+
+        self.assertEqual(3, self.auth_fetches)
+
+    def test_delete_retries_on_swift_server_errors(self) -> None:
+        self.remaining_file_delete_failures = ["500 Error", "500 Error"]
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_delete("/path/to/file.mp4"):
+            with self.run_services():
+                storage_object.delete()
+
+        self.assertEqual(3, self.file_delete_fetches["/path/to/file.mp4"])
+
+    @mock.patch("time.time")
+    def test_get_download_url_raises_with_missing_download_url_key(self, mock_time) -> None:
+        mock_time.return_value = 9000
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            with self.assertRaises(SwiftStorageError):
+                storage_object.get_download_url()
+
+    @mock.patch("time.time")
+    def test_get_download_url_returns_signed_url(self, mock_time) -> None:
+        mock_time.return_value = 9000
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4", "KEY")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url()
+
+        parsed = urlparse(url)
+        expected = urlparse(
+            self.swift_service.url(
+                "/v1/AUTH_account/CONTAINER/path/to/file.mp4"))
+        self.assertEqual(parsed.path, expected.path)
+        self.assertEqual(parsed.netloc, expected.netloc)
+        query = dict(parse_qsl(parsed.query))
+        self.assertEqual("9060", query["temp_url_expires"])
+        self.assertTrue("temp_url_sig" in query)
+
+    @mock.patch("time.time")
+    def test_get_download_url_accepts_variable_seconds(self, mock_time) -> None:
+        mock_time.return_value = 9000
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4", "KEY")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url(seconds=120)
+
+        parsed = urlparse(url)
+        query = dict(parse_qsl(parsed.query))
+        self.assertEqual("9120", query["temp_url_expires"])
+
+    def generate_signature(self, path, key, expires=60):
+        timestamp = time.time()
+        raw_string = f"GET\n{timestamp + expires}\n/v1/AUTH_account/CONTAINER{path}"
+        return hmac.new(key, raw_string.encode("utf8"), sha1).hexdigest()
+
+    @mock.patch("time.time")
+    def test_get_download_url_uses_download_url_key_by_default(self, mock_time) -> None:
+        mock_time.return_value = 9000
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4", "KEY")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url()
+
+        parsed = urlparse(url)
+        signature = dict(parse_qsl(parsed.query))["temp_url_sig"]
+        expected_signature = self.generate_signature("/path/to/file.mp4", b"KEY")
+
+        self.assertEqual(expected_signature, signature)
+
+    @mock.patch("time.time")
+    def test_get_download_url_uses_alternate_download_url_key(self, mock_time) -> None:
+        mock_time.return_value = 9000
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4", "FOOBAR")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url()
+
+        parsed = urlparse(url)
+        signature = dict(parse_qsl(parsed.query))["temp_url_sig"]
+
+        expected_signature = self.generate_signature("/path/to/file.mp4", b"FOOBAR")
+        self.assertEqual(expected_signature, signature)
+
+    @mock.patch("time.time")
+    def test_get_download_url_uses_provided_key(self, mock_time) -> None:
+        mock_time.return_value = 9000
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url(key="BLARGH")
+
+        parsed = urlparse(url)
+        signature = dict(parse_qsl(parsed.query))["temp_url_sig"]
+
+        expected_signature = self.generate_signature("/path/to/file.mp4", b"BLARGH")
+        self.assertEqual(expected_signature, signature)
+
+    @mock.patch("time.time")
+    def test_get_download_url_overrides_download_url_key_with_provided_key(
+            self, mock_time) -> None:
+        mock_time.return_value = 9000
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4", "FOOBAR")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url(key="BARFOO")
+
+        parsed = urlparse(url)
+        signature = dict(parse_qsl(parsed.query))["temp_url_sig"]
+
+        expected_signature = self.generate_signature("/path/to/file.mp4", b"BARFOO")
+        self.assertEqual(expected_signature, signature)

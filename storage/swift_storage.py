@@ -1,4 +1,4 @@
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urljoin
 
 from keystoneauth1 import session
 from keystoneauth1.identity import v2
@@ -62,6 +62,8 @@ class SwiftStorage(Storage):
         if region_name is None:
             raise SwiftStorageError(f"Required filed is missing: region_name")
 
+        self.download_url_key = query.get("download_url_key")
+
         os_options = {
             "tenant_id": tenant_id,
             "region_name": region_name
@@ -114,13 +116,36 @@ class SwiftStorage(Storage):
         connection = self.get_connection()
         container, object_name = self.get_container_and_object_names()
 
-        def put_object():
-            connection.put_object(container, object_name, in_file)
-
         retry_swift_operation(
             f"Failed to store Swift object {object_name} in container {container}",
-            put_object)
+            connection.put_object, container, object_name, in_file)
 
     def load_from_filename(self, in_path: str) -> None:
         with open(in_path, "rb") as fp:
             self.load_from_file(fp)
+
+    def delete(self) -> None:
+        connection = self.get_connection()
+        container, object_name = self.get_container_and_object_names()
+
+        retry_swift_operation(
+            f"Failed to store Swift object {object_name} in container {container}",
+            connection.delete_object, container, object_name)
+
+    def get_download_url(self, seconds=60, key=None) -> str:
+        connection = self.get_connection()
+
+        download_url_key = key or self.download_url_key
+
+        if download_url_key is None:
+            raise SwiftStorageError(
+                "Missing required `download_url_key` for `get_download_url`.")
+
+        host, _ = connection.get_service_auth()
+        container, object_name = self.get_container_and_object_names()
+
+        path = swiftclient.utils.generate_temp_url(
+            f"/v1/AUTH_account/{container}/{object_name}",
+            seconds=seconds, key=download_url_key, method="GET")
+
+        return urljoin(host, path)
