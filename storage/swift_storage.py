@@ -1,3 +1,4 @@
+import os
 from urllib.parse import parse_qsl, urljoin
 
 from keystoneauth1 import session
@@ -92,9 +93,8 @@ class SwiftStorage(Storage):
         object_name = self._parsed_storage_uri.path[1:]
         return container, object_name
 
-    def save_to_file(self, out_file: BinaryIO) -> None:
+    def _download_object_to_file(self, container, object_name, out_file):
         connection = self.get_connection()
-        container, object_name = self.get_container_and_object_names()
 
         def get_object():
             out_file.seek(0)
@@ -108,9 +108,19 @@ class SwiftStorage(Storage):
             f"Failed to retrieve Swift object {object_name} from container {container}",
             get_object)
 
+    def _download_object_to_filename(self, container, object_name, filename):
+        dir_name = os.path.dirname(filename)
+        os.makedirs(dir_name, exist_ok=True)
+        with open(filename, "wb") as out_file:
+            self._download_object_to_file(container, object_name, out_file)
+
+    def save_to_file(self, out_file: BinaryIO) -> None:
+        container, object_name = self.get_container_and_object_names()
+        self._download_object_to_file(container, object_name, out_file)
+
     def save_to_filename(self, file_path: str) -> None:
-        with open(file_path, "wb") as out_file:
-            self.save_to_file(out_file)
+        container, object_name = self.get_container_and_object_names()
+        self._download_object_to_filename(container, object_name, file_path)
 
     def load_from_file(self, in_file: BinaryIO) -> None:
         connection = self.get_connection()
@@ -149,3 +159,27 @@ class SwiftStorage(Storage):
             seconds=seconds, key=download_url_key, method="GET")
 
         return urljoin(host, path)
+
+    def save_to_directory(self, directory_path):
+        connection = self.get_connection()
+
+        container, object_name = self.get_container_and_object_names()
+
+        prefix = self._parsed_storage_uri.path[1:] + "/"
+
+        def get_container():
+            resp_headers, objects = connection.get_container(container, prefix=prefix)
+            for container_object in objects:
+                base_path = container_object["name"].split(prefix)[1]
+                relative_path = os.path.sep.join(base_path.split("/"))
+                file_path = os.path.join(directory_path, relative_path)
+                object_path = container_object["name"]
+
+                while object_path.startswith("/"):
+                    object_path = object_path[1:]
+
+                self._download_object_to_filename(container, object_path, file_path)
+
+        retry_swift_operation(
+            f"Failed to retrieve Swift object {object_name} from container {container}",
+            get_container)
