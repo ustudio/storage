@@ -48,45 +48,48 @@ def retry_swift_operation(error_str, fn, *args, **kwargs):
 @register_storage_protocol("swift")
 class SwiftStorage(Storage):
 
+    # cache get connections
     def get_connection(self):
-        query = dict(parse_qsl(self._parsed_storage_uri.query))
+        if not hasattr(self, "_connection"):
+            query = dict(parse_qsl(self._parsed_storage_uri.query))
 
-        auth_endpoint = query.get("auth_endpoint")
-        if auth_endpoint is None:
-            raise SwiftStorageError(f"Required filed is missing: auth_endpoint")
+            auth_endpoint = query.get("auth_endpoint")
+            if auth_endpoint is None:
+                raise SwiftStorageError(f"Required filed is missing: auth_endpoint")
 
-        tenant_id = query.get("tenant_id")
-        if tenant_id is None:
-            raise SwiftStorageError(f"Required filed is missing: tenant_id")
+            tenant_id = query.get("tenant_id")
+            if tenant_id is None:
+                raise SwiftStorageError(f"Required filed is missing: tenant_id")
 
-        region_name = query.get("region")
-        if region_name is None:
-            raise SwiftStorageError(f"Required filed is missing: region_name")
+            region_name = query.get("region")
+            if region_name is None:
+                raise SwiftStorageError(f"Required filed is missing: region_name")
 
-        self.download_url_key = query.get("download_url_key")
+            self.download_url_key = query.get("download_url_key")
 
-        os_options = {
-            "tenant_id": tenant_id,
-            "region_name": region_name
-        }
+            os_options = {
+                "tenant_id": tenant_id,
+                "region_name": region_name
+            }
 
-        auth, _ = self._parsed_storage_uri.netloc.split("@")
-        user, key = auth.split(":", 1)
+            auth, _ = self._parsed_storage_uri.netloc.split("@")
+            user, key = auth.split(":", 1)
 
-        if user == "":
-            raise SwiftStorageError(f"Missing username")
+            if user == "":
+                raise SwiftStorageError(f"Missing username")
 
-        if key == "":
-            raise SwiftStorageError(f"Missing API key")
+            if key == "":
+                raise SwiftStorageError(f"Missing API key")
 
-        auth = v2.Password(
-            auth_url=auth_endpoint, username=user, password=key, tenant_name=tenant_id)
+            auth = v2.Password(
+                auth_url=auth_endpoint, username=user, password=key, tenant_name=tenant_id)
 
-        keystone_session = session.Session(auth=auth)
+            keystone_session = session.Session(auth=auth)
 
-        connection = swiftclient.client.Connection(
-            session=keystone_session, os_options=os_options, timeout=DEFAULT_SWIFT_TIMEOUT)
-        return connection
+            connection = swiftclient.client.Connection(
+                session=keystone_session, os_options=os_options, timeout=DEFAULT_SWIFT_TIMEOUT)
+            self._connection = connection
+        return self._connection
 
     def get_container_and_object_names(self):
         _, container = self._parsed_storage_uri.netloc.split("@")
@@ -169,17 +172,41 @@ class SwiftStorage(Storage):
 
         def get_container():
             resp_headers, objects = connection.get_container(container, prefix=prefix)
-            for container_object in objects:
-                base_path = container_object["name"].split(prefix)[1]
-                relative_path = os.path.sep.join(base_path.split("/"))
-                file_path = os.path.join(directory_path, relative_path)
-                object_path = container_object["name"]
+            return list(objects)
 
-                while object_path.startswith("/"):
-                    object_path = object_path[1:]
-
-                self._download_object_to_filename(container, object_path, file_path)
-
-        retry_swift_operation(
+        container_objects = retry_swift_operation(
             f"Failed to retrieve Swift object {object_name} from container {container}",
             get_container)
+
+        for container_object in container_objects:
+            base_path = container_object["name"].split(prefix)[1]
+            relative_path = os.path.sep.join(base_path.split("/"))
+            file_path = os.path.join(directory_path, relative_path)
+            object_path = container_object["name"]
+
+            while object_path.startswith("/"):
+                object_path = object_path[1:]
+
+            self._download_object_to_filename(container, object_path, file_path)
+
+    def load_from_directory(self, directory_path: str) -> None:
+        connection = self.get_connection()
+
+        container, object_name = self.get_container_and_object_names()
+
+        prefix = self._parsed_storage_uri.path[1:]
+
+        for root, _, files in os.walk(directory_path):
+            base = root.split(directory_path, 1)[1]
+            while base.startswith("/"):
+                base = base[1:]
+            while base.endswith("/"):
+                base = base[:-1]
+            for filename in files:
+                local_path = os.path.join(root, filename)
+                remote_path = "/".join(filter(lambda x: x != "", [prefix, base, filename]))
+
+                with open(local_path, "rb") as fp:
+                    retry_swift_operation(
+                        f"Failed to store Swift object {object_name} in container {container}",
+                        connection.put_object, container, remote_path, fp)

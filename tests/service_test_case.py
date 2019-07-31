@@ -84,7 +84,7 @@ class Service(object):
         while self.event.is_set():
             # waiting until the event is clear, e.g. the server has been
             # started and is ready for connections
-            time.sleep(0.01)
+            time.sleep(0.005)
 
         logging.info(f"Server on port {self.port} ready for requests.")
 

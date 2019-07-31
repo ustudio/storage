@@ -45,13 +45,16 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.tmp_files = []
 
         self.remaining_auth_failures = []
-        self.remaining_directory_failures = []
+        self.remaining_container_failures = []
+        self.remaining_container_put_failures = []
         self.remaining_file_failures = []
         self.remaining_file_put_failures = []
         self.remaining_file_delete_failures = []
 
         self.auth_fetches = 0
+        self.container_contents = {}
         self.container_fetches = {}
+        self.container_put_fetches = {}
         self.directory_contents = {}
         self.file_fetches = {}
         self.file_contents = {}
@@ -74,23 +77,45 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.mock_sleep_patch = mock.patch("time.sleep")
         self.mock_sleep = self.mock_sleep_patch.start()
         self.mock_sleep.side_effect = lambda x: None
+        # this is fragile, but they import and use the function directly, so we mock in-module
+        self.mock_swiftclient_sleep_patch = mock.patch("swiftclient.client.sleep")
+        self.mock_swiftclient_sleep = self.mock_swiftclient_sleep_patch.start()
+        self.mock_swiftclient_sleep.side_effect = lambda x: None
 
     def tearDown(self):
         super().tearDown()
 
+        for fp in self.tmp_files:
+            fp.close()
+
         self.tmp_dir.cleanup()
         self.mock_sleep_patch.stop()
+
+    def _strip_slashes(self, path):
+        while path.endswith(os.path.sep):
+            path = path[:-1]
+        while path.startswith(os.path.sep):
+            path = path[1:]
+        return path
 
     def _add_file_to_directory(self, filepath, file_content) -> None:
         if type(file_content) is not bytes:
             raise Exception("Object file contents must be bytes")
 
-        self.directory_contents[filepath] = file_content
+        self.container_contents[filepath] = file_content
         self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
         self._add_file(filepath, file_content)
 
-    def _add_file_to_tmp_dir(self):
-        tmp_file = tempfile.NamedTemporaryFile(dir=self.tmp_dir.name)
+    def _add_tmp_file_to_dir(self, directory, file_content):
+        if type(file_content) is not bytes:
+            raise Exception("Object file contents must be bytes")
+
+        os.makedirs(directory, exist_ok=True)
+
+        tmp_file = tempfile.NamedTemporaryFile(dir=directory)
+        tmp_file.write(file_content)
+        tmp_file.seek(0)
+
         self.tmp_files.append(tmp_file)
         return tmp_file
 
@@ -108,8 +133,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
     @contextlib.contextmanager
     def _expect_file(self, filepath, file_content) -> None:
         self.swift_service.add_handler(
-            "PUT", f"/v2.0/1234/CONTAINER{filepath}",
-            self.swift_object_put_handler)
+            "PUT", f"/v2.0/1234/CONTAINER{filepath}", self.swift_object_put_handler)
         yield
         self.assertEqual(file_content, self.file_uploads[filepath])
 
@@ -123,6 +147,20 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.assertNotIn(
             filepath, self.file_uploads,
             f"File {filepath} was not deleted as expected.")
+
+    @contextlib.contextmanager
+    def _expect_directory(self, filepath) -> None:
+        for root, _, files in os.walk(self.tmp_dir.name):
+            dirpath = self._strip_slashes(root.split(self.tmp_dir.name)[1])
+            for basepath in files:
+                relative_path = os.path.join(dirpath, basepath)
+                remote_path = "/".join([filepath, relative_path])
+
+                self.swift_service.add_handler(
+                    "PUT", f"/v2.0/1234/CONTAINER{remote_path}", self.swift_container_put_handler)
+        yield
+
+        self.assert_container_contents_equal(filepath)
 
     def identity_handler(self, environ, start_response):
         start_response("200 OK", [("Content-Type", "application/json")])
@@ -216,8 +254,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.container_fetches.setdefault(path, 0)
         self.container_fetches[path] += 1
 
-        if len(self.remaining_directory_failures) > 0:
-            failure = self.remaining_directory_failures.pop(0)
+        if len(self.remaining_container_failures) > 0:
+            failure = self.remaining_container_failures.pop(0)
 
             start_response(failure, [("Content-type", "text/plain")])
             return [b"Internal server error"]
@@ -227,11 +265,31 @@ class TestSwiftStorageProvider(ServiceTestCase):
         if "json" == parsed_args.get("format"):
             start_response("200 OK", [("Content-Type", "application/json")])
             return [json.dumps([
-                {"name": v} for v in self.directory_contents.keys()
+                {"name": v} for v in self.container_contents.keys()
             ]).encode("utf8")]
 
         start_response("200 OK", [("Content-Type", "text/plain")])
-        return ["\n".join(self.directory_contents).encode("utf8")]
+        return ["\n".join(self.container_contents).encode("utf8")]
+
+    def swift_container_put_handler(self, environ, start_response):
+        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
+        self.container_put_fetches.setdefault(path, 0)
+        self.container_put_fetches[path] += 1
+
+        if len(self.remaining_container_put_failures) > 0:
+            failure = self.remaining_container_put_failures.pop(0)
+            start_response(failure, [("Content-type", "text/plain")])
+            return [b"Internal server error."]
+
+        header = b""
+        while not header.endswith(b"\r\n"):
+            header += environ["wsgi.input"].read(1)
+
+        body_size = int(header.strip())
+        self.container_contents[path] = environ["wsgi.input"].read(body_size)
+
+        start_response("201 OK", [("Content-Type", "text/plain")])
+        return [b""]
 
     def swift_object_handler(self, environ, start_response):
         path = environ["REQUEST_PATH"].split("CONTAINER")[1]
@@ -264,8 +322,11 @@ class TestSwiftStorageProvider(ServiceTestCase):
         header = b""
         while not header.endswith(b"\r\n"):
             header += environ["wsgi.input"].read(1)
+
         body_size = int(header.strip())
         self.file_uploads[path] = environ["wsgi.input"].read(body_size)
+        print("file uploaded", self.file_uploads[path])
+
         start_response("201 OK", [("Content-Type", "text/plain")])
         return [b""]
 
@@ -404,10 +465,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.save_to_file(tmp_file)
 
-    @mock.patch("time.time")
-    def test_save_to_file_raises_internal_server_exception_after_max_retries(self, mock_time):
-        mock_time.return_value = 9000
-
+    def test_save_to_file_raises_internal_server_exception_after_max_retries(self):
         self.remaining_auth_failures = [
             "500 Internal Server Error", "500 Internal Server Error", "500 Internal Server Error",
             "500 Internal Server Error", "500 Internal Server Error"]
@@ -425,10 +483,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         self.assertEqual(0, len(self.remaining_auth_failures))
 
-    @mock.patch("time.time")
-    def test_save_to_file_raises_bad_gateway_exception_after_max_retries(self, mock_time):
-        mock_time.return_value = 9000
-
+    def test_save_to_file_raises_bad_gateway_exception_after_max_retries(self):
         self.remaining_auth_failures = [
             "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway",
             "502 Bad Gateway"]
@@ -574,10 +629,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.save_to_filename(tmp_file.name)
 
-    @mock.patch("time.time")
-    def test_save_to_filename_raises_internal_server_exception_after_max_retries(self, mock_time):
-        mock_time.return_value = 9000
-
+    def test_save_to_filename_raises_internal_server_exception_after_max_retries(self):
         self.remaining_auth_failures = [
             "500 Internal Server Error", "500 Internal Server Error", "500 Internal Server Error",
             "500 Internal Server Error", "500 Internal Server Error"]
@@ -596,10 +648,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         self.assertEqual(0, len(self.remaining_auth_failures))
 
-    @mock.patch("time.time")
-    def test_save_to_filename_raises_bad_gateway_exception_after_max_retries(self, mock_time):
-        mock_time.return_value = 9000
-
+    def test_save_to_filename_raises_bad_gateway_exception_after_max_retries(self):
         self.remaining_auth_failures = [
             "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway",
             "502 Bad Gateway"]
@@ -618,10 +667,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         self.assertEqual(0, len(self.remaining_auth_failures))
 
-    @mock.patch("time.time")
-    def test_save_to_filename_raises_storage_error_on_swift_service_not_found(self, mock_time):
-        mock_time.return_value = 9000
-
+    def test_save_to_filename_raises_storage_error_on_swift_service_not_found(self):
         self._add_file_error("404 Not Found")
 
         tmp_file = tempfile.NamedTemporaryFile()
@@ -941,7 +987,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
     def test_save_to_directory_raises_exception_when_missing_required_parameters(self) -> None:
         self._add_file("/path/to/file.mp4", b"FOOBAR")
         self.assert_requires_all_parameters(
-            "/path/to/file.mp4", lambda x: x.save_to_directory(self.tmp_dir.name))
+            "/path/to/files", lambda x: x.save_to_directory(self.tmp_dir.name))
 
     def test_save_to_directory_raises_on_forbidden_keystone_credentials(self) -> None:
         self._add_file("/path/to/files/file.mp4", b"Contents")
@@ -956,22 +1002,15 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.save_to_directory(self.tmp_dir.name)
 
-    def assert_directory_contents_equal(self, object_path):
-
-        def strip_slashes(path):
-            while path.endswith(os.path.sep):
-                path = path[:-1]
-            while path.startswith(os.path.sep):
-                path = path[1:]
-            return path
-
+    def assert_container_contents_equal(self, object_path):
         written_files = {}
         expected_files = {
-            strip_slashes(f.split(object_path)[1]): v
-            for f, v in self.directory_contents.items()
+            self._strip_slashes(f.split(object_path)[1]): v
+            for f, v in self.container_contents.items()
         }
+
         for root, dirs, files in os.walk(self.tmp_dir.name):
-            dirpath = strip_slashes(root.split(self.tmp_dir.name)[1])
+            dirpath = self._strip_slashes(root.split(self.tmp_dir.name)[1])
             for basepath in files:
                 fullpath = os.path.join(root, basepath)
                 relpath = os.path.join(dirpath, basepath)
@@ -990,7 +1029,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.run_services():
             storage_object.save_to_directory(self.tmp_dir.name)
 
-        self.assert_directory_contents_equal("/path/to/files")
+        self.assert_container_contents_equal("/path/to/files")
 
     def test_save_to_directory_includes_subdirectories_in_local_path(self) -> None:
         self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
@@ -1004,10 +1043,10 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.run_services():
             storage_object.save_to_directory(self.tmp_dir.name)
 
-        self.assert_directory_contents_equal("/path/to/files")
+        self.assert_container_contents_equal("/path/to/files")
 
     def test_save_to_directory_retries_on_error(self) -> None:
-        self.remaining_directory_failures.append("500 Internal server error")
+        self.remaining_container_failures.append("500 Internal server error")
         self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
 
         swift_uri = self._generate_swift_uri("/path/to/files")
@@ -1018,16 +1057,26 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         self.assertEqual(2, self.container_fetches["/v2.0/1234/CONTAINER"])
 
-    @mock.patch("time.time")
-    def test_save_to_directory_raises_internal_server_exception_after_max_retries(
-            self, mock_time) -> None:
-        mock_time.return_value = 9000
+    def test_save_to_directory_only_retries_put_object_when_store_object_fails(self) -> None:
+        self.remaining_file_failures.append("500 Internal server error")
+        self.remaining_file_failures.append("500 Internal server error")
+        self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
 
-        self.remaining_directory_failures = [
+        with self.run_services():
+            storage_object.save_to_directory(self.tmp_dir.name)
+
+        self.assertEqual(1, self.auth_fetches)
+        self.assertEqual(1, self.container_fetches["/v2.0/1234/CONTAINER"])
+        self.assertEqual(3, self.file_fetches["/path/to/files/file.mp4"])
+
+    def test_save_to_directory_raises_internal_server_exception_after_max_retries(self) -> None:
+        self.remaining_auth_failures = [
             "500 Internal Server Error", "500 Internal Server Error", "500 Internal Server Error",
             "500 Internal Server Error", "500 Internal Server Error"]
 
-        self._add_file_to_directory("/path/to.files/file.mp4", b"contents")
+        self._add_file_to_directory("/path/to/files/file.mp4", b"contents")
 
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
@@ -1036,4 +1085,83 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.assertRaises(SwiftStorageError):
                 storage_object.save_to_directory(self.tmp_dir.name)
 
-        self.assertEqual(0, len(self.remaining_directory_failures))
+        self.assertEqual(0, len(self.remaining_auth_failures))
+
+    def test_load_from_directory_raises_when_missing_required_parameters(self) -> None:
+        self.assert_requires_all_parameters(
+            "/path/to/files", lambda x: x.load_from_directory(self.tmp_dir.name))
+
+    def test_load_from_directory_puts_file_contents_at_object_endpoint(self) -> None:
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+    def test_load_from_directory_does_not_retry_with_invalid_keystone_creds(self) -> None:
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.assert_raises_on_forbidden_keystone_access():
+            storage_object.load_from_directory(self.tmp_dir.name)
+
+        with self.assert_raises_on_unauthorized_keystone_access():
+            storage_object.load_from_directory(self.tmp_dir.name)
+
+        self.assertEqual(0, len(self.container_put_fetches))
+
+    def test_load_from_directory_retries_on_error(self) -> None:
+        self.remaining_container_put_failures.append("500 Internal server error")
+
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+        filepaths = [*self.container_contents]
+        self.assertEqual(2, self.container_put_fetches.get(filepaths[0]))
+        self.assertEqual(1, self.container_put_fetches.get(filepaths[1]))
+
+    def test_load_from_directory_includes_subdirectories_in_object_endpoint(self) -> None:
+        dir_name = os.path.join(self.tmp_dir.name, "files2")
+        self._add_tmp_file_to_dir(dir_name, b"NESTED")
+
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+        self.assert_container_contents_equal("/path/to/files")
+
+    def test_load_from_directory_raises_internal_server_exception_after_max_retries(self) -> None:
+        self.remaining_auth_failures = [
+            "500 Internal Server Error", "500 Internal Server Error", "500 Internal Server Error",
+            "500 Internal Server Error", "500 Internal Server Error"]
+
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            with self.assertRaises(SwiftStorageError):
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+        self.assertEqual(0, len(self.remaining_auth_failures))
