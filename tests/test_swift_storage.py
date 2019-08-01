@@ -141,12 +141,12 @@ class TestSwiftStorageProvider(ServiceTestCase):
     def _expect_delete(self, filepath) -> None:
         self.file_uploads[filepath] = b"UNDELETED!"
         self.swift_service.add_handler(
-            "DELETE", f"/v2.0/1234/CONTAINER{filepath}",
-            self.swift_object_delete_handler)
+            "DELETE", f"/v2.0/1234/CONTAINER{filepath}", self.swift_object_delete_handler)
+
         yield
+
         self.assertNotIn(
-            filepath, self.file_uploads,
-            f"File {filepath} was not deleted as expected.")
+            filepath, self.file_uploads, f"File {filepath} was not deleted as expected.")
 
     @contextlib.contextmanager
     def _expect_directory(self, filepath) -> None:
@@ -325,7 +325,6 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         body_size = int(header.strip())
         self.file_uploads[path] = environ["wsgi.input"].read(body_size)
-        print("file uploaded", self.file_uploads[path])
 
         start_response("201 OK", [("Content-Type", "text/plain")])
         return [b""]
@@ -1073,8 +1072,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
     def test_save_to_directory_raises_internal_server_exception_after_max_retries(self) -> None:
         self.remaining_auth_failures = [
-            "500 Internal Server Error", "500 Internal Server Error", "500 Internal Server Error",
-            "500 Internal Server Error", "500 Internal Server Error"]
+            "500 Error", "500 Error", "500 Error", "500 Error", "500 Error"]
 
         self._add_file_to_directory("/path/to/files/file.mp4", b"contents")
 
@@ -1152,8 +1150,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
     def test_load_from_directory_raises_internal_server_exception_after_max_retries(self) -> None:
         self.remaining_auth_failures = [
-            "500 Internal Server Error", "500 Internal Server Error", "500 Internal Server Error",
-            "500 Internal Server Error", "500 Internal Server Error"]
+            "500 Error", "500 Error", "500 Error", "500 Error", "500 Error"]
 
         self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
 
