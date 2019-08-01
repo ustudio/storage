@@ -47,6 +47,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.remaining_auth_failures = []
         self.remaining_container_failures = []
         self.remaining_container_put_failures = []
+        self.remaining_container_delete_failures = []
         self.remaining_file_failures = []
         self.remaining_file_put_failures = []
         self.remaining_file_delete_failures = []
@@ -55,6 +56,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.container_contents = {}
         self.container_fetches = {}
         self.container_put_fetches = {}
+        self.container_delete_fetches = {}
         self.directory_contents = {}
         self.file_fetches = {}
         self.file_contents = {}
@@ -158,6 +160,23 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
                 self.swift_service.add_handler(
                     "PUT", f"/v2.0/1234/CONTAINER{remote_path}", self.swift_container_put_handler)
+        yield
+
+        self.assert_container_contents_equal(filepath)
+
+    @contextlib.contextmanager
+    def _expect_delete_directory(self, filepath) -> None:
+        for root, _, files in os.walk(self.tmp_dir.name):
+            dirpath = self._strip_slashes(root.split(self.tmp_dir.name)[1])
+            for basepath in files:
+                relative_path = os.path.join(dirpath, basepath)
+                remote_path = "/".join([filepath, relative_path])
+
+                self.container_contents[remote_path] = b"UNDELETED"
+
+        self.swift_service.add_handler(
+            "DELETE", f"/v2.0/1234/CONTAINER", self.swift_container_delete_handler)
+
         yield
 
         self.assert_container_contents_equal(filepath)
@@ -289,6 +308,21 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.container_contents[path] = environ["wsgi.input"].read(body_size)
 
         start_response("201 OK", [("Content-Type", "text/plain")])
+        return [b""]
+
+    def swift_container_delete_handler(self, environ, start_response):
+        path = environ["REQUEST_PATH"]
+        self.container_delete_fetches.setdefault(path, 0)
+        self.container_delete_fetches[path] += 1
+
+        if len(self.remaining_container_delete_failures) > 0:
+            failure = self.remaining_container_delete_failures.pop(0)
+            start_response(failure, [("Content-type", "text/plain")])
+            return [b"Internal server error."]
+
+        self.container_contents.clear()
+
+        start_response("204 OK", [("Content-type", "text/plain")])
         return [b""]
 
     def swift_object_handler(self, environ, start_response):
@@ -1162,3 +1196,44 @@ class TestSwiftStorageProvider(ServiceTestCase):
                 storage_object.load_from_directory(self.tmp_dir.name)
 
         self.assertEqual(0, len(self.remaining_auth_failures))
+
+    def test_delete_directory_raises_on_missing_parameters(self) -> None:
+        self.container_contents["/path/to/files/file.mp4"] = b"UNDELETED"
+
+        self.assert_requires_all_parameters("/path/to/files", lambda x: x.delete_directory())
+        self.assertEqual(b"UNDELETED", self.container_contents["/path/to/files/file.mp4"])
+
+    def test_delete_directory_makes_delete_request_against_swift_service(self) -> None:
+        self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
+        self._add_file_to_directory("/path/to/files/folder/file2.mp4", b"Video Content")
+
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_delete_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.delete_directory()
+
+    def test_delete_directory_retries_on_authentication_server_errors(self) -> None:
+        self.remaining_auth_failures = ["500 Error", "500 Error"]
+
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_delete_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.delete_directory()
+
+        self.assertEqual(3, self.auth_fetches)
+
+    def test_delete_directory_retries_on_swift_server_errors(self) -> None:
+        self.remaining_container_delete_failures = ["500 Error", "500 Error"]
+
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_delete_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.delete_directory()
+
+        self.assertEqual(3, self.container_delete_fetches["/v2.0/1234/CONTAINER"])

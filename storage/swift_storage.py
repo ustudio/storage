@@ -210,3 +210,11 @@ class SwiftStorage(Storage):
                     retry_swift_operation(
                         f"Failed to store Swift object {object_name} in container {container}",
                         connection.put_object, container, remote_path, fp)
+
+    def delete_directory(self) -> None:
+        connection = self.get_connection()
+
+        container, object_name = self.get_container_and_object_names()
+
+        retry_swift_operation(
+            f"Failed to delete Swift container {container}", connection.delete_container, container)
