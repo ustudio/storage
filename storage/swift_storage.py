@@ -142,7 +142,7 @@ class SwiftStorage(Storage):
         container, object_name = self.get_container_and_object_names()
 
         retry_swift_operation(
-            f"Failed to store Swift object {object_name} in container {container}",
+            f"Failed to delete Swift object {object_name} in container {container}",
             connection.delete_object, container, object_name)
 
     def get_download_url(self, seconds=60, key=None) -> str:
