@@ -1,6 +1,5 @@
 import os
 from io import BytesIO
-from pprint import pprint
 
 import tempfile
 from unittest import mock, TestCase
@@ -72,10 +71,6 @@ class TestLocalStorage(TestCase):
                 destination_directory_path,
                 self.temp_directory["nested_temp_directory"]["name"],
                 self.temp_directory["nested_temp_input"]["name"])
-
-            pprint(self.temp_directory)
-            print("Copy to Directory", destination_directory_path)
-            print("Expected nested output file path", nested_temp_input_path)
 
             self.assertTrue(os.path.exists(destination_input_one_path))
             self.assertTrue(os.path.exists(destination_input_two_path))

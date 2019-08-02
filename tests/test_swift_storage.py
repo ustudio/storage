@@ -46,23 +46,13 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
         self.remaining_auth_failures = []
         self.remaining_container_failures = []
-        self.remaining_container_put_failures = []
-        self.remaining_container_delete_failures = []
         self.remaining_file_failures = []
-        self.remaining_file_put_failures = []
+        self.remaining_object_put_failures = []
         self.remaining_file_delete_failures = []
 
-        self.auth_fetches = 0
         self.container_contents = {}
-        self.container_fetches = {}
-        self.container_put_fetches = {}
-        self.container_delete_fetches = {}
         self.directory_contents = {}
-        self.file_fetches = {}
         self.file_contents = {}
-        self.file_uploads = {}
-        self.file_put_fetches = {}
-        self.file_delete_fetches = {}
 
         self.keystone_credentials = {
             "username": "USER",
@@ -137,18 +127,18 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.swift_service.add_handler(
             "PUT", f"/v2.0/1234/CONTAINER{filepath}", self.swift_object_put_handler)
         yield
-        self.assertEqual(file_content, self.file_uploads[filepath])
+        self.assertEqual(file_content, self.container_contents[filepath])
 
     @contextlib.contextmanager
     def _expect_delete(self, filepath) -> None:
-        self.file_uploads[filepath] = b"UNDELETED!"
+        self.container_contents[filepath] = b"UNDELETED!"
         self.swift_service.add_handler(
             "DELETE", f"/v2.0/1234/CONTAINER{filepath}", self.swift_object_delete_handler)
 
         yield
 
         self.assertNotIn(
-            filepath, self.file_uploads, f"File {filepath} was not deleted as expected.")
+            filepath, self.container_contents, f"File {filepath} was not deleted as expected.")
 
     @contextlib.contextmanager
     def _expect_directory(self, filepath) -> None:
@@ -159,27 +149,23 @@ class TestSwiftStorageProvider(ServiceTestCase):
                 remote_path = "/".join([filepath, relative_path])
 
                 self.swift_service.add_handler(
-                    "PUT", f"/v2.0/1234/CONTAINER{remote_path}", self.swift_container_put_handler)
+                    "PUT", f"/v2.0/1234/CONTAINER{remote_path}", self.swift_object_put_handler)
         yield
 
         self.assert_container_contents_equal(filepath)
 
     @contextlib.contextmanager
     def _expect_delete_directory(self, filepath) -> None:
-        for root, _, files in os.walk(self.tmp_dir.name):
-            dirpath = self._strip_slashes(root.split(self.tmp_dir.name)[1])
-            for basepath in files:
-                relative_path = os.path.join(dirpath, basepath)
-                remote_path = "/".join([filepath, relative_path])
-
-                self.container_contents[remote_path] = b"UNDELETED"
-
-        self.swift_service.add_handler(
-            "DELETE", f"/v2.0/1234/CONTAINER", self.swift_container_delete_handler)
+        expected_delete_paths = []
+        for name in self.container_contents:
+            delete_path = f"/v2.0/1234/CONTAINER/{self._strip_slashes(name)}"
+            expected_delete_paths.append(delete_path)
+            self.swift_service.add_handler("DELETE", delete_path, self.swift_object_delete_handler)
 
         yield
 
-        self.assert_container_contents_equal(filepath)
+        for delete_path in expected_delete_paths:
+            self.swift_service.assert_requested("DELETE", delete_path)
 
     def identity_handler(self, environ, start_response):
         start_response("200 OK", [("Content-Type", "application/json")])
@@ -217,7 +203,6 @@ class TestSwiftStorageProvider(ServiceTestCase):
             return False
 
     def authentication_handler(self, environ, start_response):
-        self.auth_fetches += 1
         body_size = int(environ.get('CONTENT_LENGTH', 0))
         body = json.loads(environ["wsgi.input"].read(body_size))
 
@@ -269,10 +254,6 @@ class TestSwiftStorageProvider(ServiceTestCase):
         }).encode("utf8")]
 
     def swift_container_handler(self, environ, start_response):
-        path = environ["REQUEST_PATH"]
-        self.container_fetches.setdefault(path, 0)
-        self.container_fetches[path] += 1
-
         if len(self.remaining_container_failures) > 0:
             failure = self.remaining_container_failures.pop(0)
 
@@ -290,45 +271,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
         start_response("200 OK", [("Content-Type", "text/plain")])
         return ["\n".join(self.container_contents).encode("utf8")]
 
-    def swift_container_put_handler(self, environ, start_response):
-        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
-        self.container_put_fetches.setdefault(path, 0)
-        self.container_put_fetches[path] += 1
-
-        if len(self.remaining_container_put_failures) > 0:
-            failure = self.remaining_container_put_failures.pop(0)
-            start_response(failure, [("Content-type", "text/plain")])
-            return [b"Internal server error."]
-
-        header = b""
-        while not header.endswith(b"\r\n"):
-            header += environ["wsgi.input"].read(1)
-
-        body_size = int(header.strip())
-        self.container_contents[path] = environ["wsgi.input"].read(body_size)
-
-        start_response("201 OK", [("Content-Type", "text/plain")])
-        return [b""]
-
-    def swift_container_delete_handler(self, environ, start_response):
-        path = environ["REQUEST_PATH"]
-        self.container_delete_fetches.setdefault(path, 0)
-        self.container_delete_fetches[path] += 1
-
-        if len(self.remaining_container_delete_failures) > 0:
-            failure = self.remaining_container_delete_failures.pop(0)
-            start_response(failure, [("Content-type", "text/plain")])
-            return [b"Internal server error."]
-
-        self.container_contents.clear()
-
-        start_response("204 OK", [("Content-type", "text/plain")])
-        return [b""]
-
     def swift_object_handler(self, environ, start_response):
         path = environ["REQUEST_PATH"].split("CONTAINER")[1]
-        self.file_fetches.setdefault(path, 0)
-        self.file_fetches[path] += 1
 
         if len(self.remaining_file_failures) > 0:
             failure = self.remaining_file_failures.pop(0)
@@ -345,11 +289,9 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
     def swift_object_put_handler(self, environ, start_response):
         path = environ["REQUEST_PATH"].split("CONTAINER")[1]
-        self.file_put_fetches.setdefault(path, 0)
-        self.file_put_fetches[path] += 1
 
-        if len(self.remaining_file_put_failures) > 0:
-            failure = self.remaining_file_put_failures.pop(0)
+        if len(self.remaining_object_put_failures) > 0:
+            failure = self.remaining_object_put_failures.pop(0)
             start_response(failure, [("Content-type", "text/plain")])
             return [b"Internal server error."]
 
@@ -358,22 +300,20 @@ class TestSwiftStorageProvider(ServiceTestCase):
             header += environ["wsgi.input"].read(1)
 
         body_size = int(header.strip())
-        self.file_uploads[path] = environ["wsgi.input"].read(body_size)
+        self.container_contents[path] = environ["wsgi.input"].read(body_size)
 
         start_response("201 OK", [("Content-Type", "text/plain")])
         return [b""]
 
     def swift_object_delete_handler(self, environ, start_response):
         path = environ["REQUEST_PATH"].split("CONTAINER")[1]
-        self.file_delete_fetches.setdefault(path, 0)
-        self.file_delete_fetches[path] += 1
 
         if len(self.remaining_file_delete_failures) > 0:
             failure = self.remaining_file_delete_failures.pop(0)
             start_response(failure, [("Content-type", "text/plain")])
             return [b"Internal server error."]
 
-        del self.file_uploads[path]
+        del self.container_contents[path]
         start_response("204 OK", [("Content-type", "text/plain")])
         return [b""]
 
@@ -403,9 +343,6 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.run_services():
             with self.assertRaises(SwiftStorageError):
                 yield
-
-    def assert_fetched_file_n_times(self, path: str, count: int) -> None:
-        self.assertEqual(self.file_fetches.get(path, 0), count)
 
     def assert_requires_all_parameters(self, path, fn):
         base_uri = f"swift://USER:KEY@CONTAINER"
@@ -547,7 +484,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.assertRaises(SwiftStorageError):
                 storage_object.save_to_file(tmp_file)
 
-        self.assert_fetched_file_n_times("/path/to/file.mp4", 1)
+        self.swift_service.assert_requested_n_times(
+            "GET", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
 
     def test_save_to_file_seeks_to_beginning_of_file_on_error(self) -> None:
         self._add_file_error("502 Bad Gateway")
@@ -562,7 +500,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.run_services():
             storage_object.save_to_file(tmp_file)
 
-        self.assert_fetched_file_n_times("/path/to/file.mp4", 2)
+        self.swift_service.assert_requested_n_times(
+            "GET", "/v2.0/1234/CONTAINER/path/to/file.mp4", 2)
 
         tmp_file.seek(0)
         self.assertEqual(b"FOOBAR", tmp_file.read())
@@ -715,7 +654,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.assertRaises(SwiftStorageError):
                 storage_object.save_to_filename(tmp_file.name)
 
-        self.assert_fetched_file_n_times("/path/to/filename.mp4", 1)
+        self.swift_service.assert_requested_n_times(
+            "GET", "/v2.0/1234/CONTAINER/path/to/filename.mp4", 1)
 
     def test_save_to_filename_seeks_to_beginning_of_file_on_error(self) -> None:
         self._add_file_error("502 Bad Gateway")
@@ -732,7 +672,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.run_services():
             storage_object.save_to_filename(tmp_file.name)
 
-        self.assert_fetched_file_n_times("/path/to/filename.mp4", 2)
+        self.swift_service.assert_requested_n_times(
+            "GET", "/v2.0/1234/CONTAINER/path/to/filename.mp4", 2)
 
         tmp_file.seek(0)
         self.assertEqual(b"FOOBAR", tmp_file.read())
@@ -754,7 +695,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
                 storage_object.load_from_file(tmp_file)
 
     def test_load_from_file_retries_on_error(self) -> None:
-        self.remaining_file_put_failures.append("500 Internal server error")
+        self.remaining_object_put_failures.append("500 Internal server error")
 
         tmp_file = BytesIO(b"FOOBAR")
 
@@ -765,7 +706,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.load_from_file(tmp_file)
 
-        self.assertEqual(2, self.file_put_fetches["/path/to/file.mp4"])
+        self.swift_service.assert_requested_n_times(
+            "PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4", 2)
 
     def test_load_from_file_does_not_retry_with_invalid_keystone_creds(self) -> None:
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
@@ -779,7 +721,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.load_from_file(tmp_file)
 
-        self.assertEqual(0, self.file_put_fetches.get("/path/to/file.mp4", 0))
+        self.swift_service.assert_not_requested("PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4")
 
     def test_load_from_file_retries_on_authentication_server_errors(self) -> None:
         self.remaining_auth_failures = ["500 Error", "500 Error"]
@@ -793,7 +735,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.load_from_file(tmp_file)
 
-        self.assertEqual(3, self.auth_fetches)
+        self.identity_service.assert_requested_n_times("POST", "/v2.0/tokens", 3)
 
     def test_load_from_filename_raises_when_missing_required_parameters(self) -> None:
         tmp_file = tempfile.NamedTemporaryFile()
@@ -816,7 +758,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
                 storage_object.load_from_filename(tmp_file.name)
 
     def test_load_from_filename_retries_on_error(self) -> None:
-        self.remaining_file_put_failures.append("500 Internal server error")
+        self.remaining_object_put_failures.append("500 Internal server error")
 
         tmp_file = tempfile.NamedTemporaryFile()
         tmp_file.write(b"FOOBAR")
@@ -829,7 +771,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.load_from_filename(tmp_file.name)
 
-        self.assertEqual(2, self.file_put_fetches["/path/to/file.mp4"])
+        self.swift_service.assert_requested_n_times(
+            "PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4", 2)
 
     def test_load_from_filename_does_not_retry_with_invalid_keystone_creds(self) -> None:
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
@@ -845,7 +788,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.load_from_filename(tmp_file.name)
 
-        self.assertEqual(0, self.file_put_fetches.get("/path/to/file.mp4", 0))
+        self.swift_service.assert_not_requested("PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4")
 
     def test_load_from_filename_retries_on_authentication_server_errors(self) -> None:
         self.remaining_auth_failures = ["500 Error", "500 Error"]
@@ -861,13 +804,13 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.load_from_filename(tmp_file.name)
 
-        self.assertEqual(3, self.auth_fetches)
+        self.identity_service.assert_requested_n_times("POST", "/v2.0/tokens", 3)
 
     def test_delete_raises_on_missing_parameters(self) -> None:
-        self.file_uploads["/path/to/file.mp4"] = b"UNDELETED"
+        self.container_contents["/path/to/file.mp4"] = b"UNDELETED"
 
         self.assert_requires_all_parameters("/path/to/file.mp4", lambda x: x.delete())
-        self.assertEqual(b"UNDELETED", self.file_uploads["/path/to/file.mp4"])
+        self.assertEqual(b"UNDELETED", self.container_contents["/path/to/file.mp4"])
 
     def test_delete_makes_delete_request_against_swift_service(self) -> None:
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
@@ -887,7 +830,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.delete()
 
-        self.assertEqual(3, self.auth_fetches)
+        self.identity_service.assert_requested_n_times("POST", "/v2.0/tokens", 3)
 
     def test_delete_retries_on_swift_server_errors(self) -> None:
         self.remaining_file_delete_failures = ["500 Error", "500 Error"]
@@ -899,7 +842,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.delete()
 
-        self.assertEqual(3, self.file_delete_fetches["/path/to/file.mp4"])
+        self.swift_service.assert_requested_n_times(
+            "DELETE", "/v2.0/1234/CONTAINER/path/to/file.mp4", 3)
 
     @mock.patch("time.time")
     def test_get_download_url_raises_with_missing_download_url_key(self, mock_time) -> None:
@@ -1088,7 +1032,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.run_services():
             storage_object.save_to_directory(self.tmp_dir.name)
 
-        self.assertEqual(2, self.container_fetches["/v2.0/1234/CONTAINER"])
+        self.swift_service.assert_requested_n_times("GET", "/v2.0/1234/CONTAINER", 2)
 
     def test_save_to_directory_only_retries_put_object_when_store_object_fails(self) -> None:
         self.remaining_file_failures.append("500 Internal server error")
@@ -1100,9 +1044,10 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.run_services():
             storage_object.save_to_directory(self.tmp_dir.name)
 
-        self.assertEqual(1, self.auth_fetches)
-        self.assertEqual(1, self.container_fetches["/v2.0/1234/CONTAINER"])
-        self.assertEqual(3, self.file_fetches["/path/to/files/file.mp4"])
+        self.identity_service.assert_requested_n_times("POST", "/v2.0/tokens", 1)
+        self.swift_service.assert_requested("GET", "/v2.0/1234/CONTAINER")
+        self.swift_service.assert_requested_n_times(
+            "GET", "/v2.0/1234/CONTAINER/path/to/files/file.mp4", 3)
 
     def test_save_to_directory_raises_internal_server_exception_after_max_retries(self) -> None:
         self.remaining_auth_failures = [
@@ -1135,8 +1080,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
                 storage_object.load_from_directory(self.tmp_dir.name)
 
     def test_load_from_directory_does_not_retry_with_invalid_keystone_creds(self) -> None:
-        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
-        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+        file1 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+        file2 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
 
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
@@ -1147,13 +1092,16 @@ class TestSwiftStorageProvider(ServiceTestCase):
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.load_from_directory(self.tmp_dir.name)
 
-        self.assertEqual(0, len(self.container_put_fetches))
+        self.swift_service.assert_not_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(file1.name)}")
+        self.swift_service.assert_not_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(file2.name)}")
 
     def test_load_from_directory_retries_on_error(self) -> None:
-        self.remaining_container_put_failures.append("500 Internal server error")
+        self.remaining_object_put_failures.append("500 Internal server error")
 
-        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
-        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+        file1 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+        file2 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
 
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
@@ -1162,9 +1110,11 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.load_from_directory(self.tmp_dir.name)
 
-        filepaths = [*self.container_contents]
-        self.assertEqual(2, self.container_put_fetches.get(filepaths[0]))
-        self.assertEqual(1, self.container_put_fetches.get(filepaths[1]))
+        file1_requests = self.swift_service.assert_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(file1.name)}")
+        file2_requests = self.swift_service.assert_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(file2.name)}")
+        self.assertCountEqual([2, 1], [file1_requests.count, file2_requests.count])
 
     def test_load_from_directory_includes_subdirectories_in_object_endpoint(self) -> None:
         dir_name = os.path.join(self.tmp_dir.name, "files2")
@@ -1204,8 +1154,9 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.assertEqual(b"UNDELETED", self.container_contents["/path/to/files/file.mp4"])
 
     def test_delete_directory_makes_delete_request_against_swift_service(self) -> None:
-        self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
-        self._add_file_to_directory("/path/to/files/folder/file2.mp4", b"Video Content")
+        self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
+        self.container_contents["/path/to/files/file.mp4"] = b"Contents"
+        self.container_contents["/path/to/files/folder/file2.mp4"] = b"Video Content"
 
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
@@ -1215,6 +1166,7 @@ class TestSwiftStorageProvider(ServiceTestCase):
                 storage_object.delete_directory()
 
     def test_delete_directory_retries_on_authentication_server_errors(self) -> None:
+        self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
         self.remaining_auth_failures = ["500 Error", "500 Error"]
 
         swift_uri = self._generate_swift_uri("/path/to/files")
@@ -1224,10 +1176,13 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.delete_directory()
 
-        self.assertEqual(3, self.auth_fetches)
+        self.identity_service.assert_requested_n_times("POST", "/v2.0/tokens", 3)
 
     def test_delete_directory_retries_on_swift_server_errors(self) -> None:
-        self.remaining_container_delete_failures = ["500 Error", "500 Error"]
+        self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
+        self.remaining_file_delete_failures = ["500 Error", "500 Error"]
+        self.container_contents["/path/to/files/file.mp4"] = b"UNDELETED"
+        self.container_contents["/path/to/files/folder/file2.mp4"] = b"UNDELETED"
 
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
@@ -1236,4 +1191,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.delete_directory()
 
-        self.assertEqual(3, self.container_delete_fetches["/v2.0/1234/CONTAINER"])
+        file1_requests = self.swift_service.assert_requested(
+            "DELETE", "/v2.0/1234/CONTAINER/path/to/files/file.mp4")
+        file2_requests = self.swift_service.assert_requested(
+            "DELETE", "/v2.0/1234/CONTAINER/path/to/files/folder/file2.mp4")
+        self.assertCountEqual([3, 1], [file1_requests.count, file2_requests.count])

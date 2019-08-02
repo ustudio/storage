@@ -163,22 +163,25 @@ class SwiftStorage(Storage):
 
         return urljoin(host, path)
 
-    def save_to_directory(self, directory_path):
+    def _find_storage_objects_with_prefix(self, container, prefix):
         connection = self.get_connection()
-
-        container, object_name = self.get_container_and_object_names()
-
-        prefix = self._parsed_storage_uri.path[1:] + "/"
 
         def get_container():
             resp_headers, objects = connection.get_container(container, prefix=prefix)
             return list(objects)
 
         container_objects = retry_swift_operation(
-            f"Failed to retrieve Swift object {object_name} from container {container}",
+            f"Failed to retrieve Swift objects for {prefix} from container {container}",
             get_container)
 
-        for container_object in container_objects:
+        return container_objects
+
+    def save_to_directory(self, directory_path):
+        container, object_name = self.get_container_and_object_names()
+
+        prefix = self._parsed_storage_uri.path[1:] + "/"
+
+        for container_object in self._find_storage_objects_with_prefix(container, prefix):
             base_path = container_object["name"].split(prefix)[1]
             relative_path = os.path.sep.join(base_path.split("/"))
             file_path = os.path.join(directory_path, relative_path)
@@ -216,5 +219,14 @@ class SwiftStorage(Storage):
 
         container, object_name = self.get_container_and_object_names()
 
-        retry_swift_operation(
-            f"Failed to delete Swift container {container}", connection.delete_container, container)
+        prefix = self._parsed_storage_uri.path[1:] + "/"
+
+        for container_object in self._find_storage_objects_with_prefix(container, prefix):
+            object_path = container_object["name"]
+
+            while object_path.startswith("/"):
+                object_path = object_path[1:]
+
+            retry_swift_operation(
+                f"Failed to delete Swift object {object_path} in container {container}",
+                connection.delete_object, container, object_path)

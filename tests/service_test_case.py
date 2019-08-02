@@ -37,12 +37,20 @@ Handler = Callable[
 HandlerIdentifier = Tuple[str, str]
 
 
+class ServiceRequest(object):
+    # eventually this can contain headers, body, etc. as necessary for comparison
+
+    def __init__(self, count: int) -> None:
+        self.count = count
+
+
 class Service(object):
 
     def __init__(self) -> None:
         self.port: int = get_port()
         self.handlers: Dict[HandlerIdentifier, Handler] = {}
         self.thread = None
+        self.fetches = []
         self.event = None
 
     def url(self, path: str) -> str:
@@ -68,6 +76,7 @@ class Service(object):
             return [f"No handler registered for {identifier}".encode("utf8")]
 
         environ["REQUEST_PATH"] = path
+        self.fetches.append(identifier)
         return self.handlers[identifier](environ, start_response)
 
     def start(self):
@@ -103,6 +112,24 @@ class Service(object):
             httpd.handle_request()
 
         httpd.server_close()
+
+    def assert_requested(self, method: str, path: str) -> ServiceRequest:
+        assert (method, path) in self.fetches, f"Could not find request matching {method} {path}"
+        return ServiceRequest(count=len(list(filter(lambda x: x == (method, path), self.fetches))))
+
+    def assert_not_requested(self, method: str, path: str) -> None:
+        try:
+            self.assert_requested(method, path)
+        except AssertionError:
+            pass
+        else:
+            assert False, f"Unexpected request found for {method} {path}"
+
+    def assert_requested_n_times(self, method: str, path: str, n: int) -> None:
+        request = self.assert_requested(method, path)
+        assert request.count == n, \
+            f"Expected request count for {method} {path} ({n}) did not match " \
+            f"actual count: {request.count}"
 
 
 class ServiceTestCase(unittest.TestCase):
