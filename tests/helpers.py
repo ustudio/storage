@@ -1,42 +1,83 @@
 import os
 import tempfile
+from typing import Dict, Optional, Union
 
 
-def create_temp_nested_directory_with_files():
+class TempDirectory(object):
+
+    def __init__(self, parent: Optional[str] = None) -> None:
+        self.directory = tempfile.TemporaryDirectory(dir=parent)
+        self.subdirectories = []
+        self.files = []
+
+    @property
+    def name(self) -> str:
+        return self.directory.name
+
+    def add_file(self, contents: bytes) -> tempfile.NamedTemporaryFile:
+        temp = tempfile.NamedTemporaryFile(dir=self.directory.name)
+        temp.write(contents)
+        temp.flush()
+        temp.seek(0)
+        self.files.append(temp)
+        return temp
+
+    def add_dir(self) -> "TempDirectory":
+        temp = TempDirectory(parent=self.directory.name)
+        self.subdirectories.append(temp)
+        return temp
+
+    def cleanup(self) -> None:
+        for subdir in self.subdirectories:
+            subdir.cleanup()
+        for temp in self.files:
+            temp.close()
+        self.directory.cleanup()
+
+    def __enter__(self) -> "TempDirectory":
+        return self
+
+    def __exit__(self, *args, **kwargs) -> None:
+        self.cleanup()
+
+
+def create_temp_nested_directory_with_files() -> Dict[str, Union[TempDirectory, str]]:
     # temp_directory/
     #   temp_input_one
     #   temp_input_two
     #   nested_temp_directory/
     #      nested_temp_input
-    temp_dir = {}
-    temp_dir["temp_directory"] = {"path": tempfile.mkdtemp()}
-    temp_dir["temp_input_one"] = {
-        "file": tempfile.NamedTemporaryFile(dir=temp_dir["temp_directory"]["path"])}
-    temp_dir["temp_input_one"]["path"] = temp_dir["temp_input_one"]["file"].name
-    temp_dir["temp_input_one"]["name"] = os.path.basename(temp_dir["temp_input_one"]["file"].name)
 
-    temp_dir["temp_input_one"]["file"].write("FOO")
-    temp_dir["temp_input_one"]["file"].flush()
+    directory = TempDirectory()
+    new_file_1 = directory.add_file(b"FOO")
+    new_file_2 = directory.add_file(b"BAR")
 
-    temp_dir["temp_input_two"] = {
-        "file": tempfile.NamedTemporaryFile(dir=temp_dir["temp_directory"]["path"])}
-    temp_dir["temp_input_two"]["path"] = temp_dir["temp_input_two"]["file"].name
-    temp_dir["temp_input_two"]["name"] = os.path.basename(temp_dir["temp_input_two"]["file"].name)
-    temp_dir["temp_input_two"]["file"].write("BAR")
-    temp_dir["temp_input_two"]["file"].flush()
+    nested_directory = directory.add_dir()
+    nested_file = nested_directory.add_file(b"FOOBAR")
 
-    temp_dir["nested_temp_directory"] = {
-        "path": tempfile.mkdtemp(dir=temp_dir["temp_directory"]["path"])}
-    temp_dir["nested_temp_directory"]["name"] = os.path.basename(
-        temp_dir["nested_temp_directory"]["path"])
-
-    temp_dir["nested_temp_input"] = {
-        "file": tempfile.NamedTemporaryFile(dir=temp_dir["nested_temp_directory"]["path"])}
-    temp_dir["nested_temp_input"]["path"] = temp_dir["nested_temp_input"]["file"].name
-    temp_dir["nested_temp_input"]["name"] = os.path.basename(
-        temp_dir["nested_temp_input"]["file"].name)
-
-    temp_dir["nested_temp_input"]["file"].write("FOOBAR")
-    temp_dir["nested_temp_input"]["file"].flush()
-
-    return temp_dir
+    return {
+        "temp_directory": {
+            "path": directory.name,
+            "object": directory
+        },
+        "nested_temp_directory": {
+            "path": nested_directory.name,
+            "name": os.path.basename(nested_directory.name),
+            "object": nested_directory
+        },
+        "temp_input_one": {
+            "file": new_file_1,
+            "path": new_file_1.name,
+            "name": os.path.basename(new_file_1.name)
+        },
+        "temp_input_two": {
+            "file": new_file_2,
+            "path": new_file_2.name,
+            "name": os.path.basename(new_file_2.name)
+        },
+        "nested_temp_input": {
+            "file": nested_file,
+            "path": nested_file.name,
+            "name": os.path.basename(nested_file.name)
+        }
+    }
