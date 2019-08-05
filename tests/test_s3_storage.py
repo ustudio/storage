@@ -1,8 +1,6 @@
 import os
-from unittest import TestCase
+from unittest import mock, TestCase
 from urllib.parse import quote
-
-import mock
 
 import storage as storagelib
 
@@ -10,6 +8,15 @@ from tests.helpers import create_temp_nested_directory_with_files
 
 
 class TestS3Storage(TestCase):
+    def setUp(self):
+        super().setUp()
+        self.temp_directory = None
+
+    def tearDown(self):
+        super().tearDown()
+        if self.temp_directory is not None:
+            self.temp_directory["temp_directory"]["object"].cleanup()
+
     def test_s3storage_init_sets_correct_keyname(self):
         storage = storagelib.get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
@@ -375,25 +382,25 @@ class TestS3Storage(TestCase):
         mock_session = mock_session_class.return_value
         mock_s3_client = mock_session.client.return_value
 
-        temp_directory = create_temp_nested_directory_with_files()
+        self.temp_directory = create_temp_nested_directory_with_files()
 
         storage = storagelib.get_storage(
             "s3://access_key:access_secret@bucket/dir?region=US_EAST")
 
-        storage.load_from_directory(temp_directory["temp_directory"]["path"])
+        storage.load_from_directory(self.temp_directory["temp_directory"]["path"])
 
         mock_s3_client.upload_file.assert_has_calls([
             mock.call(
-                temp_directory["temp_input_two"]["path"], "bucket",
-                os.path.join("dir", temp_directory["temp_input_two"]["name"])),
+                self.temp_directory["temp_input_two"]["path"], "bucket",
+                os.path.join("dir", self.temp_directory["temp_input_two"]["name"])),
             mock.call(
-                temp_directory["temp_input_one"]["path"], "bucket",
-                os.path.join("dir", temp_directory["temp_input_one"]["name"])),
+                self.temp_directory["temp_input_one"]["path"], "bucket",
+                os.path.join("dir", self.temp_directory["temp_input_one"]["name"])),
             mock.call(
-                temp_directory["nested_temp_input"]["path"], "bucket",
+                self.temp_directory["nested_temp_input"]["path"], "bucket",
                 os.path.join(
-                    "dir", temp_directory["nested_temp_directory"]["name"],
-                    temp_directory["nested_temp_input"]["name"]))
+                    "dir", self.temp_directory["nested_temp_directory"]["name"],
+                    self.temp_directory["nested_temp_input"]["name"]))
         ], any_order=True)
 
     @mock.patch("storage.retry.time.sleep", autospec=True)
@@ -412,26 +419,26 @@ class TestS3Storage(TestCase):
             None
         ]
 
-        temp_directory = create_temp_nested_directory_with_files()
+        self.temp_directory = create_temp_nested_directory_with_files()
 
         storage = storagelib.get_storage(
             "s3://access_key:access_secret@bucket/dir?region=US_EAST")
 
-        storage.load_from_directory(temp_directory["temp_directory"]["path"])
+        storage.load_from_directory(self.temp_directory["temp_directory"]["path"])
 
         self.assertEqual(4, mock_s3_client.upload_file.call_count)
         mock_s3_client.upload_file.assert_has_calls([
             mock.call(
-                temp_directory["temp_input_two"]["path"], "bucket",
-                os.path.join("dir", temp_directory["temp_input_two"]["name"])),
+                self.temp_directory["temp_input_two"]["path"], "bucket",
+                os.path.join("dir", self.temp_directory["temp_input_two"]["name"])),
             mock.call(
-                temp_directory["temp_input_one"]["path"], "bucket",
-                os.path.join("dir", temp_directory["temp_input_one"]["name"])),
+                self.temp_directory["temp_input_one"]["path"], "bucket",
+                os.path.join("dir", self.temp_directory["temp_input_one"]["name"])),
             mock.call(
-                temp_directory["nested_temp_input"]["path"], "bucket",
+                self.temp_directory["nested_temp_input"]["path"], "bucket",
                 os.path.join(
-                    "dir", temp_directory["nested_temp_directory"]["name"],
-                    temp_directory["nested_temp_input"]["name"]))
+                    "dir", self.temp_directory["nested_temp_directory"]["name"],
+                    self.temp_directory["nested_temp_input"]["name"]))
         ], any_order=True)
         self.assertEqual(
             mock_s3_client.upload_file.call_args_list[1],
@@ -458,13 +465,13 @@ class TestS3Storage(TestCase):
             RuntimeError
         ]
 
-        temp_directory = create_temp_nested_directory_with_files()
+        self.temp_directory = create_temp_nested_directory_with_files()
 
         storage = storagelib.get_storage(
             "s3://access_key:access_secret@bucket/dir?region=US_EAST")
 
         with self.assertRaises(RuntimeError):
-            storage.load_from_directory(temp_directory["temp_directory"]["path"])
+            storage.load_from_directory(self.temp_directory["temp_directory"]["path"])
 
         self.assertEqual(5, mock_s3_client.upload_file.call_count)
         self.assertEqual(

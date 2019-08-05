@@ -3,6 +3,8 @@ from urllib.parse import parse_qs, unquote
 
 import boto3
 import boto3.s3.transfer
+from botocore.session import Session  # type: ignore
+from typing import BinaryIO, Optional
 
 from . import retry
 from .storage import Storage, register_storage_protocol, _LARGE_CHUNK
@@ -10,7 +12,7 @@ from .storage import Storage, register_storage_protocol, _LARGE_CHUNK
 
 @register_storage_protocol("s3")
 class S3Storage(Storage):
-    def __init__(self, storage_uri):
+    def __init__(self, storage_uri: str) -> None:
         super(S3Storage, self).__init__(storage_uri)
         self._access_key = unquote(self._parsed_storage_uri.username)
         self._access_secret = unquote(self._parsed_storage_uri.password)
@@ -19,7 +21,7 @@ class S3Storage(Storage):
         query = parse_qs(self._parsed_storage_uri.query)
         self._region = query.get("region", [None])[0]
 
-    def _connect(self):
+    def _connect(self) -> Session:
         aws_session = boto3.session.Session(
             aws_access_key_id=self._access_key,
             aws_secret_access_key=self._access_secret,
@@ -27,13 +29,13 @@ class S3Storage(Storage):
 
         return aws_session.client("s3")
 
-    def save_to_filename(self, file_path):
+    def save_to_filename(self, file_path: str) -> None:
         client = self._connect()
 
         transfer = boto3.s3.transfer.S3Transfer(client)
         transfer.download_file(self._bucket, self._keyname, file_path)
 
-    def save_to_file(self, out_file):
+    def save_to_file(self, out_file: BinaryIO) -> None:
         client = self._connect()
 
         response = client.get_object(Bucket=self._bucket, Key=self._keyname)
@@ -44,7 +46,7 @@ class S3Storage(Storage):
             if not chunk:
                 break
 
-    def save_to_directory(self, directory_path):
+    def save_to_directory(self, directory_path: str) -> None:
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
         dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
@@ -65,18 +67,18 @@ class S3Storage(Storage):
                     file["Key"],
                     directory_path + file_key)
 
-    def load_from_filename(self, file_path):
+    def load_from_filename(self, file_path: str) -> None:
         client = self._connect()
 
         transfer = boto3.s3.transfer.S3Transfer(client)
         transfer.upload_file(file_path, self._bucket, self._keyname)
 
-    def load_from_file(self, in_file):
+    def load_from_file(self, in_file: BinaryIO) -> None:
         client = self._connect()
 
         client.put_object(Bucket=self._bucket, Key=self._keyname, Body=in_file)
 
-    def load_from_directory(self, source_directory):
+    def load_from_directory(self, source_directory: str) -> None:
         client = self._connect()
 
         for root, _, files in os.walk(source_directory):
@@ -90,11 +92,11 @@ class S3Storage(Storage):
                     self._bucket,
                     upload_path)
 
-    def delete(self):
+    def delete(self) -> None:
         client = self._connect()
         client.delete_object(Bucket=self._bucket, Key=self._keyname)
 
-    def delete_directory(self):
+    def delete_directory(self) -> None:
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
         dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
@@ -105,7 +107,7 @@ class S3Storage(Storage):
                 "Objects": object_keys
             })
 
-    def get_download_url(self, seconds=60, key=None):
+    def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         client = self._connect()
 
         return client.generate_presigned_url(
