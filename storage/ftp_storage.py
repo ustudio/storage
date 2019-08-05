@@ -1,8 +1,11 @@
 import ftplib
+from ftplib import FTP
 import os
 import re
 import socket
 from urllib.parse import parse_qs
+
+from typing import BinaryIO, List, Optional, Tuple
 
 from .storage import Storage, register_storage_protocol, _generate_download_url_from_base, \
     DEFAULT_FTP_TIMEOUT, DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT, \
@@ -23,7 +26,7 @@ class FTPStorage(Storage):
     that will allow get_download_url() to return access to that object via HTTP.
     """
 
-    def __init__(self, storage_uri):
+    def __init__(self, storage_uri: str) -> None:
         super(FTPStorage, self).__init__(storage_uri)
         self._username = self._parsed_storage_uri.username
         self._password = self._parsed_storage_uri.password
@@ -33,7 +36,7 @@ class FTPStorage(Storage):
         query = parse_qs(self._parsed_storage_uri.query)
         self._download_url_base = query.get("download_url_base", [None])[0]
 
-    def _configure_keepalive(self, ftp_client):
+    def _configure_keepalive(self, ftp_client: FTP) -> None:
         ftp_client.sock.setsockopt(
             socket.SOL_SOCKET, socket.SO_KEEPALIVE, DEFAULT_FTP_KEEPALIVE_ENABLE)
 
@@ -46,7 +49,7 @@ class FTPStorage(Storage):
         if hasattr(socket, "TCP_KEEPINTVL"):
             ftp_client.sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, DEFAULT_FTP_KEEPINTVL)
 
-    def _connect(self):
+    def _connect(self) -> FTP:
         ftp_client = ftplib.FTP(timeout=DEFAULT_FTP_TIMEOUT)
         ftp_client.connect(self._hostname, port=self._port)
 
@@ -56,12 +59,12 @@ class FTPStorage(Storage):
 
         return ftp_client
 
-    def _cd_to_file(self, ftp_client):
+    def _cd_to_file(self, ftp_client: FTP) -> str:
         directory, filename = os.path.split(self._parsed_storage_uri.path.lstrip("/"))
         ftp_client.cwd(directory)
         return filename
 
-    def _list(self, ftp_client):
+    def _list(self, ftp_client: FTP) -> Tuple[List[str], List[str]]:
         directory_listing = []
 
         ftp_client.retrlines('LIST', directory_listing.append)
@@ -79,7 +82,9 @@ class FTPStorage(Storage):
 
         return directories, files
 
-    def _walk(self, ftp_client, target_directory=None):
+    def _walk(
+            self, ftp_client: FTP,
+            target_directory: Optional[str] = None) -> Tuple[str, List[str], List[str]]:
         if target_directory:
             ftp_client.cwd(target_directory)
         else:
@@ -95,7 +100,8 @@ class FTPStorage(Storage):
             for result in self._walk(ftp_client, target_directory=new_target):
                 yield result
 
-    def _create_directory_structure(self, ftp_client, target_path, restore=False):
+    def _create_directory_structure(
+            self, ftp_client: FTP, target_path: str, restore: Optional[bool] = False) -> None:
         directories = target_path.lstrip('/').split('/')
 
         if restore:
@@ -113,17 +119,17 @@ class FTPStorage(Storage):
         if restore:
             ftp_client.cwd(restore)
 
-    def save_to_filename(self, file_path):
+    def save_to_filename(self, file_path: str) -> None:
         with open(file_path, "wb") as output_file:
             self.save_to_file(output_file)
 
-    def save_to_file(self, out_file):
+    def save_to_file(self, out_file: BinaryIO) -> None:
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
 
         ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
 
-    def save_to_directory(self, destination_directory):
+    def save_to_directory(self, destination_directory: str) -> None:
         ftp_client = self._connect()
         base_ftp_path = self._parsed_storage_uri.path
 
@@ -141,17 +147,17 @@ class FTPStorage(Storage):
                 with open(os.path.join(relative_path, filename), "wb") as output_file:
                     ftp_client.retrbinary("RETR {0}".format(filename), callback=output_file.write)
 
-    def load_from_filename(self, file_path):
+    def load_from_filename(self, file_path: str) -> None:
         with open(file_path, "rb") as input_file:
             self.load_from_file(input_file)
 
-    def load_from_file(self, in_file):
+    def load_from_file(self, in_file: BinaryIO) -> None:
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
 
         ftp_client.storbinary("STOR {0}".format(filename), in_file)
 
-    def load_from_directory(self, source_directory):
+    def load_from_directory(self, source_directory: str) -> None:
         ftp_client = self._connect()
         base_ftp_path = self._parsed_storage_uri.path
 
@@ -171,12 +177,12 @@ class FTPStorage(Storage):
                 with open(file_path, "rb") as input_file:
                     ftp_client.storbinary("STOR {0}".format(file), input_file)
 
-    def delete(self):
+    def delete(self) -> None:
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
         ftp_client.delete(filename)
 
-    def delete_directory(self):
+    def delete_directory(self) -> None:
         ftp_client = self._connect()
         base_ftp_path = self._parsed_storage_uri.path
         ftp_client.cwd(base_ftp_path)
@@ -195,7 +201,7 @@ class FTPStorage(Storage):
         for directory in directories_to_remove:
             ftp_client.rmd("{}".format(directory))
 
-    def get_download_url(self, seconds=60, key=None):
+    def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         """
         Return a temporary URL allowing access to the storage object.
 
@@ -224,7 +230,7 @@ class FTPStorage(Storage):
 
 @register_storage_protocol("ftps")
 class FTPSStorage(FTPStorage):
-    def _connect(self):
+    def _connect(self) -> FTP:
         ftp_client = ftplib.FTP_TLS(timeout=DEFAULT_FTP_TIMEOUT)
         ftp_client.connect(self._hostname, port=self._port)
         self._configure_keepalive(ftp_client)
