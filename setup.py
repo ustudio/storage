@@ -6,8 +6,9 @@ except ImportError:
 
 install_requires = [
     "boto3 >= 1.0.1",
-    "python-swiftclient",
-    "google-cloud-storage"
+    "google-cloud-storage",
+    "keystoneauth",
+    "python-swiftclient"
 ]
 
 setup(name="object_storage",
