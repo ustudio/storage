@@ -1,3 +1,4 @@
+import mimetypes
 import os
 from urllib.parse import parse_qsl, urljoin
 
@@ -129,9 +130,11 @@ class SwiftStorage(Storage):
         connection = self.get_connection()
         container, object_name = self.get_container_and_object_names()
 
+        mimetype = mimetypes.guess_type(object_name)[0] or "application/octet-stream"
+
         retry_swift_operation(
             f"Failed to store Swift object {object_name} in container {container}",
-            connection.put_object, container, object_name, in_file)
+            connection.put_object, container, object_name, in_file, content_type=mimetype)
 
     def load_from_filename(self, in_path: str) -> None:
         with open(in_path, "rb") as fp:
@@ -194,7 +197,6 @@ class SwiftStorage(Storage):
 
     def load_from_directory(self, directory_path: str) -> None:
         connection = self.get_connection()
-
         container, object_name = self.get_container_and_object_names()
 
         prefix = self._parsed_storage_uri.path[1:]
@@ -209,14 +211,15 @@ class SwiftStorage(Storage):
                 local_path = os.path.join(root, filename)
                 remote_path = "/".join(filter(lambda x: x != "", [prefix, base, filename]))
 
+                mimetype = mimetypes.guess_type(remote_path)[0] or "application/octet-stream"
+
                 with open(local_path, "rb") as fp:
                     retry_swift_operation(
                         f"Failed to store Swift object {object_name} in container {container}",
-                        connection.put_object, container, remote_path, fp)
+                        connection.put_object, container, remote_path, fp, content_type=mimetype)
 
     def delete_directory(self) -> None:
         connection = self.get_connection()
-
         container, object_name = self.get_container_and_object_names()
 
         prefix = self._parsed_storage_uri.path[1:] + "/"

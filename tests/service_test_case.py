@@ -4,11 +4,12 @@ import unittest
 import socket
 from threading import Thread, Event
 import time
+from wsgiref.headers import Headers
 from wsgiref.simple_server import make_server
 from wsgiref.util import request_uri
 from urllib.parse import urlparse
 
-from typing import Any, Callable, Dict, Iterator, List, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 
 def get_port() -> int:
@@ -40,17 +41,29 @@ HandlerIdentifier = Tuple[str, str]
 class ServiceRequest(object):
     # eventually this can contain headers, body, etc. as necessary for comparison
 
-    def __init__(self, count: int) -> None:
-        self.count = count
+    def __init__(self, headers: Dict[str, str], method: str, path: str) -> None:
+        self.headers = Headers([(key.replace("_", "-"), value) for key, value in headers.items()])
+        self.method = method
+        self.path = path
+
+    def assert_header_equals(self, header_key: str, header_value: str) -> None:
+        assert header_key in self.headers, \
+            f"Expected header {header_key} not in request headers."
+        actual_value = self.headers[header_key]
+        assert actual_value == header_value, \
+            f"Request header {header_key} unexpectedly set to " \
+            f"`{actual_value}` instead of `{header_value}`."
 
 
 class Service(object):
+
+    fetches: Dict[Tuple[str, str], List[ServiceRequest]]
 
     def __init__(self) -> None:
         self.port: int = get_port()
         self.handlers: Dict[HandlerIdentifier, Handler] = {}
         self.thread = None
-        self.fetches = []
+        self.fetches = {}
         self.event = None
 
     def url(self, path: str) -> str:
@@ -65,6 +78,12 @@ class Service(object):
         path = urlparse(uri).path
         method = environ["REQUEST_METHOD"]
 
+        headers = {
+            key: value for key, value in environ.copy().items()
+            if key.startswith("HTTP_") or key == "CONTENT_TYPE"
+        }
+        request = ServiceRequest(headers=headers, method=method, path=path)
+
         logging.info(f"Received {method} request for localhost:{self.port}{path}.")
 
         identifier = (method, path)
@@ -76,7 +95,8 @@ class Service(object):
             return [f"No handler registered for {identifier}".encode("utf8")]
 
         environ["REQUEST_PATH"] = path
-        self.fetches.append(identifier)
+        self.fetches.setdefault(identifier, [])
+        self.fetches[identifier].append(request)
         return self.handlers[identifier](environ, start_response)
 
     def start(self):
@@ -113,23 +133,32 @@ class Service(object):
 
         httpd.server_close()
 
-    def assert_requested(self, method: str, path: str) -> ServiceRequest:
-        assert (method, path) in self.fetches, f"Could not find request matching {method} {path}"
-        return ServiceRequest(count=len(list(filter(lambda x: x == (method, path), self.fetches))))
+    def assert_requested(
+            self, method: str, path: str,
+            headers: Optional[Dict[str, str]] = None) -> ServiceRequest:
+        identifier = (method, path)
+        assert identifier in self.fetches, f"Could not find request matching {method} {path}"
+        request = self.fetches[identifier][0]
+        if headers is not None:
+            for expected_header, expected_value in headers.items():
+                request.assert_header_equals(expected_header, expected_value)
+        return request
+
+    def get_all_requests(self, method: str, path: str) -> List[ServiceRequest]:
+        identifier = (method, path)
+        return self.fetches.get(identifier, [])
 
     def assert_not_requested(self, method: str, path: str) -> None:
-        try:
-            self.assert_requested(method, path)
-        except AssertionError:
-            pass
-        else:
-            assert False, f"Unexpected request found for {method} {path}"
+        identifier = (method, path)
+        assert identifier not in self.fetches, f"Unexpected request found for {method} {path}"
 
-    def assert_requested_n_times(self, method: str, path: str, n: int) -> None:
-        request = self.assert_requested(method, path)
-        assert request.count == n, \
+    def assert_requested_n_times(
+            self, method: str, path: str, n: int) -> List[ServiceRequest]:
+        requests = self.get_all_requests(method, path)
+        assert len(requests) == n, \
             f"Expected request count for {method} {path} ({n}) did not match " \
-            f"actual count: {request.count}"
+            f"actual count: {len(requests)}"
+        return requests
 
 
 class ServiceTestCase(unittest.TestCase):

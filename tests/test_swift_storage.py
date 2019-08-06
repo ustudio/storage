@@ -98,15 +98,15 @@ class TestSwiftStorageProvider(ServiceTestCase):
         self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
         self._add_file(filepath, file_content)
 
-    def _add_tmp_file_to_dir(self, directory, file_content):
+    def _add_tmp_file_to_dir(self, directory, file_content, suffix=None):
         if type(file_content) is not bytes:
             raise Exception("Object file contents must be bytes")
 
         os.makedirs(directory, exist_ok=True)
 
-        tmp_file = tempfile.NamedTemporaryFile(dir=directory)
+        tmp_file = tempfile.NamedTemporaryFile(dir=directory, suffix=suffix)
         tmp_file.write(file_content)
-        tmp_file.seek(0)
+        tmp_file.flush()
 
         self.tmp_files.append(tmp_file)
         return tmp_file
@@ -124,10 +124,11 @@ class TestSwiftStorageProvider(ServiceTestCase):
 
     @contextlib.contextmanager
     def _expect_file(self, filepath, file_content) -> None:
-        self.swift_service.add_handler(
-            "PUT", f"/v2.0/1234/CONTAINER{filepath}", self.swift_object_put_handler)
+        put_path = f"/v2.0/1234/CONTAINER{filepath}"
+        self.swift_service.add_handler("PUT", put_path, self.swift_object_put_handler)
         yield
         self.assertEqual(file_content, self.container_contents[filepath])
+        self.swift_service.assert_requested("PUT", put_path)
 
     @contextlib.contextmanager
     def _expect_delete(self, filepath) -> None:
@@ -757,6 +758,38 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.load_from_filename(tmp_file.name)
 
+    def test_load_from_filename_sends_guessed_content_type_from_extension(self) -> None:
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        swift_uri = self._generate_swift_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_file("/path/to/file.mp4", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_filename(tmp_file.name)
+
+        request = self.swift_service.assert_requested(
+            "PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4")
+        request.assert_header_equals("Content-type", "video/mp4")
+
+    def test_load_from_filename_sends_default_content_type_when_none_is_determined(self) -> None:
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        swift_uri = self._generate_swift_uri("/path/to/file")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_file("/path/to/file", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_filename(tmp_file.name)
+
+        request = self.swift_service.assert_requested(
+            "PUT", "/v2.0/1234/CONTAINER/path/to/file")
+        request.assert_header_equals("Content-type", "application/octet-stream")
+
     def test_load_from_filename_retries_on_error(self) -> None:
         self.remaining_object_put_failures.append("500 Internal server error")
 
@@ -1079,6 +1112,44 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.load_from_directory(self.tmp_dir.name)
 
+    def test_load_from_directory_sends_guessed_content_type_from_extension(self) -> None:
+        temp_file = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR", suffix=".mp4")
+        temp_file2 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ", suffix=".jpg")
+
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+        request = self.swift_service.assert_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(temp_file.name)}")
+        request.assert_header_equals("Content-type", "video/mp4")
+
+        other_request = self.swift_service.assert_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(temp_file2.name)}")
+        other_request.assert_header_equals("Content-type", "image/jpeg")
+
+    def test_load_from_directory_sends_default_content_type_when_none_is_determined(self) -> None:
+        temp_file = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR", suffix=".mp4")
+        temp_file2 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+
+        swift_uri = self._generate_swift_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self._expect_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+        request = self.swift_service.assert_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(temp_file.name)}")
+        request.assert_header_equals("Content-type", "video/mp4")
+
+        other_request = self.swift_service.assert_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(temp_file2.name)}")
+        other_request.assert_header_equals("Content-type", "application/octet-stream")
+
     def test_load_from_directory_does_not_retry_with_invalid_keystone_creds(self) -> None:
         file1 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
         file2 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
@@ -1110,11 +1181,11 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.load_from_directory(self.tmp_dir.name)
 
-        file1_requests = self.swift_service.assert_requested(
+        file1_requests = self.swift_service.get_all_requests(
             "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(file1.name)}")
-        file2_requests = self.swift_service.assert_requested(
+        file2_requests = self.swift_service.get_all_requests(
             "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(file2.name)}")
-        self.assertCountEqual([2, 1], [file1_requests.count, file2_requests.count])
+        self.assertCountEqual([2, 1], [len(file1_requests), len(file2_requests)])
 
     def test_load_from_directory_includes_subdirectories_in_object_endpoint(self) -> None:
         dir_name = os.path.join(self.tmp_dir.name, "files2")
@@ -1191,8 +1262,8 @@ class TestSwiftStorageProvider(ServiceTestCase):
             with self.run_services():
                 storage_object.delete_directory()
 
-        file1_requests = self.swift_service.assert_requested(
+        file1_requests = self.swift_service.get_all_requests(
             "DELETE", "/v2.0/1234/CONTAINER/path/to/files/file.mp4")
-        file2_requests = self.swift_service.assert_requested(
+        file2_requests = self.swift_service.get_all_requests(
             "DELETE", "/v2.0/1234/CONTAINER/path/to/files/folder/file2.mp4")
-        self.assertCountEqual([3, 1], [file1_requests.count, file2_requests.count])
+        self.assertCountEqual([3, 1], [len(file1_requests), len(file2_requests)])
