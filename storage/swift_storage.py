@@ -56,15 +56,15 @@ class SwiftStorage(Storage):
 
             auth_endpoint = query.get("auth_endpoint")
             if auth_endpoint is None:
-                raise SwiftStorageError(f"Required filed is missing: auth_endpoint")
+                raise SwiftStorageError(f"Required field is missing: auth_endpoint")
 
             tenant_id = query.get("tenant_id")
             if tenant_id is None:
-                raise SwiftStorageError(f"Required filed is missing: tenant_id")
+                raise SwiftStorageError(f"Required field is missing: tenant_id")
 
             region_name = query.get("region")
             if region_name is None:
-                raise SwiftStorageError(f"Required filed is missing: region_name")
+                raise SwiftStorageError(f"Required field is missing: region_name")
 
             self.download_url_key = query.get("download_url_key")
 

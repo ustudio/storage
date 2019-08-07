@@ -1,4 +1,5 @@
 import contextlib
+import io
 import logging
 import unittest
 import socket
@@ -41,10 +42,12 @@ HandlerIdentifier = Tuple[str, str]
 class ServiceRequest(object):
     # eventually this can contain headers, body, etc. as necessary for comparison
 
-    def __init__(self, headers: Dict[str, str], method: str, path: str) -> None:
+    def __init__(
+            self, headers: Dict[str, str], method: str, path: str, body: Optional[bytes]) -> None:
         self.headers = Headers([(key.replace("_", "-"), value) for key, value in headers.items()])
         self.method = method
         self.path = path
+        self.body = body
 
     def assert_header_equals(self, header_key: str, header_value: str) -> None:
         assert header_key in self.headers, \
@@ -53,6 +56,9 @@ class ServiceRequest(object):
         assert actual_value == header_value, \
             f"Request header {header_key} unexpectedly set to " \
             f"`{actual_value}` instead of `{header_value}`."
+
+    def assert_body_equals(self, body: bytes) -> None:
+        assert body == self.body, f"Body unexpectedly equals {self.body} instead of {body}"
 
 
 class Service(object):
@@ -77,12 +83,20 @@ class Service(object):
         uri = request_uri(environ, include_query=1)
         path = urlparse(uri).path
         method = environ["REQUEST_METHOD"]
+        body: Optional[bytes] = None
+        if method in ("POST", "PUT"):
+            content_length = int(environ.get("CONTENT_LENGTH", 0) or "0")
+            if content_length > 0:
+                body = environ["wsgi.input"].read(content_length)
+                environ["wsgi.input"] = io.BytesIO(body)
+            else:
+                logging.warning(f"Unable to determine content length for request {method} {path}")
 
         headers = {
             key: value for key, value in environ.copy().items()
             if key.startswith("HTTP_") or key == "CONTENT_TYPE"
         }
-        request = ServiceRequest(headers=headers, method=method, path=path)
+        request = ServiceRequest(headers=headers, method=method, path=path, body=body)
 
         logging.info(f"Received {method} request for localhost:{self.port}{path}.")
 

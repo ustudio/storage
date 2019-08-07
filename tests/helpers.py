@@ -81,3 +81,24 @@ def create_temp_nested_directory_with_files() -> Dict[str, Union[TempDirectory, 
             "name": os.path.basename(nested_file.name)
         }
     }
+
+
+class FileSpy(object):
+
+    def __init__(self):
+        self.chunks = []
+        self.index = 0
+        self.name = ""
+
+    def write(self, chunk):
+        self.chunks.append(chunk)
+        self.index += len(chunk)
+
+    def seek(self, index):
+        self.index = index
+
+    def assert_written(self, assertion):
+        assert b"".join(self.chunks) == assertion
+
+    def assert_number_of_chunks(self, n):
+        assert n == len(self.chunks)
