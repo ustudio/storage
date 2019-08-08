@@ -1,6 +1,8 @@
 import contextlib
 import io
+import json
 from unittest import mock
+from urllib.parse import urlencode
 
 from storage import get_storage
 from storage import cloudfiles_storage
@@ -12,7 +14,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
     def setUp(self):
         super().setUp()
 
-        self.credentials = {
+        self.keystone_credentials = {
             "username": "USER",
             "key": "TOKEN"
         }
@@ -20,15 +22,29 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         self.object_contents = {}
 
         self.identity_service = self.add_service()
-        self.identity_service.add_handler("GET", "/v1.0", self.authentication_handler)
+        self.identity_service.add_handler("GET", "/v2.0", self.identity_handler)
+        self.identity_service.add_handler("POST", "/v2.0/tokens", self.authentication_handler)
 
         self.cloudfiles_service = self.add_service()
+        self.alt_cloudfiles_service = self.add_service()
 
-    def _generate_cloudfiles_uri(self, object_path):
-        return f"cloudfiles://USER:TOKEN@CONTAINER{object_path}"
+        self.mock_sleep_patch = mock.patch("time.sleep")
+        self.mock_sleep = self.mock_sleep_patch.start()
+        self.mock_sleep.side_effect = lambda x: None
 
-    def _has_valid_credentials(self, username, key) -> bool:
-        if username == self.credentials["username"] and key == self.credentials["key"]:
+    def tearDown(self):
+        super().tearDown()
+        self.mock_sleep_patch.stop()
+
+    def _generate_cloudfiles_uri(self, object_path, parameters=None) -> str:
+        base_uri = f"cloudfiles://USER:TOKEN@CONTAINER{object_path}"
+        if parameters is not None:
+            return f"{base_uri}?{urlencode(parameters)}"
+        return base_uri
+
+    def _has_valid_credentials(self, auth_data) -> bool:
+        if auth_data["username"] == self.keystone_credentials["username"] and \
+                auth_data["apiKey"] == self.keystone_credentials["key"]:
             return True
         else:
             return False
@@ -53,14 +69,14 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
     @contextlib.contextmanager
     def assert_raises_on_forbidden_access(self) -> None:
-        self.credentials["username"] = "nobody"
+        self.keystone_credentials["username"] = "nobody"
         with self.run_services():
             with self.assertRaises(SwiftStorageError):
                 yield
 
     @contextlib.contextmanager
     def assert_raises_on_unauthorized_access(self) -> None:
-        self.credentials = {}
+        self.keystone_credentials = {}
         with self.run_services():
             with self.assertRaises(SwiftStorageError):
                 yield
@@ -70,7 +86,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         with mock.patch(
                 "storage.cloudfiles_storage.CloudFilesStorage.auth_endpoint",
                 new_callable=mock.PropertyMock) as mock_endpoint:
-            mock_endpoint.return_value = self.identity_service.url("/v1.0")
+            mock_endpoint.return_value = self.identity_service.url("/v2.0")
             yield
 
     @contextlib.contextmanager
@@ -91,27 +107,83 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             object_path, self.container_contents,
             f"File {object_path} was not deleted as expected.")
 
+    def identity_handler(self, environ, start_response):
+        start_response("200 OK", [("Content-Type", "application/json")])
+        return [json.dumps({
+            "version": {
+                "media-types": {
+                    "values": [
+                        {
+                            "type": "application/vnd.openstack.identity+json;version=2.0",
+                            "base": "application/json"
+                        }
+                    ]
+                },
+                "links": [
+                    {
+                        "rel": "self",
+                        "href": self.identity_service.url("/v2.0")
+                    }
+                ],
+                "id": "v2.0",
+                "status": "CURRENT"
+            }
+        }).encode("utf8")]
+
     def authentication_handler(self, environ, start_response):
-        username = environ["HTTP_X_AUTH_USER"]
-        key = environ["HTTP_X_AUTH_KEY"]
+        body_size = int(environ.get("CONTENT_LENGTH", 0))
+        body = json.loads(environ["wsgi.input"].read(body_size))
 
         # Forcing a 401 since swift service won't let us provide it
-        if self.credentials == {}:
+        if self.keystone_credentials == {}:
             start_response("401 Unauthorized", [("Content-type", "text/plain")])
             return [b"Unauthorized keystone credentials."]
-        if not self._has_valid_credentials(username, key):
+        if not self._has_valid_credentials(body["auth"]["RAX-KSKEY:apiKeyCredentials"]):
             start_response("403 Forbidden", [("Content-type", "text/plain")])
             return [b"Invalid keystone credentials."]
 
-        headers = [
-            ("Content-type", "application/json"),
-            ("X-Storage-Token", "TOKEN"),
-            ("X-Auth-Token", "TOKEN"),
-            ("X-Tenant-Id", "TENANT"),
-            ("X-Storage-Url", self.cloudfiles_service.url("/v1/MOSSO-TENANT"))
-        ]
-        start_response("204 No Content", headers)
-        return [b""]
+        start_response("200 OK", [("Content-type", "application/json")])
+        return [json.dumps({
+            "access": {
+                "serviceCatalog": [{
+                    "endpoints": [
+                        {
+                            "tenantId": "MOSSO-TENANT",
+                            "publicURL": self.cloudfiles_service.url("/v2.0/MOSSO-TENANT"),
+                            "internalURL": self.cloudfiles_service.url("/v2.0/MOSSO-TENANT"),
+                            "region": "DFW"
+                        },
+                        {
+                            "tenantId": "MOSSO-TENANT",
+                            "publicURL": self.alt_cloudfiles_service.url("/v2.0/MOSSO-TENANT"),
+                            "internalURL": self.alt_cloudfiles_service.url("/v2.0/MOSSO-TENANT"),
+                            "region": "ORD"
+                        }
+                    ],
+                    "name": "cloudfiles",
+                    "type": "object-store"
+                }],
+                "user": {
+                    "RAX-AUTH:defaultRegion": "DFW",
+                    "roles": [{
+                        "name": "object-store:default",
+                        "tenantId": "MOSSO-TENANT",
+                        "id": "ID"
+                    }],
+                    "name": "USER",
+                    "id": "IDENTIFIER"
+                },
+                "token": {
+                    "expires": "2019-07-18T05:47:13.090Z",
+                    "RAX-AUTH:authenticatedBy": ["APIKEY"],
+                    "id": "KEY",
+                    "tenant": {
+                        "name": "MOSSO-TENANT",
+                        "id": "MOSSO-TENANT"
+                    }
+                }
+            }
+        }).encode("utf8")]
 
     def object_handler(self, environ, start_response):
         path = environ["REQUEST_PATH"].split("CONTAINER")[1]
@@ -139,11 +211,11 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
     def test_cloudfiles_default_auth_endpoint_points_to_correct_host(self) -> None:
         self.assertEqual(
-            "https://identity.api.rackspacecloud.com/v1.0",
+            "https://identity.api.rackspacecloud.com/v2.0",
             cloudfiles_storage.CloudFilesStorage.auth_endpoint)
 
     def test_save_to_file_raises_exception_when_missing_required_parameters(self) -> None:
-        self.add_container_object("/v1/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+        self.add_container_object("/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
         temp = io.BytesIO()
 
@@ -151,7 +223,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             self.assert_requires_all_parameters("/path/to/file.mp4", lambda x: x.save_to_file(temp))
 
     def test_save_to_file_raises_on_forbidden_credentials(self) -> None:
-        self.add_container_object("/v1/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+        self.add_container_object("/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
         temp = io.BytesIO()
 
@@ -167,7 +239,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
                 storage_object.save_to_file(temp)
 
     def test_save_to_file_writes_file_contents_to_file_object(self) -> None:
-        self.add_container_object("/v1/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+        self.add_container_object("/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
         temp = io.BytesIO()
 
@@ -181,6 +253,55 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         temp.seek(0)
         self.assertEqual(b"FOOBAR", temp.read())
 
+    def test_save_to_file_uses_default_region_when_one_is_not_provided(self) -> None:
+        self.add_container_object("/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        temp = io.BytesIO()
+
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")
+        storage_object = get_storage(cloudfiles_uri)
+
+        with self.use_local_identity_service():
+            with self.run_services():
+                storage_object.save_to_file(temp)
+
+        self.cloudfiles_service.assert_requested_n_times(
+            "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 1)
+        self.alt_cloudfiles_service.assert_requested_n_times(
+            "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
+
+    def test_save_to_file_uses_provided_region_parameter(self) -> None:
+        self.object_contents["/path/to/file.mp4"] = b"FOOBAR"
+
+        get_path = f"/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
+        self.alt_cloudfiles_service.add_handler("GET", get_path, self.object_handler)
+
+        temp = io.BytesIO()
+
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {"region": "ORD"})
+        storage_object = get_storage(cloudfiles_uri)
+
+        with self.use_local_identity_service():
+            with self.run_services():
+                storage_object.save_to_file(temp)
+
+        self.alt_cloudfiles_service.assert_requested_n_times(
+            "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 1)
+        self.cloudfiles_service.assert_requested_n_times(
+            "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
+
+    def test_save_to_file_uses_provided_public_parameter(self) -> None:
+        self.add_container_object("/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        temp = io.BytesIO()
+
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {"public": "false"})
+        storage_object = get_storage(cloudfiles_uri)
+
+        with self.use_local_identity_service():
+            with self.run_services():
+                storage_object.save_to_file(temp)
+
     def test_load_from_file_puts_file_contents_at_object_endpoint(self) -> None:
         temp = io.BytesIO(b"FOOBAR")
 
@@ -189,7 +310,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         with self.use_local_identity_service():
             with self.expect_put_object(
-                    "/v1/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR"):
+                    "/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR"):
                 with self.run_services():
                     storage_object.load_from_file(temp)
 
@@ -198,6 +319,6 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
-            with self.expect_delete_object("/v1/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4"):
+            with self.expect_delete_object("/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4"):
                 with self.run_services():
                     storage_object.delete()
