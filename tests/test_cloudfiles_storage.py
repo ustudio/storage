@@ -27,6 +27,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         self.cloudfiles_service = self.add_service()
         self.alt_cloudfiles_service = self.add_service()
+        self.internal_cloudfiles_service = self.add_service()
 
         self.mock_sleep_patch = mock.patch("time.sleep")
         self.mock_sleep = self.mock_sleep_patch.start()
@@ -150,7 +151,8 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
                         {
                             "tenantId": "MOSSO-TENANT",
                             "publicURL": self.cloudfiles_service.url("/v2.0/MOSSO-TENANT"),
-                            "internalURL": self.cloudfiles_service.url("/v2.0/MOSSO-TENANT"),
+                            "internalURL": self.internal_cloudfiles_service.url(
+                                "/v2.0/MOSSO-TENANT"),
                             "region": "DFW"
                         },
                         {
@@ -290,8 +292,28 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         self.cloudfiles_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
 
-    def test_save_to_file_uses_provided_public_parameter(self) -> None:
+    def test_save_to_file_uses_default_endpoint_type_when_one_is_not_provided(self) -> None:
         self.add_container_object("/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        temp = io.BytesIO()
+
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")
+        storage_object = get_storage(cloudfiles_uri)
+
+        with self.use_local_identity_service():
+            with self.run_services():
+                storage_object.save_to_file(temp)
+
+        self.cloudfiles_service.assert_requested_n_times(
+            "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 1)
+        self.internal_cloudfiles_service.assert_requested_n_times(
+            "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
+
+    def test_save_to_file_uses_provided_public_parameter(self) -> None:
+        self.object_contents["/path/to/file.mp4"] = b"FOOBAR"
+
+        get_path = f"/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
+        self.internal_cloudfiles_service.add_handler("GET", get_path, self.object_handler)
 
         temp = io.BytesIO()
 
@@ -301,6 +323,31 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         with self.use_local_identity_service():
             with self.run_services():
                 storage_object.save_to_file(temp)
+
+        self.internal_cloudfiles_service.assert_requested_n_times(
+            "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 1)
+        self.cloudfiles_service.assert_requested_n_times(
+            "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
+
+    def test_save_to_file_uses_provided_public_parameter_case_insensitive(self) -> None:
+        self.object_contents["/path/to/file.mp4"] = b"FOOBAR"
+
+        get_path = f"/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
+        self.internal_cloudfiles_service.add_handler("GET", get_path, self.object_handler)
+
+        temp = io.BytesIO()
+
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {"public": "False"})
+        storage_object = get_storage(cloudfiles_uri)
+
+        with self.use_local_identity_service():
+            with self.run_services():
+                storage_object.save_to_file(temp)
+
+        self.internal_cloudfiles_service.assert_requested_n_times(
+            "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 1)
+        self.cloudfiles_service.assert_requested_n_times(
+            "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
 
     def test_load_from_file_puts_file_contents_at_object_endpoint(self) -> None:
         temp = io.BytesIO(b"FOOBAR")

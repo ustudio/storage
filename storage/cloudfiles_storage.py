@@ -7,6 +7,8 @@ import swiftclient
 from .storage import DEFAULT_SWIFT_TIMEOUT
 from storage.swift_storage import register_swift_protocol, SwiftStorage, SwiftStorageError
 
+ENDPOINT_TYPE_MAP = {"true": "publicURL", "false": "internalURL"}
+
 
 class RackspaceAuth(v2.Password):
 
@@ -26,10 +28,11 @@ class CloudFilesStorage(SwiftStorage):
     def get_connection(self):
         if not hasattr(self, "_connection"):
             query = dict(parse_qsl(self._parsed_storage_uri.query))
-            print(f"\n\nquery {query}\n")
+            endpoint_type = query.get("public", "true").lower()
 
             os_options = {
-                "region_name": query.get("region", "DFW")
+                "region_name": query.get("region", "DFW"),
+                "endpoint_type": ENDPOINT_TYPE_MAP[endpoint_type]
             }
 
             auth, _ = self._parsed_storage_uri.netloc.split("@")
