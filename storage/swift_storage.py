@@ -58,8 +58,8 @@ class SwiftStorage(Storage):
             if auth_endpoint is None:
                 raise SwiftStorageError(f"Required field is missing: auth_endpoint")
 
-            tenant_id = query.get("tenant_id")
-            if tenant_id is None:
+            self.tenant_id = query.get("tenant_id")
+            if self.tenant_id is None:
                 raise SwiftStorageError(f"Required field is missing: tenant_id")
 
             region_name = query.get("region")
@@ -69,7 +69,7 @@ class SwiftStorage(Storage):
             self.download_url_key = query.get("download_url_key")
 
             os_options = {
-                "tenant_id": tenant_id,
+                "tenant_id": self.tenant_id,
                 "region_name": region_name
             }
 
@@ -83,7 +83,7 @@ class SwiftStorage(Storage):
                 raise SwiftStorageError(f"Missing API key")
 
             auth = v2.Password(
-                auth_url=auth_endpoint, username=user, password=key, tenant_name=tenant_id)
+                auth_url=auth_endpoint, username=user, password=key, tenant_name=self.tenant_id)
 
             keystone_session = session.Session(auth=auth)
 
@@ -161,7 +161,7 @@ class SwiftStorage(Storage):
         container, object_name = self.get_container_and_object_names()
 
         path = swiftclient.utils.generate_temp_url(
-            f"/v1/AUTH_account/{container}/{object_name}",
+            f"/v1/{self.tenant_id}/{container}/{object_name}",
             seconds=seconds, key=download_url_key, method="GET")
 
         return urljoin(host, path)
