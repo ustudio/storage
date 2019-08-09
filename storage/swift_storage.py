@@ -160,8 +160,11 @@ class SwiftStorage(Storage):
         host, _ = connection.get_service_auth()
         container, object_name = self.get_container_and_object_names()
 
+        storage_url, _ = connection.get_auth()
+        storage_path = urlparse(storage_url).path
+
         path = swiftclient.utils.generate_temp_url(
-            f"/v1/{self.tenant_id}/{container}/{object_name}",
+            f"{storage_path}/{container}/{object_name}",
             seconds=seconds, key=download_url_key, method="GET")
 
         return urljoin(host, path)

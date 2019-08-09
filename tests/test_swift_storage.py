@@ -709,7 +709,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
             url = storage_object.get_download_url()
 
         parsed = urlparse(url)
-        expected = urlparse(self.swift_service.url("/v1/1234/CONTAINER/path/to/file.mp4"))
+        expected = urlparse(self.swift_service.url("/v2.0/1234/CONTAINER/path/to/file.mp4"))
 
         self.assertEqual(parsed.path, expected.path)
         self.assertEqual(parsed.netloc, expected.netloc)
@@ -736,7 +736,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
 
     def generate_signature(self, path, key, expires=60):
         timestamp = time.time()
-        raw_string = f"GET\n{timestamp + expires}\n/v1/1234/CONTAINER{path}"
+        raw_string = f"GET\n{timestamp + expires}\n/v2.0/1234/CONTAINER{path}"
         return hmac.new(key, raw_string.encode("utf8"), sha1).hexdigest()
 
     @mock.patch("time.time")
