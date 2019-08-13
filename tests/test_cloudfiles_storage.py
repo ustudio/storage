@@ -2,7 +2,7 @@ import contextlib
 import io
 import json
 from unittest import mock
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 from storage import get_storage
 from storage import cloudfiles_storage
@@ -14,6 +14,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
     def setUp(self):
         super().setUp()
 
+        self.download_url_key = {"download_url_key": "KEY"}
         self.keystone_credentials = {
             "username": "USER",
             "key": "TOKEN"
@@ -107,6 +108,12 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         self.assertNotIn(
             object_path, self.container_contents,
             f"File {object_path} was not deleted as expected.")
+
+    @contextlib.contextmanager
+    def expect_head_account_object(self, path) -> None:
+        self.cloudfiles_service.add_handler("HEAD", path, self.object_head_account_handler)
+        yield
+        self.cloudfiles_service.assert_requested("HEAD", path)
 
     def identity_handler(self, environ, start_response):
         start_response("200 OK", [("Content-Type", "application/json")])
@@ -211,6 +218,13 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         start_response("204 OK", [("Content-type", "text-plain")])
         return [b""]
 
+    def object_head_account_handler(self, environ, start_response):
+        start_response("204 OK", [
+            ("Content-type", "text-plain"),
+            ("temp-url-key", "TEMPKEY")
+        ])
+        return [b""]
+
     def test_cloudfiles_default_auth_endpoint_points_to_correct_host(self) -> None:
         self.assertEqual(
             "https://identity.api.rackspacecloud.com/v2.0",
@@ -229,7 +243,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -245,7 +259,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -260,7 +274,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -280,7 +294,10 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {"region": "ORD"})
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {
+            "region": "ORD",
+            "download_url_key": "KEY"
+        })
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -297,7 +314,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -317,7 +334,10 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {"public": "false"})
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {
+            "public": "false",
+            "download_url_key": "KEY"
+        })
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -337,7 +357,10 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {"public": "False"})
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {
+            "public": "False",
+            "download_url_key": "KEY"
+        })
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -352,7 +375,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
     def test_load_from_file_puts_file_contents_at_object_endpoint(self) -> None:
         temp = io.BytesIO(b"FOOBAR")
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -362,10 +385,53 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
                     storage_object.load_from_file(temp)
 
     def test_delete_makes_delete_request_against_swift_service(self) -> None:
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
             with self.expect_delete_object("/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4"):
                 with self.run_services():
                     storage_object.delete()
+
+    @mock.patch("time.time")
+    def test_get_download_url_returns_signed_url(self, mock_time) -> None:
+        mock_time.return_value = 9000
+
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
+        storage_object = get_storage(cloudfiles_uri)
+
+        with self.use_local_identity_service():
+            with self.run_services():
+                url = storage_object.get_download_url()
+
+        parsed = urlparse(url)
+        expected = urlparse(self.cloudfiles_service.url(
+            "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"))
+
+        self.assertEqual(parsed.path, expected.path)
+        self.assertEqual(parsed.netloc, expected.netloc)
+
+        query = dict(parse_qsl(parsed.query))
+
+        self.assertEqual("9060", query["temp_url_expires"])
+        self.assertTrue("temp_url_sig" in query)
+
+    @mock.patch("time.time")
+    def test_get_download_url_uses_temp_url_key_when_download_url_key_not_present(
+            self, mock_time) -> None:
+        mock_time.return_value = 9000
+
+        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")
+        storage_object = get_storage(cloudfiles_uri)
+
+        with self.use_local_identity_service():
+            with self.run_services():
+                with self.expect_head_account_object("/v2.0/MOSSO-TENANT"):
+                    url = storage_object.get_download_url()
+
+        parsed = urlparse(url)
+        expected = urlparse(self.cloudfiles_service.url(
+            "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"))
+
+        self.assertEqual(parsed.path, expected.path)
+        self.assertEqual(parsed.netloc, expected.netloc)

@@ -1,16 +1,24 @@
 import mimetypes
 import os
-from urllib.parse import parse_qsl, urljoin
+from urllib.parse import parse_qsl, urljoin, urlparse
 
 from keystoneauth1 import session
 from keystoneauth1.identity import v2
 from keystoneauth1.exceptions.http import Forbidden, Unauthorized
 import swiftclient
 from swiftclient.exceptions import ClientException
-from typing import BinaryIO
+from typing import BinaryIO, Callable, cast, Optional, Type
 
 from . import retry
 from .storage import _LARGE_CHUNK, DEFAULT_SWIFT_TIMEOUT, register_storage_protocol, Storage
+
+
+def register_swift_protocol(
+        scheme: str, auth_endpoint: str) -> Callable[[Type["SwiftStorage"]], Type["SwiftStorage"]]:
+    def wrapper(cls: Type["SwiftStorage"]) -> Type["SwiftStorage"]:
+        cls.auth_endpoint = auth_endpoint
+        return cast(Type[SwiftStorage], register_storage_protocol(scheme)(cls))
+    return wrapper
 
 
 class SwiftStorageError(Exception):
@@ -48,6 +56,8 @@ def retry_swift_operation(error_str, fn, *args, **kwargs):
 
 @register_storage_protocol("swift")
 class SwiftStorage(Storage):
+
+    auth_endpoint: Optional[str] = None
 
     # cache get connections
     def get_connection(self):

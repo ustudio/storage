@@ -49,5 +49,13 @@ class CloudFilesStorage(SwiftStorage):
 
             connection = swiftclient.client.Connection(
                 session=keystone_session, os_options=os_options, timeout=DEFAULT_SWIFT_TIMEOUT)
+
+            self.download_url_key = query.get("download_url_key", None)
+            if self.download_url_key is None:
+                for header_key, header_value in connection.head_account().items():
+                    if header_key.endswith("temp-url-key"):
+                        self.download_url_key = header_value
+                        break
+
             self._connection = connection
         return self._connection
