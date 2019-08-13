@@ -281,7 +281,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         self.assertEqual(0, len(self.remaining_auth_failures))
 
     def test_save_to_file_raises_storage_error_on_swift_service_not_found(self) -> None:
-        self._add_file_error("404 Not Found")
+        self.add_file_error("404 Not Found")
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
@@ -297,7 +297,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
             "GET", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
 
     def test_save_to_file_seeks_to_beginning_of_file_on_error(self) -> None:
-        self._add_file_error("502 Bad Gateway")
+        self.add_file_error("502 Bad Gateway")
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
@@ -442,7 +442,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         self.assertEqual(0, len(self.remaining_auth_failures))
 
     def test_save_to_filename_raises_storage_error_on_swift_service_not_found(self):
-        self._add_file_error("404 Not Found")
+        self.add_file_error("404 Not Found")
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
@@ -458,7 +458,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
             "GET", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
 
     def test_save_to_filename_seeks_to_beginning_of_file_on_error(self) -> None:
-        self._add_file_error("502 Bad Gateway")
+        self.add_file_error("501 Bad Gateway")
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
@@ -890,7 +890,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
 
-        with self._expect_directory("/path/to/files"):
+        with self.expect_directory("/path/to/files"):
             with self.run_services():
                 storage_object.load_from_directory(self.tmp_dir.name)
 
@@ -901,7 +901,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
 
-        with self._expect_directory("/path/to/files"):
+        with self.expect_directory("/path/to/files"):
             with self.run_services():
                 storage_object.load_from_directory(self.tmp_dir.name)
 
@@ -920,7 +920,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
 
-        with self._expect_directory("/path/to/files"):
+        with self.expect_directory("/path/to/files"):
             with self.run_services():
                 storage_object.load_from_directory(self.tmp_dir.name)
 
@@ -959,7 +959,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
 
-        with self._expect_directory("/path/to/files"):
+        with self.expect_directory("/path/to/files"):
             with self.run_services():
                 storage_object.load_from_directory(self.tmp_dir.name)
 
@@ -979,7 +979,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
 
-        with self._expect_directory("/path/to/files"):
+        with self.expect_directory("/path/to/files"):
             with self.run_services():
                 storage_object.load_from_directory(self.tmp_dir.name)
 
@@ -1014,7 +1014,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
 
-        with self._expect_delete_directory("/path/to/files"):
+        with self.expect_delete_directory("/path/to/files"):
             with self.run_services():
                 storage_object.delete_directory()
 
@@ -1025,7 +1025,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
 
-        with self._expect_delete_directory("/path/to/files"):
+        with self.expect_delete_directory("/path/to/files"):
             with self.run_services():
                 storage_object.delete_directory()
 
@@ -1040,7 +1040,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         swift_uri = self._generate_swift_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
 
-        with self._expect_delete_directory("/path/to/files"):
+        with self.expect_delete_directory("/path/to/files"):
             with self.run_services():
                 storage_object.delete_directory()
 

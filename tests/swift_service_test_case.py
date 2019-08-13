@@ -68,7 +68,7 @@ class SwiftServiceTestCase(ServiceTestCase):
         self.tmp_files.append(tmp_file)
         return tmp_file
 
-    def _add_file_error(self, error: str) -> None:
+    def add_file_error(self, error: str) -> None:
         self.remaining_file_failures.append(error)
 
     def add_container_object(self, container_path, object_path, content) -> None:
@@ -99,7 +99,7 @@ class SwiftServiceTestCase(ServiceTestCase):
             f"File {object_path} was not deleted as expected.")
 
     @contextlib.contextmanager
-    def _expect_directory(self, filepath) -> None:
+    def expect_directory(self, filepath) -> None:
         for root, _, files in os.walk(self.tmp_dir.name):
             dirpath = strip_slashes(root.split(self.tmp_dir.name)[1])
             for basepath in files:
@@ -113,7 +113,7 @@ class SwiftServiceTestCase(ServiceTestCase):
         self.assert_container_contents_equal(filepath)
 
     @contextlib.contextmanager
-    def _expect_delete_directory(self, filepath) -> None:
+    def expect_delete_directory(self, filepath) -> None:
         expected_delete_paths = []
         for name in self.container_contents:
             delete_path = f"/v2.0/1234/CONTAINER/{strip_slashes(name)}"
