@@ -3,53 +3,66 @@ import datetime
 import json
 import os
 
-import google.cloud.storage
-import google.oauth2.service_account
+import google.cloud.storage  # type: ignore
+from google.cloud.storage.bucket import Bucket  # type: ignore
+from google.cloud.storage.blob import Blob  # type: ignore
+import google.oauth2.service_account  # type: ignore
 
-from . import retry
-from .storage import Storage, register_storage_protocol
+from typing import BinaryIO, cast, Optional
+
+from storage import retry
+from storage.storage import Storage, register_storage_protocol
+
+
+class GoogleStorageException(Exception):
+    pass
 
 
 @register_storage_protocol("gs")
 class GoogleStorage(Storage):
-    def _get_bucket(self):
-        credentials_data = json.loads(base64.urlsafe_b64decode(
-            self._parsed_storage_uri.username.encode("utf8")))
+
+    def _get_bucket(self) -> Bucket:
+        username = self._parsed_storage_uri.username
+        credentials_data = json.loads(base64.urlsafe_b64decode(username))
         credentials = google.oauth2.service_account.Credentials.from_service_account_info(
             credentials_data)
         client = google.cloud.storage.client.Client(
             project=credentials_data["project_id"], credentials=credentials)
         return client.get_bucket(self._parsed_storage_uri.hostname)
 
-    def _get_blob(self):
+    def _get_blob(self) -> Blob:
         bucket = self._get_bucket()
-        return bucket.blob(self._parsed_storage_uri.path[1:])
+        blob = bucket.blob(self._parsed_storage_uri.path[1:])
+        if blob is None:
+            raise GoogleStorageException(
+                f"Could not find resource {self._parsed_storage_uri.path}")
+        return blob
 
-    def save_to_filename(self, file_path):
+    def save_to_filename(self, file_path: str) -> None:
         blob = self._get_blob()
         blob.download_to_filename(file_path)
 
-    def save_to_file(self, out_file):
+    def save_to_file(self, out_file: BinaryIO) -> None:
         blob = self._get_blob()
         blob.download_to_file(out_file)
 
-    def load_from_filename(self, file_path):
+    def load_from_filename(self, file_path: str) -> None:
         blob = self._get_blob()
         blob.upload_from_filename(file_path)
 
-    def load_from_file(self, in_file):
+    def load_from_file(self, in_file: BinaryIO) -> None:
         blob = self._get_blob()
         blob.upload_from_file(in_file)
 
-    def delete(self):
+    def delete(self) -> None:
         blob = self._get_blob()
         blob.delete()
 
-    def get_download_url(self, seconds=60, key=None):
+    def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         blob = self._get_blob()
-        return blob.generate_signed_url(datetime.timedelta(seconds=seconds))
+        return cast(str, blob.generate_signed_url(datetime.timedelta(seconds=seconds)))
 
-    def save_to_directory(self, directory_path):
+    def save_to_directory(self, directory_path: str) -> None:
         bucket = self._get_bucket()
 
         prefix = self._parsed_storage_uri.path[1:] + "/"
@@ -65,7 +78,7 @@ class GoogleStorage(Storage):
                 unversioned_blob = bucket.blob(blob.name)
                 retry.attempt(unversioned_blob.download_to_filename, local_file_path)
 
-    def load_from_directory(self, directory_path):
+    def load_from_directory(self, directory_path: str) -> None:
         bucket = self._get_bucket()
 
         prefix = self._parsed_storage_uri.path[1:]
@@ -77,7 +90,7 @@ class GoogleStorage(Storage):
                 blob = bucket.blob("/".join([remote_path, filename]))
                 retry.attempt(blob.upload_from_filename, os.path.join(root, filename))
 
-    def delete_directory(self):
+    def delete_directory(self) -> None:
         bucket = self._get_bucket()
 
         for blob in bucket.list_blobs(prefix=self._parsed_storage_uri.path[1:] + "/"):

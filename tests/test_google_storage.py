@@ -1,21 +1,20 @@
 import base64
 import datetime
 import json
-from unittest import TestCase
+from unittest import TestCase, mock
 
-import mock
-
-from storage import get_storage
+from storage.storage import get_storage
+from storage.google_storage import GoogleStorageException
 
 
 class TestGoogleStorage(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         super(TestGoogleStorage, self).setUp()
 
         self.credentials = base64.urlsafe_b64encode(json.dumps({
             "SOME": "CREDENTIALS",
             "project_id": "PROJECT-ID"
-        }))
+        }).encode("utf8")).decode("utf8")
 
         service_account_patcher = mock.patch(
             "google.oauth2.service_account.Credentials.from_service_account_info")
@@ -31,14 +30,14 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket = self.mock_client.get_bucket.return_value
         self.mock_blob = self.mock_bucket.blob.return_value
 
-    def assert_gets_bucket_with_credentials(self):
+    def assert_gets_bucket_with_credentials(self) -> None:
         self.mock_from_service_account_info.assert_called_once_with(
             {"SOME": "CREDENTIALS", "project_id": "PROJECT-ID"})
         self.mock_client_class.assert_called_once_with(
             project="PROJECT-ID", credentials=self.mock_credentials)
         self.mock_client.get_bucket.assert_called_once_with("bucketname")
 
-    def test_save_to_filename_downloads_blob_to_file_location(self):
+    def test_save_to_filename_downloads_blob_to_file_location(self) -> None:
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         storage.save_to_filename("SOME-FILE")
@@ -48,7 +47,20 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.download_to_filename.assert_called_once_with("SOME-FILE")
 
-    def test_save_to_file_downloads_blob_to_file_object(self):
+    def test_save_to_filename_raises_exception_when_blob_does_not_exist(self) -> None:
+        self.mock_bucket.blob.return_value = None
+
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        with self.assertRaises(GoogleStorageException):
+            storage.save_to_filename("SOME-FILE")
+
+        self.assert_gets_bucket_with_credentials()
+
+        self.mock_bucket.blob.assert_called_once_with("path/filename")
+        self.mock_blob.download_to_filename.assert_not_called()
+
+    def test_save_to_file_downloads_blob_to_file_object(self) -> None:
         mock_file = mock.Mock()
 
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
@@ -60,7 +72,10 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.download_to_file.assert_called_once_with(mock_file)
 
-    def test_load_from_filename_uploads_blob_from_file_location(self):
+    def test_save_to_file_raises_exception_when_blob_does_not_exist(self) -> None:
+        pass
+
+    def test_load_from_filename_uploads_blob_from_file_location(self) -> None:
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         storage.load_from_filename("SOME-FILE")
@@ -70,7 +85,7 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.upload_from_filename.assert_called_once_with("SOME-FILE")
 
-    def test_load_from_file_uploads_blob_from_file_object(self):
+    def test_load_from_file_uploads_blob_from_file_object(self) -> None:
         mock_file = mock.Mock()
 
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
@@ -82,7 +97,7 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.upload_from_file.assert_called_once_with(mock_file)
 
-    def test_delete_deletes_blob(self):
+    def test_delete_deletes_blob(self) -> None:
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         storage.delete()
@@ -92,7 +107,7 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.delete.assert_called_once_with()
 
-    def test_get_download_url_returns_signed_url_with_default_expiration(self):
+    def test_get_download_url_returns_signed_url_with_default_expiration(self) -> None:
         mock_signed_url = self.mock_blob.generate_signed_url.return_value
 
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
@@ -106,21 +121,21 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=60))
 
-    def test_get_download_url_returns_signed_url_with_provided_expiration(self):
+    def test_get_download_url_returns_signed_url_with_provided_expiration(self) -> None:
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         storage.get_download_url(1000)
 
         self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=1000))
 
-    def test_get_download_url_does_not_use_key_when_provided(self):
+    def test_get_download_url_does_not_use_key_when_provided(self) -> None:
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         storage.get_download_url(key="KEY")
 
         self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=60))
 
-    def _mock_blob(self, name):
+    def _mock_blob(self, name: str) -> mock.Mock:
         blob = mock.Mock()
         blob.name = name
         return blob
@@ -128,7 +143,7 @@ class TestGoogleStorage(TestCase):
     @mock.patch("os.path.exists")
     @mock.patch("os.makedirs")
     def test_save_to_directory_downloads_blobs_matching_prefix_to_directory_location(
-            self, mock_makedirs, mock_exists):
+            self, mock_makedirs: mock.Mock, mock_exists: mock.Mock) -> None:
         mock_exists.side_effect = [True, False, False]
 
         mock_listed_blobs = [
@@ -185,7 +200,7 @@ class TestGoogleStorage(TestCase):
     @mock.patch("os.path.exists")
     @mock.patch("os.makedirs")
     def test_save_to_directory_ignores_placeholder_directory_entries_when_present(
-            self, mock_makedirs, mock_exists):
+            self, mock_makedirs: mock.Mock, mock_exists: mock.Mock) -> None:
         mock_exists.side_effect = [False, True, False, False]
 
         mock_listed_blobs = [
@@ -229,7 +244,7 @@ class TestGoogleStorage(TestCase):
     @mock.patch("random.uniform")
     @mock.patch("time.sleep")
     def test_save_to_directory_retries_file_download_on_error(
-            self, mock_sleep, mock_uniform, mock_exists):
+            self, mock_sleep: mock.Mock, mock_uniform: mock.Mock, mock_exists: mock.Mock) -> None:
         mock_exists.return_value = True
 
         mock_listed_blobs = [
@@ -268,7 +283,7 @@ class TestGoogleStorage(TestCase):
     @mock.patch("random.uniform")
     @mock.patch("time.sleep")
     def test_save_to_directory_fails_after_five_unsuccessful_download_attempts(
-            self, mock_sleep, mock_uniform, mock_exists):
+            self, mock_sleep: mock.Mock, mock_uniform: mock.Mock, mock_exists: mock.Mock) -> None:
         mock_uniform_results = [mock.Mock() for i in range(4)]
         mock_uniform.side_effect = mock_uniform_results
         mock_exists.return_value = True
@@ -315,7 +330,8 @@ class TestGoogleStorage(TestCase):
         ])
 
     @mock.patch("os.walk")
-    def test_load_from_directory_uploads_files_to_bucket_with_prefix(self, mock_walk):
+    def test_load_from_directory_uploads_files_to_bucket_with_prefix(
+            self, mock_walk: mock.Mock) -> None:
         mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock(), mock.Mock()]
         self.mock_bucket.blob.side_effect = mock_blobs
 
@@ -350,7 +366,8 @@ class TestGoogleStorage(TestCase):
             "/path/to/directory-name/subdir/nesteddir/nested1")
 
     @mock.patch("os.walk")
-    def test_load_from_directory_handles_repeated_directory_structure(self, mock_walk):
+    def test_load_from_directory_handles_repeated_directory_structure(
+            self, mock_walk: mock.Mock) -> None:
         mock_blobs = [mock.Mock(), mock.Mock()]
         self.mock_bucket.blob.side_effect = mock_blobs
 
@@ -379,7 +396,8 @@ class TestGoogleStorage(TestCase):
 
     @mock.patch("os.walk")
     @mock.patch("time.sleep")
-    def test_load_from_directory_retries_file_upload_on_error(self, mock_sleep, mock_walk):
+    def test_load_from_directory_retries_file_upload_on_error(
+            self, mock_sleep: mock.Mock, mock_walk: mock.Mock) -> None:
         mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock()]
         mock_blobs[1].upload_from_filename.side_effect = [Exception, None]
         self.mock_bucket.blob.side_effect = mock_blobs
@@ -408,7 +426,7 @@ class TestGoogleStorage(TestCase):
     @mock.patch("os.walk")
     @mock.patch("time.sleep")
     def test_load_from_directory_fails_after_five_unsuccessful_upload_attempts(
-            self, mock_sleep, mock_walk):
+            self, mock_sleep: mock.Mock, mock_walk: mock.Mock) -> None:
         mock_blobs = [mock.Mock(), mock.Mock(), mock.Mock()]
         mock_blobs[1].upload_from_filename.side_effect = Exception
         self.mock_bucket.blob.side_effect = mock_blobs
@@ -429,7 +447,7 @@ class TestGoogleStorage(TestCase):
 
         self.assertEqual(0, mock_blobs[2].upload_from_filename.call_count)
 
-    def test_delete_directory_deletes_blobs_with_prefix(self):
+    def test_delete_directory_deletes_blobs_with_prefix(self) -> None:
         mock_listed_blobs = [
             self._mock_blob("path/filename/file1"),
             self._mock_blob("path/filename/file2"),
@@ -464,7 +482,7 @@ class TestGoogleStorage(TestCase):
         mock_unversioned_blobs[1].delete.assert_called_once_with()
         mock_unversioned_blobs[2].delete.assert_called_once_with()
 
-    def test_storage_uris_can_be_unicode(self):
+    def test_storage_uris_can_be_unicode(self) -> None:
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         storage.save_to_filename("SOME-FILE")
