@@ -20,13 +20,10 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             "key": "TOKEN"
         }
 
-        self.object_contents = {}
-
         self.identity_service = self.add_service()
         self.identity_service.add_handler("GET", "/v2.0", self.identity_handler)
         self.identity_service.add_handler("POST", "/v2.0/tokens", self.authentication_handler)
 
-        self.cloudfiles_service = self.add_service()
         self.alt_cloudfiles_service = self.add_service()
         self.internal_cloudfiles_service = self.add_service()
 
@@ -50,15 +47,6 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             return True
         else:
             return False
-
-    def add_container_object(self, container_path, object_path, content) -> None:
-        if type(content) is not bytes:
-            raise Exception("Object file contents numst be bytes")
-
-        self.object_contents[object_path] = content
-
-        get_path = f"{container_path}{object_path}"
-        self.cloudfiles_service.add_handler("GET", get_path, self.object_handler)
 
     def assert_requires_all_parameters(self, object_path, fn) -> None:
         for auth_string in ["USER:@", ":TOKEN@"]:
@@ -92,28 +80,10 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             yield
 
     @contextlib.contextmanager
-    def expect_put_object(self, container_path, object_path, content) -> None:
-        put_path = f"{container_path}{object_path}"
-        self.cloudfiles_service.add_handler("PUT", put_path, self.object_put_handler)
-        yield
-        self.assertEqual(content, self.container_contents[object_path])
-        self.cloudfiles_service.assert_requested("PUT", put_path)
-
-    @contextlib.contextmanager
-    def expect_delete_object(self, container_path, object_path):
-        self.container_contents[object_path] = b"UNDELETED!"
-        delete_path = f"{container_path}{object_path}"
-        self.cloudfiles_service.add_handler("DELETE", delete_path, self.object_delete_handler)
-        yield
-        self.assertNotIn(
-            object_path, self.container_contents,
-            f"File {object_path} was not deleted as expected.")
-
-    @contextlib.contextmanager
     def expect_head_account_object(self, path) -> None:
-        self.cloudfiles_service.add_handler("HEAD", path, self.object_head_account_handler)
+        self.swift_service.add_handler("HEAD", path, self.object_head_account_handler)
         yield
-        self.cloudfiles_service.assert_requested("HEAD", path)
+        self.swift_service.assert_requested("HEAD", path)
 
     def identity_handler(self, environ, start_response):
         start_response("200 OK", [("Content-Type", "application/json")])
@@ -157,7 +127,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
                     "endpoints": [
                         {
                             "tenantId": "MOSSO-TENANT",
-                            "publicURL": self.cloudfiles_service.url("/v2.0/MOSSO-TENANT"),
+                            "publicURL": self.swift_service.url("/v2.0/MOSSO-TENANT"),
                             "internalURL": self.internal_cloudfiles_service.url(
                                 "/v2.0/MOSSO-TENANT"),
                             "region": "DFW"
@@ -193,30 +163,6 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
                 }
             }
         }).encode("utf8")]
-
-    def object_handler(self, environ, start_response):
-        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
-        start_response("200 OK", [("Content-type", "video/mp4")])
-        return [self.object_contents[path]]
-
-    def object_put_handler(self, environ, start_response):
-        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
-
-        header = b""
-        while not header.endswith(b"\r\n"):
-            header += environ["wsgi.input"].read(1)
-
-        body_size = int(header.strip())
-        self.container_contents[path] = environ["wsgi.input"].read(body_size)
-
-        start_response("201 OK", [("Content-type", "text/plain")])
-        return [b""]
-
-    def object_delete_handler(self, environ, start_response):
-        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
-        del self.container_contents[path]
-        start_response("204 OK", [("Content-type", "text-plain")])
-        return [b""]
 
     def object_head_account_handler(self, environ, start_response):
         start_response("204 OK", [
@@ -281,7 +227,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             with self.run_services():
                 storage_object.save_to_file(temp)
 
-        self.cloudfiles_service.assert_requested_n_times(
+        self.swift_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 1)
         self.alt_cloudfiles_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
@@ -306,7 +252,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         self.alt_cloudfiles_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 1)
-        self.cloudfiles_service.assert_requested_n_times(
+        self.swift_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
 
     def test_save_to_file_uses_default_endpoint_type_when_one_is_not_provided(self) -> None:
@@ -321,7 +267,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             with self.run_services():
                 storage_object.save_to_file(temp)
 
-        self.cloudfiles_service.assert_requested_n_times(
+        self.swift_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 1)
         self.internal_cloudfiles_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
@@ -346,7 +292,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         self.internal_cloudfiles_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 1)
-        self.cloudfiles_service.assert_requested_n_times(
+        self.swift_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
 
     def test_save_to_file_uses_provided_public_parameter_case_insensitive(self) -> None:
@@ -369,7 +315,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         self.internal_cloudfiles_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 1)
-        self.cloudfiles_service.assert_requested_n_times(
+        self.swift_service.assert_requested_n_times(
             "GET", "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4", 0)
 
     def test_load_from_file_puts_file_contents_at_object_endpoint(self) -> None:
@@ -405,8 +351,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
                 url = storage_object.get_download_url()
 
         parsed = urlparse(url)
-        expected = urlparse(self.cloudfiles_service.url(
-            "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"))
+        expected = urlparse(self.swift_service.url("/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"))
 
         self.assertEqual(parsed.path, expected.path)
         self.assertEqual(parsed.netloc, expected.netloc)
@@ -430,8 +375,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
                     url = storage_object.get_download_url()
 
         parsed = urlparse(url)
-        expected = urlparse(self.cloudfiles_service.url(
-            "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"))
+        expected = urlparse(self.swift_service.url("/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"))
 
         self.assertEqual(parsed.path, expected.path)
         self.assertEqual(parsed.netloc, expected.netloc)

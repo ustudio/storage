@@ -30,7 +30,7 @@ class SwiftServiceTestCase(ServiceTestCase):
 
         self.container_contents = {}
         self.directory_contents = {}
-        self.file_contents = {}
+        self.object_contents = {}
 
         # this is fragile, but they import and use the function directly, so we mock in-module
         self.mock_swiftclient_sleep_patch = mock.patch("swiftclient.client.sleep")
@@ -51,8 +51,9 @@ class SwiftServiceTestCase(ServiceTestCase):
             raise Exception("Object file contents must be bytes")
 
         self.container_contents[filepath] = file_content
-        self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
-        self._add_file(filepath, file_content)
+        container_path = "/v2.0/1234/CONTAINER"
+        self.swift_service.add_handler("GET", container_path, self.swift_container_handler)
+        self.add_container_object(container_path, filepath, file_content)
 
     def _add_tmp_file_to_dir(self, directory, file_content, suffix=None):
         if type(file_content) is not bytes:
@@ -70,32 +71,32 @@ class SwiftServiceTestCase(ServiceTestCase):
     def _add_file_error(self, error: str) -> None:
         self.remaining_file_failures.append(error)
 
-    def _add_file(self, filepath, file_content) -> None:
-        if type(file_content) is not bytes:
-            raise Exception("Object file contents must be bytes")
+    def add_container_object(self, container_path, object_path, content) -> None:
+        if type(content) is not bytes:
+            raise Exception("Object file contents numst be bytes")
 
-        self.file_contents[filepath] = file_content
-        self.swift_service.add_handler(
-            "GET", f"/v2.0/1234/CONTAINER{filepath}", self.swift_object_handler)
+        self.object_contents[object_path] = content
+
+        get_path = f"{container_path}{object_path}"
+        self.swift_service.add_handler("GET", get_path, self.object_handler)
 
     @contextlib.contextmanager
-    def _expect_file(self, filepath, file_content) -> None:
-        put_path = f"/v2.0/1234/CONTAINER{filepath}"
-        self.swift_service.add_handler("PUT", put_path, self.swift_object_put_handler)
+    def expect_put_object(self, container_path, object_path, content) -> None:
+        put_path = f"{container_path}{object_path}"
+        self.swift_service.add_handler("PUT", put_path, self.object_put_handler)
         yield
-        self.assertEqual(file_content, self.container_contents[filepath])
+        self.assertEqual(content, self.container_contents[object_path])
         self.swift_service.assert_requested("PUT", put_path)
 
     @contextlib.contextmanager
-    def _expect_delete(self, filepath) -> None:
-        self.container_contents[filepath] = b"UNDELETED!"
-        self.swift_service.add_handler(
-            "DELETE", f"/v2.0/1234/CONTAINER{filepath}", self.swift_object_delete_handler)
-
+    def expect_delete_object(self, container_path, object_path):
+        self.container_contents[object_path] = b"UNDELETED!"
+        delete_path = f"{container_path}{object_path}"
+        self.swift_service.add_handler("DELETE", delete_path, self.object_delete_handler)
         yield
-
         self.assertNotIn(
-            filepath, self.container_contents, f"File {filepath} was not deleted as expected.")
+            object_path, self.container_contents,
+            f"File {object_path} was not deleted as expected.")
 
     @contextlib.contextmanager
     def _expect_directory(self, filepath) -> None:
@@ -105,8 +106,8 @@ class SwiftServiceTestCase(ServiceTestCase):
                 relative_path = os.path.join(dirpath, basepath)
                 remote_path = "/".join([filepath, relative_path])
 
-                self.swift_service.add_handler(
-                    "PUT", f"/v2.0/1234/CONTAINER{remote_path}", self.swift_object_put_handler)
+                put_path = f"/v2.0/1234/CONTAINER{remote_path}"
+                self.swift_service.add_handler("PUT", put_path, self.object_put_handler)
         yield
 
         self.assert_container_contents_equal(filepath)
@@ -117,12 +118,58 @@ class SwiftServiceTestCase(ServiceTestCase):
         for name in self.container_contents:
             delete_path = f"/v2.0/1234/CONTAINER/{strip_slashes(name)}"
             expected_delete_paths.append(delete_path)
-            self.swift_service.add_handler("DELETE", delete_path, self.swift_object_delete_handler)
+            self.swift_service.add_handler("DELETE", delete_path, self.object_delete_handler)
 
         yield
 
         for delete_path in expected_delete_paths:
             self.swift_service.assert_requested("DELETE", delete_path)
+
+    def object_handler(self, environ, start_response):
+        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
+
+        if len(self.remaining_file_failures) > 0:
+            failure = self.remaining_file_failures.pop(0)
+
+            start_response(failure, [("Content-type", "text/plain")])
+            return [b"Internal Server Error"]
+
+        if path not in self.object_contents:
+            start_response("404 NOT FOUND", [("Content-Type", "text/plain")])
+            return [f"Object file {path} not in file contents dictionary".encode("utf8")]
+
+        start_response("200 OK", [("Content-type", "video/mp4")])
+        return [self.object_contents[path]]
+
+    def object_put_handler(self, environ, start_response):
+        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
+
+        if len(self.remaining_object_put_failures) > 0:
+            failure = self.remaining_object_put_failures.pop(0)
+            start_response(failure, [("Content-type", "text/plain")])
+            return [b"Internal server error."]
+
+        header = b""
+        while not header.endswith(b"\r\n"):
+            header += environ["wsgi.input"].read(1)
+
+        body_size = int(header.strip())
+        self.container_contents[path] = environ["wsgi.input"].read(body_size)
+
+        start_response("201 OK", [("Content-type", "text/plain")])
+        return [b""]
+
+    def object_delete_handler(self, environ, start_response):
+        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
+
+        if len(self.remaining_file_delete_failures) > 0:
+            failure = self.remaining_file_delete_failures.pop(0)
+            start_response(failure, [("Content-type", "text/plain")])
+            return [b"Internal server error."]
+
+        del self.container_contents[path]
+        start_response("204 OK", [("Content-type", "text-plain")])
+        return [b""]
 
     def swift_container_handler(self, environ, start_response):
         if len(self.remaining_container_failures) > 0:
@@ -141,52 +188,6 @@ class SwiftServiceTestCase(ServiceTestCase):
 
         start_response("200 OK", [("Content-Type", "text/plain")])
         return ["\n".join(self.container_contents).encode("utf8")]
-
-    def swift_object_handler(self, environ, start_response):
-        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
-
-        if len(self.remaining_file_failures) > 0:
-            failure = self.remaining_file_failures.pop(0)
-
-            start_response(failure, [("Content-type", "text/plain")])
-            return [b"Internal Server Error"]
-
-        if path not in self.file_contents:
-            start_response("404 NOT FOUND", [("Content-Type", "text/plain")])
-            return [f"Object file {path} not in file contents dictionary".encode("utf8")]
-
-        start_response("200 OK", [("Content-Type", "video/mp4")])
-        return [self.file_contents[path]]
-
-    def swift_object_put_handler(self, environ, start_response):
-        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
-
-        if len(self.remaining_object_put_failures) > 0:
-            failure = self.remaining_object_put_failures.pop(0)
-            start_response(failure, [("Content-type", "text/plain")])
-            return [b"Internal server error."]
-
-        header = b""
-        while not header.endswith(b"\r\n"):
-            header += environ["wsgi.input"].read(1)
-
-        body_size = int(header.strip())
-        self.container_contents[path] = environ["wsgi.input"].read(body_size)
-
-        start_response("201 OK", [("Content-Type", "text/plain")])
-        return [b""]
-
-    def swift_object_delete_handler(self, environ, start_response):
-        path = environ["REQUEST_PATH"].split("CONTAINER")[1]
-
-        if len(self.remaining_file_delete_failures) > 0:
-            failure = self.remaining_file_delete_failures.pop(0)
-            start_response(failure, [("Content-type", "text/plain")])
-            return [b"Internal server error."]
-
-        del self.container_contents[path]
-        start_response("204 OK", [("Content-type", "text/plain")])
-        return [b""]
 
     def assert_container_contents_equal(self, object_path):
         written_files = {}
