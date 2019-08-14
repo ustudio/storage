@@ -1,11 +1,11 @@
 import contextlib
 import json
-import io
 import os
 import tempfile
 from unittest import mock
 from urllib.parse import parse_qsl
 
+from tests.helpers import NamedIO
 from tests.service_test_case import ServiceTestCase
 
 from typing import cast, Dict, Generator, List, Optional, TYPE_CHECKING
@@ -13,11 +13,6 @@ from typing import cast, Dict, Generator, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from tests.service_test_case import Environ
     from wsgiref.types import StartResponse
-
-
-class NamedIO(io.BufferedReader):
-
-    name: str
 
 
 def strip_slashes(path: str) -> str:
