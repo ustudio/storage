@@ -1,21 +1,28 @@
+import io
 import os
 import tempfile
-from typing import Dict, Optional, Union
+
+from typing import Any, cast, Dict, List, Optional, Union
+
+
+class NamedIO(io.BufferedReader):
+
+    name: str
 
 
 class TempDirectory(object):
 
     def __init__(self, parent: Optional[str] = None) -> None:
         self.directory = tempfile.TemporaryDirectory(dir=parent)
-        self.subdirectories = []
-        self.files = []
+        self.subdirectories: List["TempDirectory"] = []
+        self.files: List[NamedIO] = []
 
     @property
     def name(self) -> str:
         return self.directory.name
 
-    def add_file(self, contents: bytes) -> tempfile.NamedTemporaryFile:
-        temp = tempfile.NamedTemporaryFile(dir=self.directory.name)
+    def add_file(self, contents: bytes) -> NamedIO:
+        temp = cast(NamedIO, tempfile.NamedTemporaryFile(dir=self.directory.name))
         temp.write(contents)
         temp.flush()
         temp.seek(0)
@@ -37,11 +44,14 @@ class TempDirectory(object):
     def __enter__(self) -> "TempDirectory":
         return self
 
-    def __exit__(self, *args, **kwargs) -> None:
+    def __exit__(self, *args: Any, **kwargs: Any) -> None:
         self.cleanup()
 
 
-def create_temp_nested_directory_with_files() -> Dict[str, Union[TempDirectory, str]]:
+NestedDirectoryDict = Dict[str, Dict[str, Union[TempDirectory, NamedIO, str]]]
+
+
+def create_temp_nested_directory_with_files() -> NestedDirectoryDict:
     # temp_directory/
     #   temp_input_one
     #   temp_input_two
@@ -83,22 +93,26 @@ def create_temp_nested_directory_with_files() -> Dict[str, Union[TempDirectory, 
     }
 
 
-class FileSpy(object):
+class FileSpy(io.BytesIO):
 
-    def __init__(self):
-        self.chunks = []
+    def __init__(self) -> None:
+        self.chunks: List[bytes] = []
         self.index = 0
         self.name = ""
 
-    def write(self, chunk):
+    def write(self, chunk: bytes) -> int:
         self.chunks.append(chunk)
         self.index += len(chunk)
+        return len(chunk)
 
-    def seek(self, index):
+    def seek(self, index: int, whence: int = 0) -> int:
+        if whence != 0:
+            raise ValueError("FileSpy can only seek absolutely.")
         self.index = index
+        return self.index
 
-    def assert_written(self, assertion):
+    def assert_written(self, assertion: bytes) -> None:
         assert b"".join(self.chunks) == assertion
 
-    def assert_number_of_chunks(self, n):
+    def assert_number_of_chunks(self, n: int) -> None:
         assert n == len(self.chunks)
