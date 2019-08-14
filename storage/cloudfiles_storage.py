@@ -1,8 +1,10 @@
 from urllib.parse import parse_qsl
 
-from keystoneauth1 import session
-from keystoneauth1.identity import v2
-import swiftclient
+from keystoneauth1 import session  # type: ignore
+from keystoneauth1.identity import v2  # type: ignore
+import swiftclient  # type: ignore
+
+from typing import Any, Dict
 
 from .storage import DEFAULT_SWIFT_TIMEOUT
 from storage.swift_storage import register_swift_protocol, SwiftStorage, SwiftStorageError
@@ -10,9 +12,9 @@ from storage.swift_storage import register_swift_protocol, SwiftStorage, SwiftSt
 ENDPOINT_TYPE_MAP = {"true": "publicURL", "false": "internalURL"}
 
 
-class RackspaceAuth(v2.Password):
+class RackspaceAuth(v2.Password):  # type: ignore
 
-    def get_auth_data(self, *args, **kwargs):
+    def get_auth_data(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         auth_data = super().get_auth_data(*args, **kwargs)
         return {
             "RAX-KSKEY:apiKeyCredentials": {
@@ -25,7 +27,7 @@ class RackspaceAuth(v2.Password):
 @register_swift_protocol("cloudfiles", "https://identity.api.rackspacecloud.com/v2.0")
 class CloudFilesStorage(SwiftStorage):
 
-    def get_connection(self):
+    def get_connection(self) -> swiftclient.client.Connection:
         if not hasattr(self, "_connection"):
             query = dict(parse_qsl(self._parsed_storage_uri.query))
             endpoint_type = query.get("public", "true").lower()

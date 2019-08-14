@@ -9,19 +9,26 @@ import time
 from unittest import mock
 from urllib.parse import urlencode, urlparse, parse_qsl
 
-from storage import get_storage
+from storage.storage import get_storage, Storage
 from storage.swift_storage import SwiftStorageError
 from tests.swift_service_test_case import SwiftServiceTestCase
 from tests.helpers import FileSpy
+
+from typing import Any, Callable, Dict, Generator, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tests.service_test_case import Environ
+    from wsgiref.types import StartResponse
+
 
 _LARGE_CHUNK = 32 * 1024 * 1024
 
 
 class TestSwiftStorageProvider(SwiftServiceTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
 
-        self.remaining_auth_failures = []
+        self.remaining_auth_failures: List[str] = []
 
         self.keystone_credentials = {
             "username": "USER",
@@ -37,11 +44,11 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         self.mock_sleep = self.mock_sleep_patch.start()
         self.mock_sleep.side_effect = lambda x: None
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         super().tearDown()
         self.mock_sleep_patch.stop()
 
-    def identity_handler(self, environ, start_response):
+    def identity_handler(self, environ: "Environ", start_response: "StartResponse") -> List[bytes]:
         start_response("200 OK", [("Content-Type", "application/json")])
         return [json.dumps({
             "version": {
@@ -64,7 +71,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
             }
         }).encode("utf8")]
 
-    def _valid_credentials(self, body_credentials):
+    def _valid_credentials(self, body_credentials: Dict[str, Any]) -> bool:
         tenant_name = body_credentials["tenantName"]
         username = body_credentials["passwordCredentials"]["username"]
         password = body_credentials["passwordCredentials"]["password"]
@@ -76,7 +83,8 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         else:
             return False
 
-    def authentication_handler(self, environ, start_response):
+    def authentication_handler(
+            self, environ: "Environ", start_response: "StartResponse") -> List[bytes]:
         body_size = int(environ.get("CONTENT_LENGTH", 0))
         body = json.loads(environ["wsgi.input"].read(body_size))
 
@@ -127,7 +135,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
             }
         }).encode("utf8")]
 
-    def _generate_swift_uri(self, filename, download_url_key=None) -> str:
+    def _generate_swift_uri(self, filename: str, download_url_key: Optional[str] = None) -> str:
         base_uri = f"swift://USER:KEY@CONTAINER{filename}"
         uri_params = {
             "auth_endpoint": self.identity_service.url("/v2.0"),
@@ -141,20 +149,20 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         return f"{base_uri}?{urlencode(uri_params)}"
 
     @contextlib.contextmanager
-    def assert_raises_on_forbidden_keystone_access(self) -> None:
+    def assert_raises_on_forbidden_keystone_access(self) -> Generator[None, None, None]:
         self.keystone_credentials["username"] = "nobody"
         with self.run_services():
             with self.assertRaises(SwiftStorageError):
                 yield
 
     @contextlib.contextmanager
-    def assert_raises_on_unauthorized_keystone_access(self) -> None:
+    def assert_raises_on_unauthorized_keystone_access(self) -> Generator[None, None, None]:
         self.keystone_credentials = {}
         with self.run_services():
             with self.assertRaises(SwiftStorageError):
                 yield
 
-    def assert_requires_all_parameters(self, path, fn):
+    def assert_requires_all_parameters(self, path: str, fn: Callable[[Storage], None]) -> None:
         base_uri = f"swift://USER:KEY@CONTAINER"
         all_params = {
             "tenant_id": "1234",
@@ -244,7 +252,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.save_to_file(tmp_file)
 
-    def test_save_to_file_raises_internal_server_exception_after_max_retries(self):
+    def test_save_to_file_raises_internal_server_exception_after_max_retries(self) -> None:
         self.remaining_auth_failures = [
             "500 Internal Server Error", "500 Internal Server Error", "500 Internal Server Error",
             "500 Internal Server Error", "500 Internal Server Error"]
@@ -262,7 +270,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
 
         self.assertEqual(0, len(self.remaining_auth_failures))
 
-    def test_save_to_file_raises_bad_gateway_exception_after_max_retries(self):
+    def test_save_to_file_raises_bad_gateway_exception_after_max_retries(self) -> None:
         self.remaining_auth_failures = [
             "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway",
             "502 Bad Gateway"]
@@ -385,7 +393,6 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
 
         self.assertTrue(os.path.exists(tmp_file))
 
-        file_contents = ""
         with open(tmp_file, "rb") as fp:
             file_contents = fp.read()
 
@@ -405,7 +412,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.save_to_filename(tmp_file.name)
 
-    def test_save_to_filename_raises_internal_server_exception_after_max_retries(self):
+    def test_save_to_filename_raises_internal_server_exception_after_max_retries(self) -> None:
         self.remaining_auth_failures = [
             "500 Internal Server Error", "500 Internal Server Error", "500 Internal Server Error",
             "500 Internal Server Error", "500 Internal Server Error"]
@@ -423,7 +430,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
 
         self.assertEqual(0, len(self.remaining_auth_failures))
 
-    def test_save_to_filename_raises_bad_gateway_exception_after_max_retries(self):
+    def test_save_to_filename_raises_bad_gateway_exception_after_max_retries(self) -> None:
         self.remaining_auth_failures = [
             "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway",
             "502 Bad Gateway"]
@@ -441,7 +448,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
 
         self.assertEqual(0, len(self.remaining_auth_failures))
 
-    def test_save_to_filename_raises_storage_error_on_swift_service_not_found(self):
+    def test_save_to_filename_raises_storage_error_on_swift_service_not_found(self) -> None:
         self.add_file_error("404 Not Found")
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
@@ -677,7 +684,8 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
             "DELETE", "/v2.0/1234/CONTAINER/path/to/file.mp4", 3)
 
     @mock.patch("time.time")
-    def test_get_download_url_raises_with_missing_download_url_key(self, mock_time) -> None:
+    def test_get_download_url_raises_with_missing_download_url_key(
+            self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
@@ -688,7 +696,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
                 storage_object.get_download_url()
 
     @mock.patch("time.time")
-    def test_get_download_url_returns_signed_url(self, mock_time) -> None:
+    def test_get_download_url_returns_signed_url(self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4", "KEY")
@@ -709,7 +717,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         self.assertTrue("temp_url_sig" in query)
 
     @mock.patch("time.time")
-    def test_get_download_url_accepts_variable_seconds(self, mock_time) -> None:
+    def test_get_download_url_accepts_variable_seconds(self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4", "KEY")
@@ -723,13 +731,13 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
 
         self.assertEqual("9120", query["temp_url_expires"])
 
-    def generate_signature(self, path, key, expires=60):
+    def generate_signature(self, path: str, key: bytes, expires: int = 60) -> str:
         timestamp = time.time()
         raw_string = f"GET\n{timestamp + expires}\n/v2.0/1234/CONTAINER{path}"
         return hmac.new(key, raw_string.encode("utf8"), sha1).hexdigest()
 
     @mock.patch("time.time")
-    def test_get_download_url_uses_download_url_key_by_default(self, mock_time) -> None:
+    def test_get_download_url_uses_download_url_key_by_default(self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4", "KEY")
@@ -745,7 +753,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         self.assertEqual(expected_signature, signature)
 
     @mock.patch("time.time")
-    def test_get_download_url_uses_alternate_download_url_key(self, mock_time) -> None:
+    def test_get_download_url_uses_alternate_download_url_key(self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4", "FOOBAR")
@@ -761,7 +769,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         self.assertEqual(expected_signature, signature)
 
     @mock.patch("time.time")
-    def test_get_download_url_uses_provided_key(self, mock_time) -> None:
+    def test_get_download_url_uses_provided_key(self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
@@ -777,7 +785,8 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         self.assertEqual(expected_signature, signature)
 
     @mock.patch("time.time")
-    def test_get_download_url_overrides_download_url_key_with_provided_key(self, mock_time) -> None:
+    def test_get_download_url_overrides_download_url_key_with_provided_key(
+            self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4", "FOOBAR")

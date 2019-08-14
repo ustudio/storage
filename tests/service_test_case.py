@@ -10,7 +10,23 @@ from wsgiref.simple_server import make_server
 from wsgiref.util import request_uri
 from urllib.parse import urlparse
 
-from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, cast, Dict, Generator, Iterable, List
+from typing import Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from wsgiref.types import StartResponse
+
+    Environ = Dict[str, Any]
+
+    Handler = Callable[
+        [
+            Environ,
+            StartResponse
+        ],
+        Iterable[bytes]
+    ]
+
+    HandlerIdentifier = Tuple[str, str]
 
 
 def get_port() -> int:
@@ -18,25 +34,10 @@ def get_port() -> int:
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(("localhost", 0))
 
-    port = s.getsockname()[1]
+    port = cast(int, s.getsockname()[1])
 
     s.close()
     return port
-
-
-ResponseCallback = Callable[[str, Sequence[Tuple[str, str]]], None]
-
-
-Handler = Callable[
-    [
-        Dict[str, Any],
-        ResponseCallback
-    ],
-    Union[Sequence[bytes], Iterator[bytes]]
-]
-
-
-HandlerIdentifier = Tuple[str, str]
 
 
 class ServiceRequest(object):
@@ -64,10 +65,12 @@ class ServiceRequest(object):
 class Service(object):
 
     fetches: Dict[Tuple[str, str], List[ServiceRequest]]
+    event: Optional[Event]
+    thread: Optional[Thread]
 
     def __init__(self) -> None:
         self.port: int = get_port()
-        self.handlers: Dict[HandlerIdentifier, Handler] = {}
+        self.handlers: "Dict[HandlerIdentifier, Handler]" = {}
         self.thread = None
         self.fetches = {}
         self.event = None
@@ -75,12 +78,12 @@ class Service(object):
     def url(self, path: str) -> str:
         return f"http://localhost:{self.port}{path}"
 
-    def add_handler(self, method: str, path: str, callback: Handler) -> None:
-        identifier: HandlerIdentifier = (method, path)
+    def add_handler(self, method: str, path: str, callback: "Handler") -> None:
+        identifier: "HandlerIdentifier" = (method, path)
         self.handlers[identifier] = callback
 
-    def handler(self, environ, start_response):
-        uri = request_uri(environ, include_query=1)
+    def handler(self, environ: "Environ", start_response: "StartResponse") -> Iterable[bytes]:
+        uri = request_uri(environ, include_query=True)
         path = urlparse(uri).path
         method = environ["REQUEST_METHOD"]
         body: Optional[bytes] = None
@@ -88,6 +91,8 @@ class Service(object):
             content_length = int(environ.get("CONTENT_LENGTH", 0) or "0")
             if content_length > 0:
                 body = environ["wsgi.input"].read(content_length)
+                if body is None:
+                    body = b""
                 environ["wsgi.input"] = io.BytesIO(body)
             else:
                 logging.warning(f"Unable to determine content length for request {method} {path}")
@@ -113,31 +118,38 @@ class Service(object):
         self.fetches[identifier].append(request)
         return self.handlers[identifier](environ, start_response)
 
-    def start(self):
+    def start(self) -> None:
         if self.event is not None:
             raise Exception(f"Service already started on port {self.port}")
 
         self.event = Event()
         self.event.set()
-        self.thread = Thread(target=lambda: self.loop(self.event))
+
+        event = self.event
+
+        if event is None:
+            raise ValueError("Event flag is unexpectedly none.")
+
+        self.thread = Thread(target=lambda: self.loop(event))
         self.thread.start()
 
         logging.info(f"Starting server on port {self.port}...")
 
-        while self.event.is_set():
+        while event.is_set():
             # waiting until the event is clear, e.g. the server has been
             # started and is ready for connections
             time.sleep(0.005)
 
         logging.info(f"Server on port {self.port} ready for requests.")
 
-    def stop(self):
-        if self.event is not None:
+    def stop(self) -> None:
+        if self.event is not None and self.thread is not None:
             self.event.set()
             self.thread.join()
         self.event = None
+        self.thread = None
 
-    def loop(self, event):
+    def loop(self, event: Event) -> None:
         httpd = make_server("localhost", self.port, self.handler)
         httpd.timeout = 0.01
 
@@ -199,7 +211,7 @@ class ServiceTestCase(unittest.TestCase):
             service.stop()
 
     @contextlib.contextmanager
-    def run_services(self) -> Iterator[None]:
+    def run_services(self) -> Generator[None, None, None]:
         self.start_services()
         try:
             yield

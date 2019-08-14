@@ -4,14 +4,20 @@ import json
 from unittest import mock
 from urllib.parse import parse_qsl, urlencode, urlparse
 
-from storage import get_storage
+from typing import Callable, Dict, Generator, List, Optional, TYPE_CHECKING
+
 from storage import cloudfiles_storage
+from storage.storage import get_storage, Storage
 from storage.swift_storage import SwiftStorageError
 from tests.swift_service_test_case import SwiftServiceTestCase
 
+if TYPE_CHECKING:
+    from tests.service_test_case import Environ
+    from wsgiref.types import StartResponse
+
 
 class TestCloudFilesStorageProvider(SwiftServiceTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
 
         self.download_url_key = {"download_url_key": "KEY"}
@@ -31,24 +37,26 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         self.mock_sleep = self.mock_sleep_patch.start()
         self.mock_sleep.side_effect = lambda x: None
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         super().tearDown()
         self.mock_sleep_patch.stop()
 
-    def _generate_cloudfiles_uri(self, object_path, parameters=None) -> str:
+    def _generate_cloudfiles_uri(
+            self, object_path: str, parameters: Optional[Dict[str, str]] = None) -> str:
         base_uri = f"cloudfiles://USER:TOKEN@CONTAINER{object_path}"
         if parameters is not None:
             return f"{base_uri}?{urlencode(parameters)}"
         return base_uri
 
-    def _has_valid_credentials(self, auth_data) -> bool:
+    def _has_valid_credentials(self, auth_data: Dict[str, str]) -> bool:
         if auth_data["username"] == self.keystone_credentials["username"] and \
                 auth_data["apiKey"] == self.keystone_credentials["key"]:
             return True
         else:
             return False
 
-    def assert_requires_all_parameters(self, object_path, fn) -> None:
+    def assert_requires_all_parameters(
+            self, object_path: str, fn: Callable[[Storage], None]) -> None:
         for auth_string in ["USER:@", ":TOKEN@"]:
             cloudfiles_uri = f"cloudfiles://{auth_string}CONTAINER{object_path}"
             storage_object = get_storage(cloudfiles_uri)
@@ -58,21 +66,21 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
                     fn(storage_object)
 
     @contextlib.contextmanager
-    def assert_raises_on_forbidden_access(self) -> None:
+    def assert_raises_on_forbidden_access(self) -> Generator[None, None, None]:
         self.keystone_credentials["username"] = "nobody"
         with self.run_services():
             with self.assertRaises(SwiftStorageError):
                 yield
 
     @contextlib.contextmanager
-    def assert_raises_on_unauthorized_access(self) -> None:
+    def assert_raises_on_unauthorized_access(self) -> Generator[None, None, None]:
         self.keystone_credentials = {}
         with self.run_services():
             with self.assertRaises(SwiftStorageError):
                 yield
 
     @contextlib.contextmanager
-    def use_local_identity_service(self):
+    def use_local_identity_service(self) -> Generator[None, None, None]:
         with mock.patch(
                 "storage.cloudfiles_storage.CloudFilesStorage.auth_endpoint",
                 new_callable=mock.PropertyMock) as mock_endpoint:
@@ -80,12 +88,12 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             yield
 
     @contextlib.contextmanager
-    def expect_head_account_object(self, path) -> None:
+    def expect_head_account_object(self, path: str) -> Generator[None, None, None]:
         self.swift_service.add_handler("HEAD", path, self.object_head_account_handler)
         yield
         self.swift_service.assert_requested("HEAD", path)
 
-    def identity_handler(self, environ, start_response):
+    def identity_handler(self, environ: "Environ", start_response: "StartResponse") -> List[bytes]:
         start_response("200 OK", [("Content-Type", "application/json")])
         return [json.dumps({
             "version": {
@@ -108,7 +116,8 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             }
         }).encode("utf8")]
 
-    def authentication_handler(self, environ, start_response):
+    def authentication_handler(
+            self, environ: "Environ", start_response: "StartResponse") -> List[bytes]:
         body_size = int(environ.get("CONTENT_LENGTH", 0))
         body = json.loads(environ["wsgi.input"].read(body_size))
 
@@ -164,7 +173,8 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             }
         }).encode("utf8")]
 
-    def object_head_account_handler(self, environ, start_response):
+    def object_head_account_handler(
+            self, environ: "Environ", start_response: "StartResponse") -> List[bytes]:
         start_response("204 OK", [
             ("Content-type", "text-plain"),
             ("temp-url-key", "TEMPKEY")
@@ -340,7 +350,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
                     storage_object.delete()
 
     @mock.patch("time.time")
-    def test_get_download_url_returns_signed_url(self, mock_time) -> None:
+    def test_get_download_url_returns_signed_url(self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
         cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
@@ -363,7 +373,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
     @mock.patch("time.time")
     def test_get_download_url_uses_temp_url_key_when_download_url_key_not_present(
-            self, mock_time) -> None:
+            self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
         cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")

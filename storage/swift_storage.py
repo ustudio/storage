@@ -2,12 +2,13 @@ import mimetypes
 import os
 from urllib.parse import parse_qsl, urljoin, urlparse
 
-from keystoneauth1 import session
-from keystoneauth1.identity import v2
-from keystoneauth1.exceptions.http import Forbidden, Unauthorized
-import swiftclient
-from swiftclient.exceptions import ClientException
-from typing import BinaryIO, Callable, cast, Optional, Type
+from keystoneauth1 import session  # type: ignore
+from keystoneauth1.identity import v2  # type: ignore
+from keystoneauth1.exceptions.http import Forbidden, Unauthorized  # type: ignore
+import swiftclient  # type: ignore
+from swiftclient.exceptions import ClientException  # type: ignore
+from typing import Any, BinaryIO, Callable, cast, Dict, List
+from typing import Optional, Sequence, Tuple, Type, TypeVar
 
 from . import retry
 from .storage import _LARGE_CHUNK, DEFAULT_SWIFT_TIMEOUT, register_storage_protocol, Storage
@@ -28,9 +29,12 @@ class SwiftStorageError(Exception):
         self.do_not_retry = do_not_retry
 
 
-def retry_swift_operation(error_str, fn, *args, **kwargs):
+T = TypeVar("T")
 
-    def wrap_swift_operations():
+
+def retry_swift_operation(error_str: str, fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+
+    def wrap_swift_operations() -> T:
         try:
             return fn(*args, **kwargs)
         except Forbidden:
@@ -60,7 +64,7 @@ class SwiftStorage(Storage):
     auth_endpoint: Optional[str] = None
 
     # cache get connections
-    def get_connection(self):
+    def get_connection(self) -> swiftclient.client.Connection:
         if not hasattr(self, "_connection"):
             query = dict(parse_qsl(self._parsed_storage_uri.query))
 
@@ -102,15 +106,16 @@ class SwiftStorage(Storage):
             self._connection = connection
         return self._connection
 
-    def get_container_and_object_names(self):
+    def get_container_and_object_names(self) -> Tuple[str, str]:
         _, container = self._parsed_storage_uri.netloc.split("@")
         object_name = self._parsed_storage_uri.path[1:]
         return container, object_name
 
-    def _download_object_to_file(self, container, object_name, out_file):
+    def _download_object_to_file(
+            self, container: str, object_name: str, out_file: BinaryIO) -> None:
         connection = self.get_connection()
 
-        def get_object():
+        def get_object() -> None:
             out_file.seek(0)
             resp_headers, object_contents = connection.get_object(
                 container, object_name, resp_chunk_size=_LARGE_CHUNK)
@@ -122,7 +127,7 @@ class SwiftStorage(Storage):
             f"Failed to retrieve Swift object {object_name} from container {container}",
             get_object)
 
-    def _download_object_to_filename(self, container, object_name, filename):
+    def _download_object_to_filename(self, container: str, object_name: str, filename: str) -> None:
         dir_name = os.path.dirname(filename)
         os.makedirs(dir_name, exist_ok=True)
         with open(filename, "wb") as out_file:
@@ -158,7 +163,7 @@ class SwiftStorage(Storage):
             f"Failed to delete Swift object {object_name} in container {container}",
             connection.delete_object, container, object_name)
 
-    def get_download_url(self, seconds=60, key=None) -> str:
+    def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         connection = self.get_connection()
 
         download_url_key = key or self.download_url_key
@@ -177,14 +182,15 @@ class SwiftStorage(Storage):
             f"{storage_path}/{container}/{object_name}",
             seconds=seconds, key=download_url_key, method="GET")
 
-        return urljoin(host, path)
+        return cast(str, urljoin(host, path))
 
-    def _find_storage_objects_with_prefix(self, container, prefix):
+    def _find_storage_objects_with_prefix(
+            self, container: str, prefix: str) -> List[Dict[str, str]]:
         connection = self.get_connection()
 
-        def get_container():
-            resp_headers, objects = connection.get_container(container, prefix=prefix)
-            return list(objects)
+        def get_container() -> List[Dict[str, str]]:
+            _, objects = connection.get_container(container, prefix=prefix)
+            return list(cast(Sequence[Dict[str, str]], objects))
 
         container_objects = retry_swift_operation(
             f"Failed to retrieve Swift objects for {prefix} from container {container}",
@@ -192,7 +198,7 @@ class SwiftStorage(Storage):
 
         return container_objects
 
-    def save_to_directory(self, directory_path):
+    def save_to_directory(self, directory_path: str) -> None:
         container, object_name = self.get_container_and_object_names()
 
         prefix = self._parsed_storage_uri.path[1:] + "/"
