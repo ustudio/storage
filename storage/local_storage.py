@@ -1,7 +1,7 @@
 import distutils.dir_util
 import os
 import shutil
-from urllib.parse import parse_qs
+from urllib.parse import parse_qsl
 
 from typing import BinaryIO, Optional
 
@@ -22,8 +22,8 @@ class LocalStorage(Storage):
 
     def __init__(self, storage_uri: str) -> None:
         super(LocalStorage, self).__init__(storage_uri)
-        query = parse_qs(self._parsed_storage_uri.query)
-        self._download_url_base = query.get("download_url_base", [None])[0]
+        query = dict(parse_qsl(self._parsed_storage_uri.query))
+        self._download_url_base = query.get("download_url_base", None)
 
     def save_to_filename(self, file_path: str) -> None:
         shutil.copy(self._parsed_storage_uri.path, file_path)
