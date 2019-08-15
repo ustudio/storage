@@ -1,3 +1,4 @@
+import logging
 import random
 import time
 
@@ -27,3 +28,8 @@ def attempt(f: Callable[..., T], *args: Any, **kwargs: Any) -> T:
 
             sleep_time = random.uniform(0, (2 ** attempts) - 1)
             time.sleep(sleep_time)
+
+            logging.warning(
+                f"Retry attempt #{attempts} for {getattr(f, '__module__', '<unknown>')}."
+                f"{getattr(f, '__name__', '<unknown_function>')} "
+                f"after exception {e}")
