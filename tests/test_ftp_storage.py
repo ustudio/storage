@@ -12,7 +12,7 @@ from storage.storage import DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT, D
 from storage.storage import DEFAULT_FTP_KEEPINTVL, DEFAULT_FTP_TIMEOUT
 
 from tests.helpers import create_temp_nested_directory_with_files, NestedDirectoryDict
-from tests.helpers import TempDirectory
+from tests.helpers import cleanup_nested_directory
 
 
 ListingCallback = Callable[[str], None]
@@ -72,8 +72,7 @@ class TestFTPStorage(TestCase):
     def tearDown(self) -> None:
         super().tearDown()
         if self.temp_directory is not None:
-            directory = cast(TempDirectory, self.temp_directory["temp_directory"]["object"])
-            directory.cleanup()
+            cleanup_nested_directory(self.temp_directory)
 
     @mock.patch("storage.ftp_storage.socket")
     @mock.patch("ftplib.FTP", autospec=True)
@@ -417,7 +416,7 @@ class TestFTPStorage(TestCase):
             storage = get_storage("ftp://user:password@ftp.foo.com/some/dir")
 
             # empty folder
-            directory = cast(str, self.temp_directory["temp_directory"]["path"])
+            directory = self.temp_directory["temp_directory"]["path"]
             storage.load_from_directory(directory)
 
         mock_ftp.mkd.assert_has_calls([
@@ -430,8 +429,7 @@ class TestFTPStorage(TestCase):
             mock.call("/some/dir"),
             mock.call(self.temp_directory["nested_temp_directory"]["name"]),
             mock.call("pwd_return_value"),
-            mock.call(
-                "/some/dir/" + cast(str, self.temp_directory["nested_temp_directory"]["name"]))
+            mock.call("/some/dir/" + self.temp_directory["nested_temp_directory"]["name"])
         ])
 
     def test_ftp_load_from_directory_does_not_create_existing_dirs_from_load_directory(
@@ -451,7 +449,7 @@ class TestFTPStorage(TestCase):
             storage = get_storage("ftp://user:password@ftp.foo.com/some/dir")
 
             # empty folder
-            directory = cast(str, self.temp_directory["temp_directory"]["path"])
+            directory = self.temp_directory["temp_directory"]["path"]
             storage.load_from_directory(directory)
 
         mock_ftp.mkd.assert_not_called()
@@ -462,8 +460,7 @@ class TestFTPStorage(TestCase):
             mock.call("/some/dir"),
             mock.call(self.temp_directory["nested_temp_directory"]["name"]),
             mock.call("pwd_return_value"),
-            mock.call(
-                "/some/dir/" + cast(str, self.temp_directory["nested_temp_directory"]["name"]))
+            mock.call("/some/dir/" + self.temp_directory["nested_temp_directory"]["name"])
         ])
 
     @mock.patch("builtins.open", autospec=True)
@@ -484,7 +481,7 @@ class TestFTPStorage(TestCase):
             storage = get_storage("ftp://user:password@ftp.foo.com/dir")
 
             # empty folder
-            directory = cast(str, self.temp_directory["temp_directory"]["path"])
+            directory = self.temp_directory["temp_directory"]["path"]
             storage.load_from_directory(directory)
 
         mock_ftp.storbinary.assert_has_calls([
@@ -502,7 +499,7 @@ class TestFTPStorage(TestCase):
             mock.call("/dir"),
             mock.call(self.temp_directory["nested_temp_directory"]["name"]),
             mock.call("pwd_return_value"),
-            mock.call("/dir/" + cast(str, self.temp_directory["nested_temp_directory"]["name"]))
+            mock.call("/dir/" + self.temp_directory["nested_temp_directory"]["name"])
         ])
 
     def test_ftp_delete(self) -> None:

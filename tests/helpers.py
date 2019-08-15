@@ -2,7 +2,8 @@ import io
 import os
 import tempfile
 
-from typing import Any, cast, Dict, List, Optional, Union
+from typing import Any, cast, List, Optional, Union
+from mypy_extensions import TypedDict
 
 
 class NamedIO(io.BufferedReader):
@@ -48,7 +49,44 @@ class TempDirectory(object):
         self.cleanup()
 
 
-NestedDirectoryDict = Dict[str, Dict[str, Union[TempDirectory, NamedIO, str]]]
+NestedFileInfo = TypedDict("NestedFileInfo", {
+    "file": NamedIO,
+    "path": str,
+    "name": str
+})
+
+
+NestedDirectoryInfo = TypedDict("NestedDirectoryInfo", {
+    "path": str,
+    "name": str,
+    "object": TempDirectory
+})
+
+
+NestedDirectoryTempInfo = TypedDict("NestedDirectoryTempInfo", {
+    "path": str,
+    "object": TempDirectory
+})
+
+
+NestedDirectoryDict = TypedDict("NestedDirectoryDict", {
+    "temp_directory": NestedDirectoryTempInfo,
+    "nested_temp_directory": NestedDirectoryInfo,
+    "temp_input_one": NestedFileInfo,
+    "temp_input_two": NestedFileInfo,
+    "nested_temp_input": NestedFileInfo
+})
+
+
+def cleanup(value: Union[TempDirectory, NamedIO, str]) -> None:
+    if isinstance(value, TempDirectory):
+        value.cleanup()
+    else:
+        raise ValueError(f"Cannot call cleanup on {type(value)}")
+
+
+def cleanup_nested_directory(value: NestedDirectoryDict) -> None:
+    value["temp_directory"]["object"].cleanup()
 
 
 def create_temp_nested_directory_with_files() -> NestedDirectoryDict:

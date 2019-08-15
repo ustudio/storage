@@ -2,36 +2,42 @@ import os
 from unittest import mock, TestCase
 from urllib.parse import quote
 
-import storage as storagelib
+from typing import cast, List, Optional
 
-from tests.helpers import create_temp_nested_directory_with_files
+from storage.storage import get_storage
+from storage.s3_storage import S3Storage
+from tests.helpers import create_temp_nested_directory_with_files, NestedDirectoryDict
+from tests.helpers import cleanup_nested_directory
 
 
 class TestS3Storage(TestCase):
-    def setUp(self):
+
+    temp_directory: Optional[NestedDirectoryDict]
+
+    def setUp(self) -> None:
         super().setUp()
         self.temp_directory = None
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         super().tearDown()
         if self.temp_directory is not None:
-            self.temp_directory["temp_directory"]["object"].cleanup()
+            cleanup_nested_directory(self.temp_directory)
 
-    def test_s3storage_init_sets_correct_keyname(self):
-        storage = storagelib.get_storage(
+    def test_s3storage_init_sets_correct_keyname(self) -> None:
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
 
-        self.assertEqual("some/file", storage._keyname)
+        self.assertEqual("some/file", cast(S3Storage, storage)._keyname)
 
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_handles_urlencoded_keys(self, mock_session_class):
+    def test_handles_urlencoded_keys(self, mock_session_class: mock.Mock) -> None:
         encoded_key = quote("access/key", safe="")
         encoded_secret = quote("access/secret", safe="")
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://{0}:{1}@bucket/some/file?region=US_EAST".format(encoded_key, encoded_secret))
 
-        storage._connect()
+        cast(S3Storage, storage)._connect()
 
         mock_session_class.assert_called_with(
             aws_access_key_id="access/key",
@@ -39,13 +45,13 @@ class TestS3Storage(TestCase):
             region_name="US_EAST")
 
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_load_from_file(self, mock_session_class):
+    def test_load_from_file(self, mock_session_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
 
         mock_file = mock.Mock()
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
 
         storage.load_from_file(mock_file)
@@ -61,12 +67,13 @@ class TestS3Storage(TestCase):
 
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_load_from_filename(self, mock_session_class, mock_transfer_class):
+    def test_load_from_filename(
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
         mock_transfer = mock_transfer_class.return_value
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
 
         storage.load_from_filename("source/file")
@@ -83,7 +90,7 @@ class TestS3Storage(TestCase):
         mock_transfer.upload_file.assert_called_with("source/file", "bucket", "some/file")
 
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_save_to_file(self, mock_session_class):
+    def test_save_to_file(self, mock_session_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
 
@@ -95,7 +102,7 @@ class TestS3Storage(TestCase):
 
         mock_file = mock.Mock()
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
         storage.save_to_file(mock_file)
 
@@ -114,13 +121,14 @@ class TestS3Storage(TestCase):
 
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_save_to_filename(self, mock_session_class, mock_transfer_class):
+    def test_save_to_filename(
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
 
         mock_transfer = mock_transfer_class.return_value
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
 
         storage.save_to_filename("destination/file")
@@ -140,7 +148,8 @@ class TestS3Storage(TestCase):
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
     def test_save_to_directory(
-            self, mock_session_class, mock_transfer_class, mock_path_exists, mock_makedirs):
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock,
+            mock_path_exists: mock.Mock, mock_makedirs: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3_client = mock_session.client.return_value
         mock_s3_client.list_objects.return_value = {
@@ -170,9 +179,9 @@ class TestS3Storage(TestCase):
         }
 
         mock_path_exists.return_value = False
-        path_mock_path_exists_calls = []
+        path_mock_path_exists_calls: List[str] = []
 
-        def mock_path_exists_side_effect(path):
+        def mock_path_exists_side_effect(path: str) -> bool:
             if any(path in x for x in path_mock_path_exists_calls):
                 return True
             else:
@@ -181,7 +190,7 @@ class TestS3Storage(TestCase):
 
         mock_path_exists.side_effect = mock_path_exists_side_effect
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/directory?region=US_EAST")
 
         storage.save_to_directory("save_to_directory")
@@ -209,8 +218,9 @@ class TestS3Storage(TestCase):
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
     def test_save_to_directory_retries_failed_file_uploads(
-            self, mock_session_class, mock_transfer_class, mock_path_exists, mock_makedirs,
-            mock_uniform, mock_sleep):
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock,
+            mock_path_exists: mock.Mock, mock_makedirs: mock.Mock, mock_uniform: mock.Mock,
+            mock_sleep: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3_client = mock_session.client.return_value
         mock_s3_client.list_objects.return_value = {
@@ -240,9 +250,9 @@ class TestS3Storage(TestCase):
         }
 
         mock_path_exists.return_value = False
-        path_mock_path_exists_calls = []
+        path_mock_path_exists_calls: List[str] = []
 
-        def mock_path_exists_side_effect(path):
+        def mock_path_exists_side_effect(path: str) -> bool:
             if any(path in x for x in path_mock_path_exists_calls):
                 return True
             else:
@@ -259,7 +269,7 @@ class TestS3Storage(TestCase):
             None
         ]
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/directory?region=US_EAST")
 
         storage.save_to_directory("save_to_directory")
@@ -293,8 +303,9 @@ class TestS3Storage(TestCase):
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
     def test_save_to_directory_fails_after_five_failed_file_download_retries(
-            self, mock_session_class, mock_transfer_class, mock_path_exists, mock_makedirs,
-            mock_uniform, mock_sleep):
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock,
+            mock_path_exists: mock.Mock, mock_makedirs: mock.Mock, mock_uniform: mock.Mock,
+            mock_sleep: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3_client = mock_session.client.return_value
         mock_s3_client.list_objects.return_value = {
@@ -324,9 +335,9 @@ class TestS3Storage(TestCase):
         }
 
         mock_path_exists.return_value = False
-        path_mock_path_exists_calls = []
+        path_mock_path_exists_calls: List[str] = []
 
-        def mock_path_exists_side_effect(path):
+        def mock_path_exists_side_effect(path: str) -> bool:
             if any(path in x for x in path_mock_path_exists_calls):
                 return True
             else:
@@ -343,7 +354,7 @@ class TestS3Storage(TestCase):
             IOError,
         ]
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/directory?region=US_EAST")
 
         with self.assertRaises(IOError):
@@ -378,13 +389,14 @@ class TestS3Storage(TestCase):
 
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_load_from_directory(self, mock_session_class, mock_transfer_class):
+    def test_load_from_directory(
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3_client = mock_session.client.return_value
 
         self.temp_directory = create_temp_nested_directory_with_files()
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/dir?region=US_EAST")
 
         storage.load_from_directory(self.temp_directory["temp_directory"]["path"])
@@ -408,7 +420,8 @@ class TestS3Storage(TestCase):
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
     def test_load_from_directory_retries_failed_file_uploads(
-            self, mock_session_class, mock_transfer_class, mock_uniform, mock_sleep):
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock,
+            mock_uniform: mock.Mock, mock_sleep: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3_client = mock_session.client.return_value
 
@@ -421,7 +434,7 @@ class TestS3Storage(TestCase):
 
         self.temp_directory = create_temp_nested_directory_with_files()
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/dir?region=US_EAST")
 
         storage.load_from_directory(self.temp_directory["temp_directory"]["path"])
@@ -453,7 +466,8 @@ class TestS3Storage(TestCase):
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
     def test_load_from_directory_fails_after_five_failed_file_upload_retries(
-            self, mock_session_class, mock_transfer_class, mock_uniform, mock_sleep):
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock,
+            mock_uniform: mock.Mock, mock_sleep: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3_client = mock_session.client.return_value
 
@@ -467,7 +481,7 @@ class TestS3Storage(TestCase):
 
         self.temp_directory = create_temp_nested_directory_with_files()
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/dir?region=US_EAST")
 
         with self.assertRaises(RuntimeError):
@@ -494,11 +508,11 @@ class TestS3Storage(TestCase):
         mock_sleep.assert_called_with(mock_uniform.return_value)
 
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_delete(self, mock_session_class):
+    def test_delete(self, mock_session_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
 
         storage.delete()
@@ -513,7 +527,7 @@ class TestS3Storage(TestCase):
         mock_s3.delete_object.assert_called_with(Bucket="bucket", Key="some/file")
 
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_delete_directory(self, mock_session_class):
+    def test_delete_directory(self, mock_session_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
 
@@ -564,7 +578,7 @@ class TestS3Storage(TestCase):
             ]
         }
 
-        storage = storagelib.get_storage(
+        storage = get_storage(
             "s3://access_key:access_secret@bucket/some/dir")
 
         storage.delete_directory()
@@ -604,14 +618,14 @@ class TestS3Storage(TestCase):
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_get_download_url_calls_boto_generate_presigned_url_with_correct_data(
-            self, mock_session_class):
+            self, mock_session_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         url = "s3://access_key:access_secret@some_bucket/"
         key = "some/file"
         mock_session.client.return_value.generate_presigned_url.return_value = "".join(
             ["http://fake.url/", key])
 
-        storage = storagelib.get_storage("".join([url, key, "?region=US_EAST"]))
+        storage = get_storage("".join([url, key, "?region=US_EAST"]))
         storage.get_download_url()
 
         mock_session_class.assert_called_with(
@@ -628,14 +642,14 @@ class TestS3Storage(TestCase):
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_get_download_url_calls_boto_generate_presigned_url_custom_expiration(
-            self, mock_session_class):
+            self, mock_session_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         url = "s3://access_key:access_secret@some_bucket/"
         key = "some/file"
         mock_session.client.return_value.generate_presigned_url.return_value = "".join(
             ["http://fake.url/", key])
 
-        storage = storagelib.get_storage("".join([url, key, "?region=US_EAST"]))
+        storage = get_storage("".join([url, key, "?region=US_EAST"]))
         storage.get_download_url(seconds=1000)
 
         mock_session_class.assert_called_with(
