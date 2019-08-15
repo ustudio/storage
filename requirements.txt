@@ -1,5 +1,4 @@
-flake8
+boto3 >= 1.0.1
+google-cloud-storage
 keystoneauth
-mypy
-pytest
 python-swiftclient
