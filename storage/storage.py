@@ -126,7 +126,7 @@ class Storage(object):
             "{} does not implement 'get_download_url'".format(self._class_name()))
 
 
-def _generate_download_url_from_base(base: str, object_name: str) -> str:
+def _generate_download_url_from_base(base: Union[str, None], object_name: str) -> str:
     """Generate a download url by joining the base with the storage object_name.
 
     If the base is not defined, raise an exception.

@@ -3,13 +3,17 @@ from ftplib import FTP
 import os
 import re
 import socket
-from urllib.parse import parse_qs
+from urllib.parse import parse_qsl
 
-from typing import BinaryIO, List, Optional, Tuple
+from typing import BinaryIO, Generator, List, Optional, Tuple
 
-from .storage import Storage, register_storage_protocol, _generate_download_url_from_base, \
-    DEFAULT_FTP_TIMEOUT, DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT, \
-    DEFAULT_FTP_KEEPIDLE, DEFAULT_FTP_KEEPINTVL
+from storage.storage import Storage, register_storage_protocol, _generate_download_url_from_base
+from storage.storage import DEFAULT_FTP_TIMEOUT, DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT
+from storage.storage import DEFAULT_FTP_KEEPIDLE, DEFAULT_FTP_KEEPINTVL
+
+
+class FTPStorageError(Exception):
+    pass
 
 
 @register_storage_protocol("ftp")
@@ -26,6 +30,8 @@ class FTPStorage(Storage):
     that will allow get_download_url() to return access to that object via HTTP.
     """
 
+    _download_url_base: Optional[str]
+
     def __init__(self, storage_uri: str) -> None:
         super(FTPStorage, self).__init__(storage_uri)
         self._username = self._parsed_storage_uri.username
@@ -33,21 +39,25 @@ class FTPStorage(Storage):
         self._hostname = self._parsed_storage_uri.hostname
         self._port = \
             self._parsed_storage_uri.port if self._parsed_storage_uri.port is not None else 21
-        query = parse_qs(self._parsed_storage_uri.query)
-        self._download_url_base = query.get("download_url_base", [None])[0]
+        query = dict(parse_qsl(self._parsed_storage_uri.query))
+        self._download_url_base = query.get("download_url_base", None)
 
     def _configure_keepalive(self, ftp_client: FTP) -> None:
-        ftp_client.sock.setsockopt(
+        sock = ftp_client.sock
+        if sock is None:
+            raise FTPStorageError("FTP Client not fully initialized")
+
+        sock.setsockopt(
             socket.SOL_SOCKET, socket.SO_KEEPALIVE, DEFAULT_FTP_KEEPALIVE_ENABLE)
 
         if hasattr(socket, "TCP_KEEPCNT"):
-            ftp_client.sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT, DEFAULT_FTP_KEEPCNT)
+            sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT, DEFAULT_FTP_KEEPCNT)
 
         if hasattr(socket, "TCP_KEEPIDLE"):
-            ftp_client.sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, DEFAULT_FTP_KEEPIDLE)
+            sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, DEFAULT_FTP_KEEPIDLE)
 
         if hasattr(socket, "TCP_KEEPINTVL"):
-            ftp_client.sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, DEFAULT_FTP_KEEPINTVL)
+            sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, DEFAULT_FTP_KEEPINTVL)
 
     def _connect(self) -> FTP:
         ftp_client = ftplib.FTP(timeout=DEFAULT_FTP_TIMEOUT)
@@ -65,7 +75,7 @@ class FTPStorage(Storage):
         return filename
 
     def _list(self, ftp_client: FTP) -> Tuple[List[str], List[str]]:
-        directory_listing = []
+        directory_listing: List[str] = []
 
         ftp_client.retrlines('LIST', directory_listing.append)
 
@@ -84,7 +94,8 @@ class FTPStorage(Storage):
 
     def _walk(
             self, ftp_client: FTP,
-            target_directory: Optional[str] = None) -> Tuple[str, List[str], List[str]]:
+            target_directory: Optional[str] = None) -> \
+            Generator[Tuple[str, List[str], List[str]], None, None]:
         if target_directory:
             ftp_client.cwd(target_directory)
         else:
@@ -105,7 +116,7 @@ class FTPStorage(Storage):
         directories = target_path.lstrip('/').split('/')
 
         if restore:
-            restore = ftp_client.pwd()
+            dirpath = ftp_client.pwd()
 
         for target_directory in directories:
             dirs, _ = self._list(ftp_client)
@@ -117,7 +128,7 @@ class FTPStorage(Storage):
             ftp_client.cwd(target_directory)
 
         if restore:
-            ftp_client.cwd(restore)
+            ftp_client.cwd(dirpath)
 
     def save_to_filename(self, file_path: str) -> None:
         with open(file_path, "wb") as output_file:
@@ -224,8 +235,9 @@ class FTPStorage(Storage):
         :return:        the download url that can be used to access the storage object
         :raises:        DownloadUrlBaseUndefinedError
         """
-        return _generate_download_url_from_base(
-            self._download_url_base, self._parsed_storage_uri.path.split('/')[-1])
+        base = self._download_url_base
+        object_name = self._parsed_storage_uri.path.split('/')[-1]
+        return _generate_download_url_from_base(base, object_name)
 
 
 @register_storage_protocol("ftps")
