@@ -38,22 +38,22 @@ jobs:
           key: v1-dependencies-{{ checksum "setup.py" }}-{{ checksum "requirements.txt" }}
 
       - run:
-          name: run typechecks
-          command: |
-            . ~/venv/bin/activate
-            mypy storage/ tests/
-
-      - run:
-          name: Run Tests
+          name: run tests
           command: |
             . ~/venv/bin/activate
             pytest --verbose --junit-xml=test-reports/pytest.xml
 
       - run:
-          name: Run Linter
+          name: run linter
           command: |
             . ~/venv/bin/activate
             flake8 | tee test-reports/flake8-errors
+
+      - run:
+          name: run typechecks
+          command: |
+            . ~/venv/bin/activate
+            mypy --strict storage/ tests/
 
       - store_artifacts:
           path: test-reports
