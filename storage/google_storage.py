@@ -14,10 +14,6 @@ from storage import retry
 from storage.storage import Storage, register_storage_protocol
 
 
-class GoogleStorageException(Exception):
-    pass
-
-
 @register_storage_protocol("gs")
 class GoogleStorage(Storage):
 
@@ -33,9 +29,6 @@ class GoogleStorage(Storage):
     def _get_blob(self) -> Blob:
         bucket = self._get_bucket()
         blob = bucket.blob(self._parsed_storage_uri.path[1:])
-        if blob is None:
-            raise GoogleStorageException(
-                f"Could not find resource {self._parsed_storage_uri.path}")
         return blob
 
     def save_to_filename(self, file_path: str) -> None:

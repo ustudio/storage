@@ -4,7 +4,6 @@ import json
 from unittest import TestCase, mock
 
 from storage.storage import get_storage
-from storage.google_storage import GoogleStorageException
 
 
 class TestGoogleStorage(TestCase):
@@ -47,19 +46,6 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.download_to_filename.assert_called_once_with("SOME-FILE")
 
-    def test_save_to_filename_raises_exception_when_blob_does_not_exist(self) -> None:
-        self.mock_bucket.blob.return_value = None
-
-        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
-
-        with self.assertRaises(GoogleStorageException):
-            storage.save_to_filename("SOME-FILE")
-
-        self.assert_gets_bucket_with_credentials()
-
-        self.mock_bucket.blob.assert_called_once_with("path/filename")
-        self.mock_blob.download_to_filename.assert_not_called()
-
     def test_save_to_file_downloads_blob_to_file_object(self) -> None:
         mock_file = mock.Mock()
 
@@ -71,9 +57,6 @@ class TestGoogleStorage(TestCase):
 
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.download_to_file.assert_called_once_with(mock_file)
-
-    def test_save_to_file_raises_exception_when_blob_does_not_exist(self) -> None:
-        pass
 
     def test_load_from_filename_uploads_blob_from_file_location(self) -> None:
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
@@ -481,13 +464,3 @@ class TestGoogleStorage(TestCase):
         mock_unversioned_blobs[0].delete.assert_called_once_with()
         mock_unversioned_blobs[1].delete.assert_called_once_with()
         mock_unversioned_blobs[2].delete.assert_called_once_with()
-
-    def test_storage_uris_can_be_unicode(self) -> None:
-        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
-
-        storage.save_to_filename("SOME-FILE")
-
-        self.assert_gets_bucket_with_credentials()
-
-        self.mock_bucket.blob.assert_called_once_with("path/filename")
-        self.mock_blob.download_to_filename.assert_called_once_with("SOME-FILE")
