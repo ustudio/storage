@@ -9,8 +9,6 @@ from typing import Any, Dict
 from .storage import DEFAULT_SWIFT_TIMEOUT
 from storage.swift_storage import register_swift_protocol, SwiftStorage, SwiftStorageError
 
-ENDPOINT_TYPE_MAP = {"true": "publicURL", "false": "internalURL"}
-
 
 class RackspaceAuth(v2.Password):  # type: ignore
 
@@ -30,11 +28,11 @@ class CloudFilesStorage(SwiftStorage):
     def get_connection(self) -> swiftclient.client.Connection:
         if not hasattr(self, "_connection"):
             query = dict(parse_qsl(self._parsed_storage_uri.query))
-            endpoint_type = query.get("public", "true").lower()
+            public_endpoint = query.get("public", "true").lower()
 
             os_options = {
                 "region_name": query.get("region", "DFW"),
-                "endpoint_type": ENDPOINT_TYPE_MAP[endpoint_type]
+                "endpoint_type": "publicURL" if public_endpoint == "true" else "internalURL"
             }
 
             auth, _ = self._parsed_storage_uri.netloc.split("@")
