@@ -35,8 +35,8 @@ class CloudFilesStorage(SwiftStorage):
                 "endpoint_type": "publicURL" if public_endpoint == "true" else "internalURL"
             }
 
-            auth, _ = self._parsed_storage_uri.netloc.split("@")
-            user, key = auth.split(":", 1)
+            user = self._parsed_storage_uri.username
+            key = self._parsed_storage_uri.password
 
             if user == "":
                 raise SwiftStorageError(f"Missing username")
