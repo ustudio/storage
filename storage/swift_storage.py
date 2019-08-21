@@ -92,10 +92,10 @@ class SwiftStorage(Storage):
             key = self._parsed_storage_uri.password
 
             if user == "":
-                raise SwiftStorageError(f"Missing username")
+                raise SwiftStorageError("Missing username")
 
             if key == "":
-                raise SwiftStorageError(f"Missing API key")
+                raise SwiftStorageError("Missing API key")
 
             auth = v2.Password(
                 auth_url=auth_endpoint, username=user, password=key, tenant_name=self.tenant_id)
