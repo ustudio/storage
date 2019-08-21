@@ -53,7 +53,7 @@ jobs:
           name: run typechecks
           command: |
             . ~/venv/bin/activate
-            mypy --strict storage/ tests/
+            MYPYPATH=stubs mypy --strict storage/ tests/
 
       - store_artifacts:
           path: test-reports

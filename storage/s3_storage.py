@@ -1,11 +1,11 @@
 import os
 from urllib.parse import parse_qsl, unquote
 
-import boto3  # type: ignore
-import boto3.s3.transfer  # type: ignore
-from botocore.session import Session  # type: ignore
+import boto3.session
+import boto3.s3.transfer
+from botocore.session import Session
 
-from typing import BinaryIO, cast, Optional
+from typing import BinaryIO, Optional
 
 from storage import retry
 from storage.storage import Storage, register_storage_protocol, _LARGE_CHUNK
@@ -54,8 +54,8 @@ class S3Storage(Storage):
         dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
         dir_contents = dir_object["Contents"]
 
-        for file in dir_contents:
-            file_key = file["Key"].replace(self._keyname, "", 1)
+        for obj in dir_contents:
+            file_key = obj["Key"].replace(self._keyname, "", 1)
 
             if file_key and not file_key.endswith("/"):
                 file_path = os.path.dirname(file_key)
@@ -64,7 +64,7 @@ class S3Storage(Storage):
                     os.makedirs(directory_path + file_path)
 
                 retry.attempt(
-                    client.download_file, self._bucket, file["Key"], directory_path + file_key)
+                    client.download_file, self._bucket, obj["Key"], directory_path + file_key)
 
     def load_from_filename(self, file_path: str) -> None:
         client = self._connect()
@@ -83,10 +83,12 @@ class S3Storage(Storage):
         for root, _, files in os.walk(source_directory):
             relative_path = root.replace(source_directory, self._keyname, 1)
 
-            for file in files:
-                upload_path = os.path.join(relative_path, file)
+            for filename in files:
+                upload_path = os.path.join(relative_path, filename)
                 retry.attempt(
-                    client.upload_file, os.path.join(root, file), self._bucket, upload_path)
+                    client.upload_file,
+                    os.path.join(root, filename),
+                    self._bucket, upload_path)
 
     def delete(self) -> None:
         client = self._connect()
@@ -106,6 +108,6 @@ class S3Storage(Storage):
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         client = self._connect()
 
-        return cast(str, client.generate_presigned_url(
+        return client.generate_presigned_url(
             "get_object", Params={"Bucket": self._bucket, "Key": self._keyname},
-            ExpiresIn=seconds))
+            ExpiresIn=seconds)

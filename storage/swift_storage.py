@@ -2,13 +2,14 @@ import mimetypes
 import os
 from urllib.parse import parse_qsl, urljoin, urlparse
 
-from keystoneauth1 import session  # type: ignore
-from keystoneauth1.identity import v2  # type: ignore
-from keystoneauth1.exceptions.http import Forbidden, Unauthorized  # type: ignore
-import swiftclient  # type: ignore
-from swiftclient.exceptions import ClientException  # type: ignore
+from keystoneauth1 import session
+from keystoneauth1.identity import v2
+from keystoneauth1.exceptions.http import Forbidden, Unauthorized
+import swiftclient.client
+from swiftclient.exceptions import ClientException
+import swiftclient.utils
 from typing import Any, BinaryIO, Callable, cast, Dict, List
-from typing import Optional, Sequence, Tuple, Type, TypeVar
+from typing import Optional, Tuple, Type, TypeVar
 
 from . import retry
 from .storage import _LARGE_CHUNK, DEFAULT_SWIFT_TIMEOUT, register_storage_protocol, Storage
@@ -182,7 +183,7 @@ class SwiftStorage(Storage):
             f"{storage_path}/{container}/{object_name}",
             seconds=seconds, key=download_url_key, method="GET")
 
-        return cast(str, urljoin(host, path))
+        return urljoin(host, path)
 
     def _find_storage_objects_with_prefix(
             self, container: str, prefix: str) -> List[Dict[str, str]]:
@@ -190,7 +191,7 @@ class SwiftStorage(Storage):
 
         def get_container() -> List[Dict[str, str]]:
             _, objects = connection.get_container(container, prefix=prefix)
-            return list(cast(Sequence[Dict[str, str]], objects))
+            return objects
 
         container_objects = retry_swift_operation(
             f"Failed to retrieve Swift objects for {prefix} from container {container}",

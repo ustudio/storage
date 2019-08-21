@@ -3,12 +3,12 @@ import datetime
 import json
 import os
 
-import google.cloud.storage  # type: ignore
-from google.cloud.storage.bucket import Bucket  # type: ignore
-from google.cloud.storage.blob import Blob  # type: ignore
-import google.oauth2.service_account  # type: ignore
+import google.cloud.storage.client
+from google.cloud.storage.bucket import Bucket
+from google.cloud.storage.blob import Blob
+import google.oauth2.service_account
 
-from typing import BinaryIO, cast, Optional
+from typing import BinaryIO, Optional
 
 from storage import retry
 from storage.storage import Storage, register_storage_protocol
@@ -53,7 +53,7 @@ class GoogleStorage(Storage):
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         blob = self._get_blob()
-        return cast(str, blob.generate_signed_url(datetime.timedelta(seconds=seconds)))
+        return blob.generate_signed_url(datetime.timedelta(seconds=seconds))
 
     def save_to_directory(self, directory_path: str) -> None:
         bucket = self._get_bucket()

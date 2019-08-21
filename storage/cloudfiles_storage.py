@@ -1,8 +1,8 @@
 from urllib.parse import parse_qsl
 
-from keystoneauth1 import session  # type: ignore
-from keystoneauth1.identity import v2  # type: ignore
-import swiftclient  # type: ignore
+from keystoneauth1 import session
+from keystoneauth1.identity import v2
+import swiftclient
 
 from typing import Any, Dict
 
@@ -10,7 +10,7 @@ from .storage import DEFAULT_SWIFT_TIMEOUT
 from storage.swift_storage import register_swift_protocol, SwiftStorage, SwiftStorageError
 
 
-class RackspaceAuth(v2.Password):  # type: ignore
+class RackspaceAuth(v2.Password):
 
     def get_auth_data(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         auth_data = super().get_auth_data(*args, **kwargs)
