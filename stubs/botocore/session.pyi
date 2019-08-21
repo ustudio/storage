@@ -4,7 +4,7 @@
 
 
 from io import BytesIO
-from typing import BinaryIO, List, Optional
+from typing import BinaryIO, Dict, List, Optional
 from mypy_extensions import TypedDict
 
 
@@ -22,9 +22,8 @@ ListObjectResponse = TypedDict(
 ListResponse = TypedDict(
     "ListResponse", {"Contents": List[ListObjectResponse]})
 
-DeleteEntry = TypedDict("DeleteEntry", {"Key": Optional[str]})
-
-DeleteEntries = TypedDict("DeleteEntries", {"Objects": List[DeleteEntry]})
+DeleteEntries = TypedDict(
+    "DeleteEntries", {"Objects": List[Dict[str, Optional[str]]]})
 
 ParamEntries = TypedDict("ParamEntries", {"Bucket": str, "Key": str})
 

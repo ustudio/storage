@@ -86,9 +86,7 @@ class S3Storage(Storage):
             for filename in files:
                 upload_path = os.path.join(relative_path, filename)
                 retry.attempt(
-                    client.upload_file,
-                    os.path.join(root, filename),
-                    self._bucket, upload_path)
+                    client.upload_file, os.path.join(root, filename), self._bucket, upload_path)
 
     def delete(self) -> None:
         client = self._connect()
@@ -99,15 +97,10 @@ class S3Storage(Storage):
         directory_prefix = "{}/".format(self._keyname)
         dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
         object_keys = [{"Key": o.get("Key", None)} for o in dir_object["Contents"]]
-        client.delete_objects(
-            Bucket=self._bucket,
-            Delete={
-                "Objects": object_keys
-            })
+        client.delete_objects(Bucket=self._bucket, Delete={"Objects": object_keys})
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         client = self._connect()
 
         return client.generate_presigned_url(
-            "get_object", Params={"Bucket": self._bucket, "Key": self._keyname},
-            ExpiresIn=seconds)
+            "get_object", Params={"Bucket": self._bucket, "Key": self._keyname}, ExpiresIn=seconds)
