@@ -1,4 +1,4 @@
 boto3 >= 1.0.1
-google-cloud-storage
-keystoneauth
-python-swiftclient
+google-cloud-storage==1.18.0
+keystoneauth==0.5.0
+python-swiftclient==3.8.0
