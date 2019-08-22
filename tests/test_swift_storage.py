@@ -379,7 +379,7 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
                     mock.call(b"F" * _LARGE_CHUNK)
                 ])
 
-    def test_save_to_filename_creates_dir_and_writes_file_contents_to_file_object(self) -> None:
+    def test_save_to_filename_raises_when_dir_does_not_exist(self) -> None:
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
         swift_uri = self._generate_swift_uri("/path/to/file.mp4")
@@ -389,14 +389,10 @@ class TestSwiftStorageProvider(SwiftServiceTestCase):
         tmp_file = os.path.join(tmp_dir.name, "folder/folder2/file.mp4")
 
         with self.run_services():
-            storage_object.save_to_filename(tmp_file)
+            with self.assertRaises(FileNotFoundError):
+                storage_object.save_to_filename(tmp_file)
 
-        self.assertTrue(os.path.exists(tmp_file))
-
-        with open(tmp_file, "rb") as fp:
-            file_contents = fp.read()
-
-        self.assertEqual(b"FOOBAR", file_contents)
+        self.assertFalse(os.path.exists(tmp_file))
 
     def test_save_to_filename_raises_on_forbidden_keystone_credentials(self) -> None:
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")

@@ -129,8 +129,6 @@ class SwiftStorage(Storage):
             get_object)
 
     def _download_object_to_filename(self, container: str, object_name: str, filename: str) -> None:
-        dir_name = os.path.dirname(filename)
-        os.makedirs(dir_name, exist_ok=True)
         with open(filename, "wb") as out_file:
             self._download_object_to_file(container, object_name, out_file)
 
@@ -212,6 +210,9 @@ class SwiftStorage(Storage):
 
             while object_path.startswith("/"):
                 object_path = object_path[1:]
+
+            dir_name = os.path.dirname(file_path)
+            os.makedirs(dir_name, exist_ok=True)
 
             self._download_object_to_filename(container, object_path, file_path)
 
