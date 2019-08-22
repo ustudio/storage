@@ -4,7 +4,7 @@ except ImportError:
     from distutils.core import setup
 
 install_requires = [
-    "boto3",
+    "boto3 >= 1.0.1",
     "google-cloud-storage",
     "keystoneauth",
     "python-swiftclient"
