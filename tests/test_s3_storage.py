@@ -2,15 +2,16 @@ import os
 from unittest import mock, TestCase
 from urllib.parse import quote
 
-from typing import cast, List, Optional
+from typing import cast, Dict, List, Optional
 
 from storage.storage import get_storage
 from storage.s3_storage import S3Storage
 from tests.helpers import create_temp_nested_directory_with_files, NestedDirectoryDict
 from tests.helpers import cleanup_nested_directory
+from tests.storage_test_case import StorageTestCase
 
 
-class TestS3Storage(TestCase):
+class TestS3Storage(StorageTestCase, TestCase):
 
     temp_directory: Optional[NestedDirectoryDict]
 
@@ -22,6 +23,10 @@ class TestS3Storage(TestCase):
         super().tearDown()
         if self.temp_directory is not None:
             cleanup_nested_directory(self.temp_directory)
+
+    def _generate_storage_uri(
+            self, object_path: str, parameters: Optional[Dict[str, str]] = None) -> str:
+        return "s3://access_key:access_secret@bucket/some/file"
 
     def test_s3storage_init_sets_correct_keyname(self) -> None:
         storage = get_storage(
@@ -663,3 +668,7 @@ class TestS3Storage(TestCase):
             Params={"Bucket": "some_bucket", "Key": "some/file"},
             ExpiresIn=1000
         )
+
+    def test_s3_storage_rejects_multiple_query_values_for_region_setting(self) -> None:
+        self.assert_rejects_multiple_query_values(
+            "/foo/bar/object.mp4", "region", values=["US_EAST", "US_WEST"])

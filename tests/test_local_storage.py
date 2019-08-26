@@ -1,17 +1,18 @@
 import os
 from io import BytesIO
 import tempfile
-from unittest import mock, TestCase
+from unittest import mock
 from urllib.parse import quote_plus
 
-from typing import Optional
+from typing import Dict, Optional
 
-from storage.storage import DownloadUrlBaseUndefinedError, get_storage
+from storage.storage import get_storage, DownloadUrlBaseUndefinedError
 from tests.helpers import create_temp_nested_directory_with_files, NestedDirectoryDict
+from tests.storage_test_case import StorageTestCase
 from tests.helpers import TempDirectory
 
 
-class TestLocalStorage(TestCase):
+class TestLocalStorage(StorageTestCase):
 
     temp_directory: Optional[NestedDirectoryDict]
 
@@ -23,6 +24,10 @@ class TestLocalStorage(TestCase):
         super().tearDown()
         if self.temp_directory is not None:
             self.temp_directory["temp_directory"]["object"].cleanup()
+
+    def _generate_storage_uri(
+            self, object_path: str, parameters: Optional[Dict[str, str]] = None) -> str:
+        return "file:///path/to/file.mp4"
 
     def test_local_storage_save_to_filename(self) -> None:
         temp_input = tempfile.NamedTemporaryFile()
@@ -239,37 +244,29 @@ class TestLocalStorage(TestCase):
         download_url_base = "http://host:123/path/to/"
         download_url_base_encoded = quote_plus(download_url_base)
 
-        storage_uri = "file://{fpath}?download_url_base={download_url_base}".format(
-            fpath=temp_input.name,
-            download_url_base=download_url_base_encoded)
+        storage_uri = f"file://{temp_input.name}?download_url_base={download_url_base_encoded}"
 
         out_storage = get_storage(storage_uri)
         temp_url = out_storage.get_download_url(seconds=900)
 
         self.assertEqual(
-            "http://host:123/path/to/{}".format(os.path.basename(temp_input.name)), temp_url)
+            f"http://host:123/path/to/{os.path.basename(temp_input.name)}", temp_url)
 
         temp_url = out_storage.get_download_url(key="secret")
 
         self.assertEqual(
-            "http://host:123/path/to/{}".format(os.path.basename(temp_input.name)), temp_url)
+            f"http://host:123/path/to/{os.path.basename(temp_input.name)}", temp_url)
 
     def test_local_storage_get_download_url_returns_none_on_empty_base(self) -> None:
         temp_input = tempfile.NamedTemporaryFile()
         temp_input.write(b"FOOBAR")
         temp_input.flush()
 
-        # blank download_url_base
-        storage_uri = "file://{fpath}?download_url_base=".format(fpath=temp_input.name)
-
-        out_storage = get_storage(storage_uri)
-
-        with self.assertRaises(DownloadUrlBaseUndefinedError):
-            out_storage.get_download_url()
-
-        # no download_url_base
         storage_uri = "file://{fpath}".format(fpath=temp_input.name)
         out_storage = get_storage(storage_uri)
 
         with self.assertRaises(DownloadUrlBaseUndefinedError):
             out_storage.get_download_url()
+
+    def test_local_storage_rejects_multiple_query_values_for_download_url_key_setting(self) -> None:
+        self.assert_rejects_multiple_query_values("/foo/bar/object.mp4", "download_url_base")

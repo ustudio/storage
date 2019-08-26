@@ -1,11 +1,12 @@
 import distutils.dir_util
 import os
 import shutil
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qs
 
 from typing import BinaryIO, Optional
 
-from .storage import Storage, register_storage_protocol, _generate_download_url_from_base
+from .storage import InvalidStorageUri, Storage, register_storage_protocol
+from .storage import _generate_download_url_from_base
 
 
 @register_storage_protocol("file")
@@ -20,10 +21,12 @@ class LocalStorage(Storage):
 
     """
 
-    def __init__(self, storage_uri: str) -> None:
-        super(LocalStorage, self).__init__(storage_uri)
-        query = dict(parse_qsl(self._parsed_storage_uri.query))
-        self._download_url_base = query.get("download_url_base", None)
+    def validate_uri(self) -> None:
+        query = parse_qs(self._parsed_storage_uri.query)
+        download_url_base = query.get("download_url_base", [])
+        if len(download_url_base) > 1:
+            raise InvalidStorageUri("Too many values for `download_url_base`")
+        self._download_url_base = download_url_base[0] if len(download_url_base) else None
 
     def save_to_filename(self, file_path: str) -> None:
         shutil.copy(self._parsed_storage_uri.path, file_path)

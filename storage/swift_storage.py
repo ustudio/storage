@@ -1,6 +1,6 @@
 import mimetypes
 import os
-from urllib.parse import parse_qsl, urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from keystoneauth1 import session
 from keystoneauth1.identity import v2
@@ -11,8 +11,9 @@ import swiftclient.utils
 from typing import Any, BinaryIO, Callable, cast, Dict, List
 from typing import Optional, Tuple, Type, TypeVar
 
-from . import retry
-from .storage import _LARGE_CHUNK, DEFAULT_SWIFT_TIMEOUT, register_storage_protocol, Storage
+from storage import retry
+from storage.storage import InvalidStorageUri, register_storage_protocol, Storage
+from storage.storage import _LARGE_CHUNK, DEFAULT_SWIFT_TIMEOUT
 
 
 def register_swift_protocol(
@@ -62,43 +63,56 @@ def retry_swift_operation(error_str: str, fn: Callable[..., T], *args: Any, **kw
 @register_storage_protocol("swift")
 class SwiftStorage(Storage):
 
-    auth_endpoint: Optional[str] = None
+    download_url_key: Optional[str]
+
+    def validate_uri(self) -> None:
+        query = parse_qs(self._parsed_storage_uri.query)
+
+        auth_endpoint = query.get("auth_endpoint", [])
+        if len(auth_endpoint) > 1:
+            raise InvalidStorageUri("Too many `auth_endpoint1 query values")
+        if len(auth_endpoint) == 0:
+            raise SwiftStorageError("Required field is missing: auth_endpoint")
+        self.auth_endpoint = auth_endpoint[0]
+
+        region_name = query.get("region", [])
+        if len(region_name) > 1:
+            raise InvalidStorageUri("Too many `region` query values.")
+        if len(region_name) == 0:
+            raise SwiftStorageError("Required field is missing: region_name")
+        self.region_name = region_name[0]
+
+        tenant_id = query.get("tenant_id", [])
+        if len(tenant_id) > 1:
+            raise InvalidStorageUri("Too many `tenant_id` query values.")
+        if len(tenant_id) == 0:
+            raise SwiftStorageError("Required field is missing: tenant_id")
+        self.tenant_id = tenant_id[0]
+
+        download_url_key = query.get("download_url_key", [])
+        if len(download_url_key) > 1:
+            raise InvalidStorageUri("Too many `download_url_key` query values.")
+        self.download_url_key = download_url_key[0] if len(download_url_key) else None
+
+        if self._parsed_storage_uri.username == "":
+            raise InvalidStorageUri("Missing username")
+        if self._parsed_storage_uri.password == "":
+            raise InvalidStorageUri("Missing API key")
 
     # cache get connections
     def get_connection(self) -> swiftclient.client.Connection:
         if not hasattr(self, "_connection"):
-            query = dict(parse_qsl(self._parsed_storage_uri.query))
-
-            auth_endpoint = query.get("auth_endpoint")
-            if auth_endpoint is None:
-                raise SwiftStorageError(f"Required field is missing: auth_endpoint")
-
-            self.tenant_id = query.get("tenant_id")
-            if self.tenant_id is None:
-                raise SwiftStorageError(f"Required field is missing: tenant_id")
-
-            region_name = query.get("region")
-            if region_name is None:
-                raise SwiftStorageError(f"Required field is missing: region_name")
-
-            self.download_url_key = query.get("download_url_key")
-
             os_options = {
                 "tenant_id": self.tenant_id,
-                "region_name": region_name
+                "region_name": self.region_name
             }
 
             user = self._parsed_storage_uri.username
             key = self._parsed_storage_uri.password
 
-            if user == "":
-                raise SwiftStorageError("Missing username")
-
-            if key == "":
-                raise SwiftStorageError("Missing API key")
-
             auth = v2.Password(
-                auth_url=auth_endpoint, username=user, password=key, tenant_name=self.tenant_id)
+                auth_url=self.auth_endpoint, username=user, password=key,
+                tenant_name=self.tenant_id)
 
             keystone_session = session.Session(auth=auth)
 

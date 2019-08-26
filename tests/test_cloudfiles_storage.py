@@ -4,11 +4,12 @@ import json
 from unittest import mock
 from urllib.parse import parse_qsl, urlencode, urlparse
 
-from typing import Callable, Dict, Generator, List, Optional, TYPE_CHECKING
+from typing import Dict, Generator, List, Optional, TYPE_CHECKING
 
 from storage import cloudfiles_storage
-from storage.storage import get_storage, Storage
+from storage.storage import get_storage, InvalidStorageUri
 from storage.swift_storage import SwiftStorageError
+from tests.storage_test_case import StorageTestCase
 from tests.swift_service_test_case import SwiftServiceTestCase
 
 if TYPE_CHECKING:
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from wsgiref.types import StartResponse
 
 
-class TestCloudFilesStorageProvider(SwiftServiceTestCase):
+class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def setUp(self) -> None:
         super().setUp()
 
@@ -41,7 +42,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         super().tearDown()
         self.mock_sleep_patch.stop()
 
-    def _generate_cloudfiles_uri(
+    def _generate_storage_uri(
             self, object_path: str, parameters: Optional[Dict[str, str]] = None) -> str:
         base_uri = f"cloudfiles://USER:TOKEN@CONTAINER{object_path}"
         if parameters is not None:
@@ -55,15 +56,12 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
         else:
             return False
 
-    def assert_requires_all_parameters(
-            self, object_path: str, fn: Callable[[Storage], None]) -> None:
+    def assert_requires_all_parameters(self, object_path: str) -> None:
         for auth_string in ["USER:@", ":TOKEN@"]:
             cloudfiles_uri = f"cloudfiles://{auth_string}CONTAINER{object_path}"
-            storage_object = get_storage(cloudfiles_uri)
 
-            with self.run_services():
-                with self.assertRaises(SwiftStorageError):
-                    fn(storage_object)
+            with self.assertRaises(InvalidStorageUri):
+                get_storage(cloudfiles_uri)
 
     @contextlib.contextmanager
     def assert_raises_on_forbidden_access(self) -> Generator[None, None, None]:
@@ -177,7 +175,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             self, environ: "Environ", start_response: "StartResponse") -> List[bytes]:
         start_response("204 OK", [
             ("Content-type", "text-plain"),
-            ("temp-url-key", "TEMPKEY")
+            ("X-Account-Meta-Temp-Url-Key", "TEMPKEY")
         ])
         return [b""]
 
@@ -187,19 +185,14 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             cloudfiles_storage.CloudFilesStorage.auth_endpoint)
 
     def test_save_to_file_raises_exception_when_missing_required_parameters(self) -> None:
-        self.add_container_object("/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
-
-        temp = io.BytesIO()
-
-        with self.use_local_identity_service():
-            self.assert_requires_all_parameters("/path/to/file.mp4", lambda x: x.save_to_file(temp))
+        self.assert_requires_all_parameters("/path/to/file.mp4")
 
     def test_save_to_file_raises_on_forbidden_credentials(self) -> None:
         self.add_container_object("/v2.0/MOSSO-TENANT/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -215,7 +208,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -230,7 +223,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -250,7 +243,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", {
             "region": "ORD",
             "download_url_key": "KEY"
         })
@@ -270,7 +263,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -290,7 +283,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", {
             "public": "false",
             "download_url_key": "KEY"
         })
@@ -313,7 +306,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         temp = io.BytesIO()
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", {
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", {
             "public": "False",
             "download_url_key": "KEY"
         })
@@ -331,7 +324,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
     def test_load_from_file_puts_file_contents_at_object_endpoint(self) -> None:
         temp = io.BytesIO(b"FOOBAR")
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -341,7 +334,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
                     storage_object.load_from_file(temp)
 
     def test_delete_makes_delete_request_against_swift_service(self) -> None:
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -353,7 +346,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
     def test_get_download_url_returns_signed_url(self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4", self.download_url_key)
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -376,7 +369,7 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
             self, mock_time: mock.Mock) -> None:
         mock_time.return_value = 9000
 
-        cloudfiles_uri = self._generate_cloudfiles_uri("/path/to/file.mp4")
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4")
         storage_object = get_storage(cloudfiles_uri)
 
         with self.use_local_identity_service():
@@ -389,3 +382,13 @@ class TestCloudFilesStorageProvider(SwiftServiceTestCase):
 
         self.assertEqual(parsed.path, expected.path)
         self.assertEqual(parsed.netloc, expected.netloc)
+
+    def test_cloudfiles_rejects_multiple_query_values_for_public_setting(self) -> None:
+        self.assert_rejects_multiple_query_values(
+            "object.mp4", "public", values=["public", "private"])
+
+    def test_cloudfiles_rejects_multiple_query_values_for_region_setting(self) -> None:
+        self.assert_rejects_multiple_query_values("object.mp4", "region", values=["DFW", "ORD"])
+
+    def test_cloudfiles_rejects_multiple_query_values_for_download_url_key_setting(self) -> None:
+        self.assert_rejects_multiple_query_values("object.mp4", "download_url_key")

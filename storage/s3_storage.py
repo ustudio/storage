@@ -1,5 +1,5 @@
 import os
-from urllib.parse import parse_qsl, unquote
+from urllib.parse import parse_qs, unquote
 
 import boto3.session
 import boto3.s3.transfer
@@ -8,11 +8,12 @@ from botocore.session import Session
 from typing import BinaryIO, Optional
 
 from storage import retry
-from storage.storage import Storage, register_storage_protocol, _LARGE_CHUNK
+from storage.storage import Storage, register_storage_protocol, InvalidStorageUri, _LARGE_CHUNK
 
 
 @register_storage_protocol("s3")
 class S3Storage(Storage):
+
     def __init__(self, storage_uri: str) -> None:
         super(S3Storage, self).__init__(storage_uri)
         self._access_key = unquote(self._parsed_storage_uri.username)
@@ -20,8 +21,13 @@ class S3Storage(Storage):
         self._bucket = self._parsed_storage_uri.hostname
         self._keyname = self._parsed_storage_uri.path.replace("/", "", 1)
 
-        query = dict(parse_qsl(self._parsed_storage_uri.query))
-        self._region = query.get("region", None)
+    def validate_uri(self) -> None:
+        query = parse_qs(self._parsed_storage_uri.query)
+
+        region = query.get("region", [])
+        if len(region) > 1:
+            raise InvalidStorageUri("Too many `region` query values.")
+        self._region = region[0] if len(region) else None
 
     def _connect(self) -> Session:
         aws_session = boto3.session.Session(

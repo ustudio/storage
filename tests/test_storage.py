@@ -1,5 +1,5 @@
-from storage.storage import get_storage, register_storage_protocol, Storage, timeout, TimeoutError
-from storage.storage import _STORAGE_TYPES
+from storage.storage import get_storage, InvalidStorageUri, register_storage_protocol, Storage
+from storage.storage import timeout, TimeoutError, _STORAGE_TYPES
 import threading
 from unittest import mock, TestCase
 
@@ -51,3 +51,13 @@ class TestRegisterStorageProtocol(TestCase):
         uri = "{0}://some/uri/path".format(self.scheme)
         store_obj = get_storage(uri)
         self.assertIsInstance(store_obj, MyStorageClass)
+
+    def test_storage_provider_calls_validation_on_implementation(self) -> None:
+
+        @register_storage_protocol(scheme=self.scheme)
+        class ValidatingStorageClass(Storage):
+            def validate_uri(self) -> None:
+                raise InvalidStorageUri("Nope I don't like it.")
+
+        with self.assertRaises(InvalidStorageUri):
+            get_storage(f"{self.scheme}://some/uri/path")
