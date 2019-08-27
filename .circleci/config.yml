@@ -56,9 +56,74 @@ jobs:
 
       - store_artifacts:
           path: test-reports
+          prefix: python-3.7
 
       - store_test_results:
           path: test-reports
+          prefix: python-3.7
+
+  test-3.6:
+    docker:
+      - image: circleci/python:3.6
+      - image: onjin/alpine-vsftpd:latest
+        environment:
+          PASSWORD: password
+        command: >
+          sh -c
+          "sed -i -e 's#/home/./files#/home/files/./#' /etc/passwd;
+          echo 'allow_writeable_chroot=YES' >> /etc/vsftpd/vsftpd.conf;
+          /docker-entrypoint.sh"
+
+    working_directory: ~/repo
+
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "requirements.txt" }}-
+            - v1-dependencies-
+
+      - run:
+          name: install dependencies
+          command: |
+            python -m virtualenv ~/venv
+            . ~/venv/bin/activate
+            pip install -e .
+            pip install -r requirements.txt
+            mkdir -p test-reports
+
+      - save_cache:
+          paths:
+            - ~/venv
+          key: v1-dependencies-{{ checksum "requirements.txt" }}
+
+      - run:
+          name: run tests
+          command: |
+            . ~/venv/bin/activate
+            pytest --verbose --junit-xml=test-reports/pytest.xml
+
+      - run:
+          name: run linter
+          command: |
+            . ~/venv/bin/activate
+            flake8 | tee test-reports/flake8-errors
+
+      - run:
+          name: run typechecks
+          command: |
+            . ~/venv/bin/activate
+            MYPYPATH=stubs mypy --strict storage/ tests/
+
+      - store_artifacts:
+          path: test-reports
+          prefix: python-3.6
+
+      - store_test_results:
+          path: test-reports
+          prefix: python-3.6
+
   publish:
     docker:
       - image: circleci/python:3.7
@@ -87,11 +152,16 @@ jobs:
           command: |
             . ~/venv/bin/activate
             ./publish_to_pypi.sh
+
 workflows:
   version: 2
   test-and-build:
     jobs:
       - test:
+          filters:
+            tags:
+              only: /.*/
+      - test-3.6:
           filters:
             tags:
               only: /.*/
