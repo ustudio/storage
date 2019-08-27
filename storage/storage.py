@@ -154,10 +154,8 @@ def get_storage(storage_uri: str) -> Storage:
 ParsedQuery = Dict[str, List[str]]
 
 
-def get_optional_query_parameter(
-        parsed_query: ParsedQuery, parameter: str,
-        default_value: Optional[str] = None) -> Optional[str]:
+def get_optional_query_parameter(parsed_query: ParsedQuery, parameter: str) -> Optional[str]:
     query_arg = parsed_query.get(parameter, [])
     if len(query_arg) > 1:
         raise InvalidStorageUri(f"Too many `{parameter}` query values.")
-    return query_arg[0] if len(query_arg) else default_value
+    return query_arg[0] if len(query_arg) else None

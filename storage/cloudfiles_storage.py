@@ -27,9 +27,11 @@ class CloudFilesStorage(SwiftStorage):
 
     def _validate_parsed_uri(self) -> None:
         query = parse_qs(self._parsed_storage_uri.query)
-        public_value = get_optional_query_parameter(query, "public", "true")
+        public_value = get_optional_query_parameter(query, "public")
+        public_value = public_value if public_value is not None else "true"
         self.public_endpoint = "publicURL" if public_value.lower() == "true" else "internalURL"
-        self.region = get_optional_query_parameter(query, "region", "DFW")
+        region = get_optional_query_parameter(query, "region")
+        self.region = region if region is not None else "DFW"
         self.download_url_key = get_optional_query_parameter(query, "download_url_key")
 
         if self._parsed_storage_uri.username == "":
