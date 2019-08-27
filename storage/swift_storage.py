@@ -65,7 +65,7 @@ class SwiftStorage(Storage):
 
     download_url_key: Optional[str]
 
-    def validate_uri(self) -> None:
+    def _validate_parsed_uri(self) -> None:
         query = parse_qs(self._parsed_storage_uri.query)
 
         auth_endpoint = get_optional_query_parameter(query, "auth_endpoint")

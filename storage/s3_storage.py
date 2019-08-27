@@ -22,7 +22,7 @@ class S3Storage(Storage):
         self._bucket = self._parsed_storage_uri.hostname
         self._keyname = self._parsed_storage_uri.path.replace("/", "", 1)
 
-    def validate_uri(self) -> None:
+    def _validate_parsed_uri(self) -> None:
         query = parse_qs(self._parsed_storage_uri.query)
         self._region = get_optional_query_parameter(query, "region")
 

@@ -5,8 +5,8 @@ from urllib.parse import parse_qs
 
 from typing import BinaryIO, Optional
 
-from .storage import InvalidStorageUri, Storage, register_storage_protocol
-from .storage import _generate_download_url_from_base
+from storage.storage import get_optional_query_parameter, Storage, register_storage_protocol
+from storage.storage import _generate_download_url_from_base
 
 
 @register_storage_protocol("file")
@@ -21,12 +21,9 @@ class LocalStorage(Storage):
 
     """
 
-    def validate_uri(self) -> None:
+    def _validate_parsed_uri(self) -> None:
         query = parse_qs(self._parsed_storage_uri.query)
-        download_url_base = query.get("download_url_base", [])
-        if len(download_url_base) > 1:
-            raise InvalidStorageUri("Too many values for `download_url_base`")
-        self._download_url_base = download_url_base[0] if len(download_url_base) else None
+        self._download_url_base = get_optional_query_parameter(query, "download_url_base")
 
     def save_to_filename(self, file_path: str) -> None:
         shutil.copy(self._parsed_storage_uri.path, file_path)

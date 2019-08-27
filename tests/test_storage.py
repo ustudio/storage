@@ -56,7 +56,7 @@ class TestRegisterStorageProtocol(TestCase):
 
         @register_storage_protocol(scheme=self.scheme)
         class ValidatingStorageClass(Storage):
-            def validate_uri(self) -> None:
+            def _validate_parsed_uri(self) -> None:
                 raise InvalidStorageUri("Nope I don't like it.")
 
         with self.assertRaises(InvalidStorageUri):

@@ -25,7 +25,7 @@ class RackspaceAuth(v2.Password):
 @register_swift_protocol("cloudfiles", "https://identity.api.rackspacecloud.com/v2.0")
 class CloudFilesStorage(SwiftStorage):
 
-    def validate_uri(self) -> None:
+    def _validate_parsed_uri(self) -> None:
         query = parse_qs(self._parsed_storage_uri.query)
         public_value = get_optional_query_parameter(query, "public", "true")
         self.public_endpoint = "publicURL" if public_value.lower() == "true" else "internalURL"

@@ -226,15 +226,12 @@ class TestLocalStorage(StorageTestCase):
         download_url_base = "http://host:123/path/to/"
         download_url_base_encoded = quote_plus(download_url_base)
 
-        storage_uri = "file://{fpath}?download_url_base={download_url_base}".format(
-            fpath=temp_input.name,
-            download_url_base=download_url_base_encoded)
-
+        storage_uri = f"file://{temp_input.name}?download_url_base={download_url_base_encoded}"
         out_storage = get_storage(storage_uri)
         temp_url = out_storage.get_download_url()
 
         self.assertEqual(
-            "http://host:123/path/to/{}".format(os.path.basename(temp_input.name)), temp_url)
+            f"http://host:123/path/to/{os.path.basename(temp_input.name)}", temp_url)
 
     def test_local_storage_get_download_url_ignores_args(self) -> None:
         temp_input = tempfile.NamedTemporaryFile()

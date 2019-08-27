@@ -86,9 +86,9 @@ class Storage(object):
     def __init__(self, storage_uri: str) -> None:
         self._storage_uri = storage_uri
         self._parsed_storage_uri = urlparse(storage_uri)
-        self.validate_uri()
+        self._validate_parsed_uri()
 
-    def validate_uri(self) -> None:
+    def _validate_parsed_uri(self) -> None:
         pass
 
     def _class_name(self) -> str:
