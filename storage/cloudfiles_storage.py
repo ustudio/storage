@@ -6,8 +6,7 @@ import swiftclient
 
 from typing import Any, Dict
 
-from .storage import DEFAULT_SWIFT_TIMEOUT
-from storage.storage import InvalidStorageUri
+from storage.storage import get_optional_query_parameter, InvalidStorageUri, DEFAULT_SWIFT_TIMEOUT
 from storage.swift_storage import register_swift_protocol, SwiftStorage
 
 
@@ -28,23 +27,15 @@ class CloudFilesStorage(SwiftStorage):
 
     def validate_uri(self) -> None:
         query = parse_qs(self._parsed_storage_uri.query)
-        if len(query.get("public", [])) > 1:
-            raise InvalidStorageUri("Too many `public` query values.")
-        if len(query.get("region", [])) > 1:
-            raise InvalidStorageUri("Too many `region` query values.")
-        if len(query.get("download_url_key", [])) > 1:
-            raise InvalidStorageUri("Too many `download_url_key` query values.")
+        public_value = get_optional_query_parameter(query, "public", "true")
+        self.public_endpoint = "publicURL" if public_value.lower() == "true" else "internalURL"
+        self.region = get_optional_query_parameter(query, "region", "DFW")
+        self.download_url_key = get_optional_query_parameter(query, "download_url_key")
 
         if self._parsed_storage_uri.username == "":
             raise InvalidStorageUri("Missing username")
         if self._parsed_storage_uri.password == "":
             raise InvalidStorageUri("Missing API key")
-
-        public_value = query.get("public", ["true"])[0].lower()
-        self.public_endpoint = "publicURL" if public_value == "true" else "internalURL"
-        self.region = query.get("region", ["DFW"])[0]
-        download_url_key = query.get("download_url_key", [])
-        self.download_url_key = download_url_key[0] if len(download_url_key) else None
 
     def get_connection(self) -> swiftclient.client.Connection:
         if not hasattr(self, "_connection"):

@@ -8,7 +8,8 @@ from botocore.session import Session
 from typing import BinaryIO, Optional
 
 from storage import retry
-from storage.storage import Storage, register_storage_protocol, InvalidStorageUri, _LARGE_CHUNK
+from storage.storage import Storage, register_storage_protocol, _LARGE_CHUNK
+from storage.storage import get_optional_query_parameter
 
 
 @register_storage_protocol("s3")
@@ -23,11 +24,7 @@ class S3Storage(Storage):
 
     def validate_uri(self) -> None:
         query = parse_qs(self._parsed_storage_uri.query)
-
-        region = query.get("region", [])
-        if len(region) > 1:
-            raise InvalidStorageUri("Too many `region` query values.")
-        self._region = region[0] if len(region) else None
+        self._region = get_optional_query_parameter(query, "region")
 
     def _connect(self) -> Session:
         aws_session = boto3.session.Session(

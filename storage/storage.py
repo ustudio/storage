@@ -2,7 +2,7 @@ import queue
 import threading
 from urllib.parse import ParseResult, urljoin, urlparse, uses_query
 
-from typing import BinaryIO, Callable, Optional, Type, TypeVar, Union
+from typing import BinaryIO, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 
 _STORAGE_TYPES = {}         # maintains supported storage protocols
@@ -149,3 +149,15 @@ class InvalidStorageUri(RuntimeError):
 def get_storage(storage_uri: str) -> Storage:
     storage_type = storage_uri.split("://")[0]
     return _STORAGE_TYPES[storage_type](storage_uri)
+
+
+ParsedQuery = Dict[str, List[str]]
+
+
+def get_optional_query_parameter(
+        parsed_query: ParsedQuery, parameter: str,
+        default_value: Optional[str] = None) -> Optional[str]:
+    query_arg = parsed_query.get(parameter, [])
+    if len(query_arg) > 1:
+        raise InvalidStorageUri(f"Too many `{parameter}` query values.")
+    return query_arg[0] if len(query_arg) else default_value

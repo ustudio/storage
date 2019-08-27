@@ -13,7 +13,7 @@ from typing import Optional, Tuple, Type, TypeVar
 
 from storage import retry
 from storage.storage import InvalidStorageUri, register_storage_protocol, Storage
-from storage.storage import _LARGE_CHUNK, DEFAULT_SWIFT_TIMEOUT
+from storage.storage import get_optional_query_parameter, _LARGE_CHUNK, DEFAULT_SWIFT_TIMEOUT
 
 
 def register_swift_protocol(
@@ -68,31 +68,22 @@ class SwiftStorage(Storage):
     def validate_uri(self) -> None:
         query = parse_qs(self._parsed_storage_uri.query)
 
-        auth_endpoint = query.get("auth_endpoint", [])
-        if len(auth_endpoint) > 1:
-            raise InvalidStorageUri("Too many `auth_endpoint1 query values")
-        if len(auth_endpoint) == 0:
+        auth_endpoint = get_optional_query_parameter(query, "auth_endpoint")
+        if auth_endpoint is None:
             raise SwiftStorageError("Required field is missing: auth_endpoint")
-        self.auth_endpoint = auth_endpoint[0]
+        self.auth_endpoint = auth_endpoint
 
-        region_name = query.get("region", [])
-        if len(region_name) > 1:
-            raise InvalidStorageUri("Too many `region` query values.")
-        if len(region_name) == 0:
+        region_name = get_optional_query_parameter(query, "region")
+        if region_name is None:
             raise SwiftStorageError("Required field is missing: region_name")
-        self.region_name = region_name[0]
+        self.region_name = region_name
 
-        tenant_id = query.get("tenant_id", [])
-        if len(tenant_id) > 1:
-            raise InvalidStorageUri("Too many `tenant_id` query values.")
-        if len(tenant_id) == 0:
+        tenant_id = get_optional_query_parameter(query, "tenant_id")
+        if tenant_id is None:
             raise SwiftStorageError("Required field is missing: tenant_id")
-        self.tenant_id = tenant_id[0]
+        self.tenant_id = tenant_id
 
-        download_url_key = query.get("download_url_key", [])
-        if len(download_url_key) > 1:
-            raise InvalidStorageUri("Too many `download_url_key` query values.")
-        self.download_url_key = download_url_key[0] if len(download_url_key) else None
+        self.download_url_key = get_optional_query_parameter(query, "download_url_key")
 
         if self._parsed_storage_uri.username == "":
             raise InvalidStorageUri("Missing username")
