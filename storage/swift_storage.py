@@ -58,8 +58,8 @@ def retry_swift_operation(error_str: str, fn: Callable[..., T], *args: Any, **kw
         raise
     except ClientException:
         raise
-    except Exception as exc:
-        raise SwiftStorageError(f"Failure retrieving object: {exc}") from exc
+    except Exception:
+        raise
 
 
 @register_storage_protocol("swift")

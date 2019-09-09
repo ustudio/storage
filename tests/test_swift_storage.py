@@ -9,6 +9,7 @@ import time
 from unittest import mock
 from urllib.parse import urlencode, urlparse, parse_qsl
 
+from keystoneauth1.exceptions.http import BadGateway, InternalServerError
 import swiftclient
 from typing import Any, Dict, Generator, List, Optional, TYPE_CHECKING
 
@@ -262,7 +263,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         tmp_file = BytesIO()
 
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(InternalServerError):
                 storage_object.save_to_file(tmp_file)
 
         self.assertEqual(0, len(self.remaining_auth_failures))
@@ -280,7 +281,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         tmp_file = BytesIO()
 
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(BadGateway):
                 storage_object.save_to_file(tmp_file)
 
         self.assertEqual(0, len(self.remaining_auth_failures))
@@ -398,7 +399,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         tmp_file = tempfile.NamedTemporaryFile()
 
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(InternalServerError):
                 storage_object.save_to_filename(tmp_file.name)
 
         self.assertEqual(0, len(self.remaining_auth_failures))
@@ -416,7 +417,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         tmp_file = tempfile.NamedTemporaryFile()
 
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(BadGateway):
                 storage_object.save_to_filename(tmp_file.name)
 
         self.assertEqual(0, len(self.remaining_auth_failures))
@@ -843,7 +844,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         storage_object = get_storage(swift_uri)
 
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(InternalServerError):
                 storage_object.save_to_directory(self.tmp_dir.name)
 
         self.assertEqual(0, len(self.remaining_auth_failures))
@@ -963,7 +964,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         storage_object = get_storage(swift_uri)
 
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(InternalServerError):
                 storage_object.load_from_directory(self.tmp_dir.name)
 
         self.assertEqual(0, len(self.remaining_auth_failures))
