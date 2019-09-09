@@ -1,4 +1,12 @@
+class BadGateway(Exception):
+    pass
+
+
 class Forbidden(Exception):
+    pass
+
+
+class InternalServerError(Exception):
     pass
 
 

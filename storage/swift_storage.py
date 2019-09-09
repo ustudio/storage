@@ -51,6 +51,7 @@ def retry_swift_operation(error_str: str, fn: Callable[..., T], *args: Any, **kw
             if exc.http_status == 404:
                 exc.do_not_retry = True
                 raise exc
+            raise exc
 
     try:
         return retry.attempt(wrap_swift_operations)
