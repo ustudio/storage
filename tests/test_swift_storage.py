@@ -9,8 +9,8 @@ import time
 from unittest import mock
 from urllib.parse import urlencode, urlparse, parse_qsl
 
-from keystoneauth1.exceptions.http import BadGateway, InternalServerError
-import swiftclient
+from keystoneauth1.exceptions.http import BadGateway, Forbidden, InternalServerError, Unauthorized
+from swiftclient.exceptions import ClientException
 from typing import Any, Dict, Generator, List, Optional, TYPE_CHECKING
 
 from storage.storage import get_storage, InvalidStorageUri
@@ -31,7 +31,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def setUp(self) -> None:
         super().setUp()
 
-        self.remaining_auth_failures: List[str] = []
+        self.auth_failure = ""
 
         self.keystone_credentials = {
             "username": "USER",
@@ -91,8 +91,8 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         body_size = int(environ.get("CONTENT_LENGTH", 0))
         body = json.loads(environ["wsgi.input"].read(body_size))
 
-        if len(self.remaining_auth_failures) > 0:
-            failure = self.remaining_auth_failures.pop(0)
+        if len(self.auth_failure) > 0:
+            failure = self.auth_failure
 
             start_response(failure, [("Content-type", "text/plain")])
             return [b"Internal Server Error"]
@@ -156,14 +156,14 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def assert_raises_on_forbidden_keystone_access(self) -> Generator[None, None, None]:
         self.keystone_credentials["username"] = "nobody"
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(Forbidden):
                 yield
 
     @contextlib.contextmanager
     def assert_raises_on_unauthorized_keystone_access(self) -> Generator[None, None, None]:
         self.keystone_credentials = {}
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(Unauthorized):
                 yield
 
     def assert_requires_all_parameters(self, path: str) -> None:
@@ -250,10 +250,8 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.save_to_file(tmp_file)
 
-    def test_save_to_file_raises_internal_server_exception_after_max_retries(self) -> None:
-        self.remaining_auth_failures = [
-            "500 Internal Server Error", "500 Internal Server Error", "500 Internal Server Error",
-            "500 Internal Server Error", "500 Internal Server Error"]
+    def test_save_to_file_raises_internal_server_exception(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
 
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
@@ -266,12 +264,8 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.assertRaises(InternalServerError):
                 storage_object.save_to_file(tmp_file)
 
-        self.assertEqual(0, len(self.remaining_auth_failures))
-
-    def test_save_to_file_raises_bad_gateway_exception_after_max_retries(self) -> None:
-        self.remaining_auth_failures = [
-            "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway",
-            "502 Bad Gateway"]
+    def test_save_to_file_raises_bad_gateway_exception(self) -> None:
+        self.auth_failure = "502 Bad Gateway"
 
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
@@ -284,8 +278,6 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.assertRaises(BadGateway):
                 storage_object.save_to_file(tmp_file)
 
-        self.assertEqual(0, len(self.remaining_auth_failures))
-
     def test_save_to_file_raises_storage_error_on_swift_service_not_found(self) -> None:
         self.add_file_error("404 Not Found")
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
@@ -296,7 +288,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         tmp_file = BytesIO()
 
         with self.run_services():
-            with self.assertRaises(swiftclient.exceptions.ClientException):
+            with self.assertRaises(ClientException):
                 storage_object.save_to_file(tmp_file)
 
         self.swift_service.assert_requested_n_times(
@@ -386,10 +378,8 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         with self.assert_raises_on_unauthorized_keystone_access():
             storage_object.save_to_filename(tmp_file.name)
 
-    def test_save_to_filename_raises_internal_server_exception_after_max_retries(self) -> None:
-        self.remaining_auth_failures = [
-            "500 Internal Server Error", "500 Internal Server Error", "500 Internal Server Error",
-            "500 Internal Server Error", "500 Internal Server Error"]
+    def test_save_to_filename_raises_internal_server_exception(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
 
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
@@ -402,12 +392,8 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.assertRaises(InternalServerError):
                 storage_object.save_to_filename(tmp_file.name)
 
-        self.assertEqual(0, len(self.remaining_auth_failures))
-
-    def test_save_to_filename_raises_bad_gateway_exception_after_max_retries(self) -> None:
-        self.remaining_auth_failures = [
-            "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway", "502 Bad Gateway",
-            "502 Bad Gateway"]
+    def test_save_to_filename_raises_bad_gateway_exception(self) -> None:
+        self.auth_failure = "502 Bad Gateway"
 
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
 
@@ -420,8 +406,6 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.assertRaises(BadGateway):
                 storage_object.save_to_filename(tmp_file.name)
 
-        self.assertEqual(0, len(self.remaining_auth_failures))
-
     def test_save_to_filename_raises_storage_error_on_swift_service_not_found(self) -> None:
         self.add_file_error("404 Not Found")
         self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
@@ -432,7 +416,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         tmp_file = tempfile.NamedTemporaryFile()
 
         with self.run_services():
-            with self.assertRaises(swiftclient.exceptions.ClientException):
+            with self.assertRaises(ClientException):
                 storage_object.save_to_filename(tmp_file.name)
 
         self.swift_service.assert_requested_n_times(
@@ -500,19 +484,17 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
 
         self.swift_service.assert_not_requested("PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4")
 
-    def test_load_from_file_retries_on_authentication_server_errors(self) -> None:
-        self.remaining_auth_failures = ["500 Error", "500 Error"]
+    def test_load_from_file_raises_on_authentication_server_errors(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
 
         swift_uri = self._generate_storage_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
         tmp_file = BytesIO(b"FOOBAR")
 
-        with self.expect_put_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR"):
-            with self.run_services():
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
                 storage_object.load_from_file(tmp_file)
-
-        self.identity_service.assert_requested_n_times("POST", "/v2.0/tokens", 3)
 
     def test_load_from_filename_raises_when_missing_required_parameters(self) -> None:
         self.assert_requires_all_parameters("/path/to/file.mp4")
@@ -594,8 +576,8 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
 
         self.swift_service.assert_not_requested("PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4")
 
-    def test_load_from_filename_retries_on_authentication_server_errors(self) -> None:
-        self.remaining_auth_failures = ["500 Error", "500 Error"]
+    def test_load_from_filename_raises_on_authentication_server_errors(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
 
         swift_uri = self._generate_storage_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
@@ -604,11 +586,9 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         tmp_file.write(b"FOOBAR")
         tmp_file.flush()
 
-        with self.expect_put_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR"):
-            with self.run_services():
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
                 storage_object.load_from_filename(tmp_file.name)
-
-        self.identity_service.assert_requested_n_times("POST", "/v2.0/tokens", 3)
 
     def test_delete_raises_on_missing_parameters(self) -> None:
         self.assert_requires_all_parameters("/path/to/file.mp4")
@@ -621,17 +601,15 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.run_services():
                 storage_object.delete()
 
-    def test_delete_retries_on_authentication_server_errors(self) -> None:
-        self.remaining_auth_failures = ["500 Error", "500 Error"]
+    def test_delete_raises_on_authentication_server_errors(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
 
         swift_uri = self._generate_storage_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
-        with self.expect_delete_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4"):
-            with self.run_services():
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
                 storage_object.delete()
-
-        self.identity_service.assert_requested_n_times("POST", "/v2.0/tokens", 3)
 
     def test_delete_retries_on_swift_server_errors(self) -> None:
         self.remaining_file_delete_failures = ["500 Error", "500 Error"]
@@ -834,9 +812,8 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         self.swift_service.assert_requested_n_times(
             "GET", "/v2.0/1234/CONTAINER/path/to/files/file.mp4", 3)
 
-    def test_save_to_directory_raises_internal_server_exception_after_max_retries(self) -> None:
-        self.remaining_auth_failures = [
-            "500 Error", "500 Error", "500 Error", "500 Error", "500 Error"]
+    def test_save_to_directory_raises_internal_server_exception(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
 
         self._add_file_to_directory("/path/to/files/file.mp4", b"contents")
 
@@ -846,8 +823,6 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         with self.run_services():
             with self.assertRaises(InternalServerError):
                 storage_object.save_to_directory(self.tmp_dir.name)
-
-        self.assertEqual(0, len(self.remaining_auth_failures))
 
     def test_load_from_directory_raises_when_missing_required_parameters(self) -> None:
         self.assert_requires_all_parameters("/path/to/files")
@@ -954,9 +929,8 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
 
         self.assert_container_contents_equal("/path/to/files")
 
-    def test_load_from_directory_raises_internal_server_exception_after_max_retries(self) -> None:
-        self.remaining_auth_failures = [
-            "500 Error", "500 Error", "500 Error", "500 Error", "500 Error"]
+    def test_load_from_directory_raises_internal_server_exception(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
 
         self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
 
@@ -966,8 +940,6 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         with self.run_services():
             with self.assertRaises(InternalServerError):
                 storage_object.load_from_directory(self.tmp_dir.name)
-
-        self.assertEqual(0, len(self.remaining_auth_failures))
 
     def test_delete_directory_raises_on_missing_parameters(self) -> None:
         self.assert_requires_all_parameters("/path/to/files")
@@ -984,18 +956,16 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.run_services():
                 storage_object.delete_directory()
 
-    def test_delete_directory_retries_on_authentication_server_errors(self) -> None:
+    def test_delete_directory_raises_on_authentication_server_errors(self) -> None:
         self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
-        self.remaining_auth_failures = ["500 Error", "500 Error"]
+        self.auth_failure = "500 Internal Server Error"
 
         swift_uri = self._generate_storage_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
 
-        with self.expect_delete_directory("/path/to/files"):
-            with self.run_services():
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
                 storage_object.delete_directory()
-
-        self.identity_service.assert_requested_n_times("POST", "/v2.0/tokens", 3)
 
     def test_delete_directory_retries_on_swift_server_errors(self) -> None:
         self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)

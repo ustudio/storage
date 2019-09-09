@@ -4,11 +4,11 @@ import json
 from unittest import mock
 from urllib.parse import parse_qsl, urlencode, urlparse
 
+from keystoneauth1.exceptions.http import Forbidden, Unauthorized
 from typing import Dict, Generator, List, Optional, TYPE_CHECKING
 
 from storage import cloudfiles_storage
 from storage.storage import get_storage, InvalidStorageUri
-from storage.swift_storage import SwiftStorageError
 from tests.storage_test_case import StorageTestCase
 from tests.swift_service_test_case import SwiftServiceTestCase
 
@@ -67,14 +67,14 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def assert_raises_on_forbidden_access(self) -> Generator[None, None, None]:
         self.keystone_credentials["username"] = "nobody"
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(Forbidden):
                 yield
 
     @contextlib.contextmanager
     def assert_raises_on_unauthorized_access(self) -> Generator[None, None, None]:
         self.keystone_credentials = {}
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(Unauthorized):
                 yield
 
     @contextlib.contextmanager

@@ -1,4 +1,5 @@
-from typing import Any, AnyStr, Dict, Generator, List, Optional, overload, Tuple
+from typing import Any, AnyStr, BinaryIO, Dict, Generator, List, Optional
+from typing import overload, Tuple
 
 from keystoneauth1.session import Session
 
@@ -55,7 +56,7 @@ class Connection(object):
         self,
         container: str,
         obj: str,
-        contents: Optional[AnyStr],
+        contents: Optional[BinaryIO],
         content_length: Optional[int] = None,
         etag: Optional[str] = None,
         chunk_size: Optional[int] = None,
