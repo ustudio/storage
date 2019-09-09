@@ -9,13 +9,14 @@ import time
 from unittest import mock
 from urllib.parse import urlencode, urlparse, parse_qsl
 
+import swiftclient
+from typing import Any, Dict, Generator, List, Optional, TYPE_CHECKING
+
 from storage.storage import get_storage, InvalidStorageUri
 from storage.swift_storage import SwiftStorageError
 from tests.storage_test_case import StorageTestCase
 from tests.swift_service_test_case import SwiftServiceTestCase
 from tests.helpers import FileSpy
-
-from typing import Any, Dict, Generator, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from tests.service_test_case import Environ
@@ -294,7 +295,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         tmp_file = BytesIO()
 
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(swiftclient.exceptions.ClientException):
                 storage_object.save_to_file(tmp_file)
 
         self.swift_service.assert_requested_n_times(
@@ -430,7 +431,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         tmp_file = tempfile.NamedTemporaryFile()
 
         with self.run_services():
-            with self.assertRaises(SwiftStorageError):
+            with self.assertRaises(swiftclient.exceptions.ClientException):
                 storage_object.save_to_filename(tmp_file.name)
 
         self.swift_service.assert_requested_n_times(

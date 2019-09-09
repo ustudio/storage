@@ -47,14 +47,16 @@ def retry_swift_operation(error_str: str, fn: Callable[..., T], *args: Any, **kw
             raise SwiftStorageError(
                 f"Keystine authorization return unauthorized access {error_str}",
                 do_not_retry=True)
-        except ClientException as swift_exception:
-            raise SwiftStorageError(
-                f"Unable to perform swift operation {error_str}: {swift_exception}",
-                do_not_retry=True)
+        except ClientException as exc:
+            if exc.http_status == 404:
+                exc.do_not_retry = True
+                raise exc
 
     try:
         return retry.attempt(wrap_swift_operations)
     except SwiftStorageError:
+        raise
+    except ClientException:
         raise
     except Exception as exc:
         raise SwiftStorageError(f"Failure retrieving object: {exc}") from exc
