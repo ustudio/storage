@@ -1,7 +1,10 @@
-from typing import Any, AnyStr, BinaryIO, Dict, Generator, List, Optional
-from typing import overload, Tuple
+from typing import Any, BinaryIO, Dict, Generator, Iterable, List, Optional
+from typing import overload, Tuple, Union
 
 from keystoneauth1.session import Session
+
+
+OBJECT_CONTENTS = Optional[Union[str, BinaryIO, Iterable[str]]]
 
 
 class Connection(object):
@@ -56,7 +59,7 @@ class Connection(object):
         self,
         container: str,
         obj: str,
-        contents: Optional[BinaryIO],
+        contents: OBJECT_CONTENTS,
         content_length: Optional[int] = None,
         etag: Optional[str] = None,
         chunk_size: Optional[int] = None,
