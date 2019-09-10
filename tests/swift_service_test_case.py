@@ -165,7 +165,7 @@ class SwiftServiceTestCase(ServiceTestCase):
         if len(self.remaining_object_put_failures) > 0:
             failure = self.remaining_object_put_failures.pop(0)
             start_response(failure, [("Content-type", "text/plain")])
-            return [b"Internal server error."]
+            return [b"Internal server error"]
 
         header = b""
         while not header.endswith(b"\r\n"):

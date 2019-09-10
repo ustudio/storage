@@ -79,7 +79,8 @@ class SwiftStorage(Storage):
             keystone_session = session.Session(auth=auth)
 
             connection = swiftclient.client.Connection(
-                session=keystone_session, os_options=os_options, timeout=DEFAULT_SWIFT_TIMEOUT)
+                session=keystone_session, os_options=os_options, timeout=DEFAULT_SWIFT_TIMEOUT,
+                retries=0)
             connection.get_auth()
 
             self._connection = connection
@@ -175,7 +176,7 @@ class SwiftStorage(Storage):
             dir_name = os.path.dirname(file_path)
             os.makedirs(dir_name, exist_ok=True)
 
-            self._download_object_to_filename(container, object_path, file_path)
+            retry.attempt(self._download_object_to_filename, container, object_path, file_path)
 
     def load_from_directory(self, directory_path: str) -> None:
         connection = self.get_connection()

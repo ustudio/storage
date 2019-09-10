@@ -294,25 +294,6 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         self.swift_service.assert_requested_n_times(
             "GET", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
 
-    def test_save_to_file_seeks_to_beginning_of_file_on_error(self) -> None:
-        self.add_file_error("502 Bad Gateway")
-        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
-
-        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
-        storage_object = get_storage(swift_uri)
-
-        tmp_file = BytesIO()
-        tmp_file.write(b"EXTRA")
-
-        with self.run_services():
-            storage_object.save_to_file(tmp_file)
-
-        self.swift_service.assert_requested_n_times(
-            "GET", "/v2.0/1234/CONTAINER/path/to/file.mp4", 2)
-
-        tmp_file.seek(0)
-        self.assertEqual(b"FOOBAR", tmp_file.read())
-
     def test_save_to_filename_raises_exception_when_missing_parameters(self) -> None:
         self.assert_requires_all_parameters("/path/to/file.mp4")
 
@@ -422,26 +403,6 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         self.swift_service.assert_requested_n_times(
             "GET", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
 
-    def test_save_to_filename_seeks_to_beginning_of_file_on_error(self) -> None:
-        self.add_file_error("501 Bad Gateway")
-        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
-
-        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
-        storage_object = get_storage(swift_uri)
-
-        tmp_file = tempfile.NamedTemporaryFile()
-        tmp_file.write(b"EXTRA")
-        tmp_file.flush()
-
-        with self.run_services():
-            storage_object.save_to_filename(tmp_file.name)
-
-        self.swift_service.assert_requested_n_times(
-            "GET", "/v2.0/1234/CONTAINER/path/to/file.mp4", 2)
-
-        tmp_file.seek(0)
-        self.assertEqual(b"FOOBAR", tmp_file.read())
-
     def test_load_from_file_raises_when_missing_required_parameters(self) -> None:
         self.assert_requires_all_parameters("/path/to/file.mp4")
 
@@ -455,7 +416,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.run_services():
                 storage_object.load_from_file(tmp_file)
 
-    def test_load_from_file_retries_on_error(self) -> None:
+    def test_load_from_file_does_not_rety_on_error(self) -> None:
         self.remaining_object_put_failures.append("500 Internal server error")
 
         tmp_file = BytesIO(b"FOOBAR")
@@ -463,12 +424,15 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         swift_uri = self._generate_storage_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
-        with self.expect_put_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR"):
-            with self.run_services():
+        put_path = "/v2.0/1234/CONTAINER/path/to/file.mp4"
+        self.swift_service.add_handler("PUT", put_path, self.object_put_handler)
+
+        with self.run_services():
+            with self.assertRaises(ClientException):
                 storage_object.load_from_file(tmp_file)
 
         self.swift_service.assert_requested_n_times(
-            "PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4", 2)
+            "PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
 
     def test_load_from_file_does_not_retry_with_invalid_keystone_creds(self) -> None:
         swift_uri = self._generate_storage_uri("/path/to/file.mp4")
@@ -543,7 +507,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             "PUT", "/v2.0/1234/CONTAINER/path/to/file")
         request.assert_header_equals("Content-type", "application/octet-stream")
 
-    def test_load_from_filename_retries_on_error(self) -> None:
+    def test_load_from_filename_does_not_retry_on_error(self) -> None:
         self.remaining_object_put_failures.append("500 Internal server error")
 
         tmp_file = tempfile.NamedTemporaryFile()
@@ -553,12 +517,15 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         swift_uri = self._generate_storage_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
-        with self.expect_put_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR"):
-            with self.run_services():
+        put_path = "/v2.0/1234/CONTAINER/path/to/file.mp4"
+        self.swift_service.add_handler("PUT", put_path, self.object_put_handler)
+
+        with self.run_services():
+            with self.assertRaises(ClientException):
                 storage_object.load_from_filename(tmp_file.name)
 
         self.swift_service.assert_requested_n_times(
-            "PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4", 2)
+            "PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
 
     def test_load_from_filename_does_not_retry_with_invalid_keystone_creds(self) -> None:
         swift_uri = self._generate_storage_uri("/path/to/file.mp4")
@@ -611,18 +578,22 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.assertRaises(InternalServerError):
                 storage_object.delete()
 
-    def test_delete_retries_on_swift_server_errors(self) -> None:
+    def test_delete_does_not_retry_on_swift_server_errors(self) -> None:
         self.remaining_file_delete_failures = ["500 Error", "500 Error"]
 
         swift_uri = self._generate_storage_uri("/path/to/file.mp4")
         storage_object = get_storage(swift_uri)
 
-        with self.expect_delete_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4"):
-            with self.run_services():
+        self.container_contents["/path/to/file.mp4"] = b"UNDELETED!"
+        delete_path = "/v2.0/1234/CONTAINER/path/to/file.mp4"
+        self.swift_service.add_handler("DELETE", delete_path, self.object_delete_handler)
+
+        with self.run_services():
+            with self.assertRaises(ClientException):
                 storage_object.delete()
 
         self.swift_service.assert_requested_n_times(
-            "DELETE", "/v2.0/1234/CONTAINER/path/to/file.mp4", 3)
+            "DELETE", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
 
     @mock.patch("time.time")
     def test_get_download_url_raises_with_missing_download_url_key(
@@ -786,7 +757,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         self.assert_container_contents_equal("/path/to/files")
 
     def test_save_to_directory_retries_on_error(self) -> None:
-        self.remaining_container_failures.append("500 Internal server error")
+        self.remaining_file_failures.append("500 Internal server error")
         self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
 
         swift_uri = self._generate_storage_uri("/path/to/files")
@@ -795,7 +766,8 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         with self.run_services():
             storage_object.save_to_directory(self.tmp_dir.name)
 
-        self.swift_service.assert_requested_n_times("GET", "/v2.0/1234/CONTAINER", 2)
+        self.swift_service.assert_requested_n_times(
+            "GET", "/v2.0/1234/CONTAINER/path/to/files/file.mp4", 2)
 
     def test_save_to_directory_only_retries_put_object_when_store_object_fails(self) -> None:
         self.remaining_file_failures.append("500 Internal server error")
