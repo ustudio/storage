@@ -4,7 +4,7 @@ from typing import overload, Tuple, Union
 from keystoneauth1.session import Session
 
 
-OBJECT_CONTENTS = Optional[Union[str, BinaryIO, Iterable[str]]]
+ObjectContents = Optional[Union[str, BinaryIO, Iterable[str]]]
 
 
 class Connection(object):
@@ -59,7 +59,7 @@ class Connection(object):
         self,
         container: str,
         obj: str,
-        contents: OBJECT_CONTENTS,
+        contents: ObjectContents,
         content_length: Optional[int] = None,
         etag: Optional[str] = None,
         chunk_size: Optional[int] = None,
