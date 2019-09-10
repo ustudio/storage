@@ -16,7 +16,7 @@ from typing import Any, Dict, Generator, List, Optional, TYPE_CHECKING
 from storage.storage import get_storage, InvalidStorageUri
 from storage.swift_storage import SwiftStorageError
 from tests.storage_test_case import StorageTestCase
-from tests.swift_service_test_case import SwiftServiceTestCase
+from tests.swift_service_test_case import strip_slashes, SwiftServiceTestCase
 from tests.helpers import FileSpy
 
 if TYPE_CHECKING:
@@ -967,7 +967,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.assertRaises(InternalServerError):
                 storage_object.delete_directory()
 
-    def test_delete_directory_retries_on_swift_server_errors(self) -> None:
+    def test_delete_directory_does_not_retry_on_swift_server_errors(self) -> None:
         self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
         self.remaining_file_delete_failures = ["500 Error", "500 Error"]
         self.container_contents["/path/to/files/file.mp4"] = b"UNDELETED"
@@ -976,15 +976,21 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
         swift_uri = self._generate_storage_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
 
-        with self.expect_delete_directory("/path/to/files"):
-            with self.run_services():
+        expected_delete_paths = []
+        for name in self.container_contents:
+            delete_path = f"/v2.0/1234/CONTAINER/{strip_slashes(name)}"
+            expected_delete_paths.append(delete_path)
+            self.swift_service.add_handler("DELETE", delete_path, self.object_delete_handler)
+
+        with self.run_services():
+            with self.assertRaises(ClientException):
                 storage_object.delete_directory()
 
         file1_requests = self.swift_service.get_all_requests(
             "DELETE", "/v2.0/1234/CONTAINER/path/to/files/file.mp4")
         file2_requests = self.swift_service.get_all_requests(
             "DELETE", "/v2.0/1234/CONTAINER/path/to/files/folder/file2.mp4")
-        self.assertCountEqual([3, 1], [len(file1_requests), len(file2_requests)])
+        self.assertCountEqual([1, 0], [len(file1_requests), len(file2_requests)])
 
     def test_swift_rejects_multiple_query_values_for_auth_endpoint_setting(self) -> None:
         self.assert_rejects_multiple_query_values("object.mp4", "auth_endpoint")

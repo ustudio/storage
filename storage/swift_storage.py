@@ -211,4 +211,4 @@ class SwiftStorage(Storage):
             while object_path.startswith("/"):
                 object_path = object_path[1:]
 
-            retry.attempt(connection.delete_object, container, object_path)
+            connection.delete_object(container, object_path)
