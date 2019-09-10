@@ -95,10 +95,12 @@ class SwiftStorage(Storage):
             self, container: str, object_name: str, out_file: BinaryIO) -> None:
         connection = self.get_connection()
 
+        # may need to truncate file if retrying...
         out_file.seek(0)
+
         resp_headers, object_contents = connection.get_object(
             container, object_name, resp_chunk_size=_LARGE_CHUNK)
-        # may need to truncate file if retrying...
+
         for object_content in object_contents:
             out_file.write(object_content)
 
