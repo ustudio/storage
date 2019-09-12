@@ -1,6 +1,8 @@
-import Queue
+import queue
 import threading
-import urlparse
+from urllib.parse import ParseResult, urljoin, urlparse, uses_query
+
+from typing import BinaryIO, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 
 _STORAGE_TYPES = {}         # maintains supported storage protocols
@@ -24,14 +26,14 @@ DEFAULT_FTP_KEEPIDLE = 60
 DEFAULT_FTP_KEEPINTVL = 60
 
 
-def register_storage_protocol(scheme):
+def register_storage_protocol(scheme: str) -> Callable[[Type["Storage"]], Type["Storage"]]:
     """Register a storage protocol with the storage library by associating
     a scheme with the specified storage class (aClass)."""
 
-    def decorate_storage_protocol(aClass):
+    def decorate_storage_protocol(aClass: Type["Storage"]) -> Type["Storage"]:
 
         _STORAGE_TYPES[scheme] = aClass
-        urlparse.uses_query.append(scheme)
+        uses_query.append(scheme)
         return aClass
 
     return decorate_storage_protocol
@@ -51,10 +53,13 @@ class TimeoutError(IOError):
     pass
 
 
-def timeout(seconds, worker):
-    result_queue = Queue.Queue()
+T = TypeVar("T")
 
-    def wrapper():
+
+def timeout(seconds: int, worker: Callable[[], T]) -> T:
+    result_queue: queue.Queue[Union[BaseException, T]] = queue.Queue()
+
+    def wrapper() -> None:
         try:
             result_queue.put(worker())
         except BaseException as e:
@@ -66,7 +71,7 @@ def timeout(seconds, worker):
 
     try:
         result = result_queue.get(True, seconds)
-    except Queue.Empty:
+    except queue.Empty:
         raise TimeoutError()
 
     if isinstance(result, BaseException):
@@ -75,51 +80,57 @@ def timeout(seconds, worker):
 
 
 class Storage(object):
+    _storage_uri: str
+    _parsed_storage_uri: ParseResult
 
-    def __init__(self, storage_uri):
+    def __init__(self, storage_uri: str) -> None:
         self._storage_uri = storage_uri
-        self._parsed_storage_uri = urlparse.urlparse(storage_uri)
+        self._parsed_storage_uri = urlparse(storage_uri)
+        self._validate_parsed_uri()
 
-    def _class_name(self):
+    def _validate_parsed_uri(self) -> None:
+        pass
+
+    def _class_name(self) -> str:
         return self.__class__.__name__
 
-    def save_to_filename(self, file_path):
+    def save_to_filename(self, file_path: str) -> None:
         raise NotImplementedError(
-            "{0} does not implement 'save_to_filename'".format(self._class_name()))
+            "{} does not implement 'save_to_filename'".format(self._class_name()))
 
-    def save_to_file(self, out_file):
+    def save_to_file(self, out_file: BinaryIO) -> None:
         raise NotImplementedError(
-            "{0} does not implement 'save_to_file'".format(self._class_name()))
+            "{} does not implement 'save_to_file'".format(self._class_name()))
 
-    def save_to_directory(self, directory_path):
+    def save_to_directory(self, directory_path: str) -> None:
         raise NotImplementedError(
-            "{0} does not implement 'save_to_directory'".format(self._class_name()))
+            "{} does not implement 'save_to_directory'".format(self._class_name()))
 
-    def load_from_filename(self, file_path):
+    def load_from_filename(self, file_path: str) -> None:
         raise NotImplementedError(
-            "{0} does not implement 'load_from_filename'".format(self._class_name()))
+            "{} does not implement 'load_from_filename'".format(self._class_name()))
 
-    def load_from_file(self, in_file):
+    def load_from_file(self, in_file: BinaryIO) -> None:
         raise NotImplementedError(
-            "{0} does not implement 'load_from_file'".format(self._class_name()))
+            "{} does not implement 'load_from_file'".format(self._class_name()))
 
-    def load_from_directory(self, directory_path):
+    def load_from_directory(self, directory_path: str) -> None:
         raise NotImplementedError(
-            "{0} does not implement 'load_from_directory'".format(self._class_name()))
+            "{} does not implement 'load_from_directory'".format(self._class_name()))
 
-    def delete(self):
-        raise NotImplementedError("{0} does not implement 'delete'".format(self._class_name()))
+    def delete(self) -> None:
+        raise NotImplementedError("{} does not implement 'delete'".format(self._class_name()))
 
-    def delete_directory(self):
+    def delete_directory(self) -> None:
         raise NotImplementedError(
-            "{0} does not implement 'delete_directory'".format(self._class_name()))
+            "{} does not implement 'delete_directory'".format(self._class_name()))
 
-    def get_download_url(self, seconds=60, key=None):
+    def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         raise NotImplementedError(
-            "{0} does not implement 'get_download_url'".format(self._class_name()))
+            "{} does not implement 'get_download_url'".format(self._class_name()))
 
 
-def _generate_download_url_from_base(base, object_name):
+def _generate_download_url_from_base(base: Union[str, None], object_name: str) -> str:
     """Generate a download url by joining the base with the storage object_name.
 
     If the base is not defined, raise an exception.
@@ -127,7 +138,7 @@ def _generate_download_url_from_base(base, object_name):
     if base is None:
         raise DownloadUrlBaseUndefinedError("The storage uri has no download_url_base defined.")
 
-    return urlparse.urljoin(base, object_name)
+    return urljoin(base, object_name)
 
 
 class InvalidStorageUri(RuntimeError):
@@ -135,6 +146,16 @@ class InvalidStorageUri(RuntimeError):
     pass
 
 
-def get_storage(storage_uri):
+def get_storage(storage_uri: str) -> Storage:
     storage_type = storage_uri.split("://")[0]
     return _STORAGE_TYPES[storage_type](storage_uri)
+
+
+ParsedQuery = Dict[str, List[str]]
+
+
+def get_optional_query_parameter(parsed_query: ParsedQuery, parameter: str) -> Optional[str]:
+    query_arg = parsed_query.get(parameter, [])
+    if len(query_arg) > 1:
+        raise InvalidStorageUri(f"Too many `{parameter}` query values.")
+    return query_arg[0] if len(query_arg) else None

@@ -1,11 +1,17 @@
+import logging
 import random
 import time
 
+from typing import Any, Callable, TypeVar
 
-max_attempts = 5
+
+max_attempts: int = 5
 
 
-def attempt(f, *args, **kwargs):
+T = TypeVar("T")
+
+
+def attempt(f: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     attempts = 0
 
     while True:
@@ -22,3 +28,5 @@ def attempt(f, *args, **kwargs):
 
             sleep_time = random.uniform(0, (2 ** attempts) - 1)
             time.sleep(sleep_time)
+
+            logging.warning(f"Retry attempt #{attempts}", exc_info=True)

@@ -1,882 +1,978 @@
+import contextlib
+from io import BytesIO
+from hashlib import sha1
+import hmac
+import json
 import os
-from StringIO import StringIO
 import tempfile
-from unittest import TestCase
+import time
+from unittest import mock
+from urllib.parse import urlencode, urlparse, parse_qsl
 
-import mock
+from keystoneauth1.exceptions.http import BadGateway, Forbidden, InternalServerError, Unauthorized
+from swiftclient.exceptions import ClientException
+from typing import Any, Dict, Generator, List, Optional, TYPE_CHECKING
 
-import storage as storagelib
+from storage.storage import get_storage, InvalidStorageUri
+from storage.swift_storage import SwiftStorageError
+from tests.storage_test_case import StorageTestCase
+from tests.swift_service_test_case import strip_slashes, SwiftServiceTestCase
+from tests.helpers import FileSpy
 
-from tests.helpers import create_temp_nested_directory_with_files
+if TYPE_CHECKING:
+    from tests.service_test_case import Environ
+    from wsgiref.types import StartResponse
 
 
-EXPECTED_CHUNK_SIZE = 32 * 1024 * 1024
+_LARGE_CHUNK = 32 * 1024 * 1024
 
 
-class TestSwiftStorage(TestCase):
+class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
+    def setUp(self) -> None:
+        super().setUp()
 
-    class RackspaceObject:
-        def __init__(self, name, content_type):
-            self.name = name
-            self.content_type = content_type
+        self.auth_failure = ""
 
-    def setUp(self):
-        self.params = {
-            "username": "user",
-            "password": "password",
-            "container": "container",
-            "file": "file",
-            "region": "region",
-            "tenant_id": "1234567890",
-            "auth_endpoint": "http://identity.server.com:1234/v2/",
-            "api_key": "0987654321",
-            "public": True,
-            "download_url_key": "super_secret_key"
+        self.keystone_credentials = {
+            "username": "USER",
+            "password": "KEY",
+            "tenant_id": "1234"
         }
 
-    def _assert_login_correct(self, mock_create_context, mock_timeout, username=None, password=None,
-                              region=None, public=True, tenant_id=None, api_key=None):
-        mock_timeout.assert_called_with(storagelib.storage.DEFAULT_SWIFT_TIMEOUT, mock.ANY)
-        mock_context = mock_create_context.return_value
-        mock_create_context.assert_called_with(id_type="pyrax.base_identity.BaseIdentity",
-                                               username=username, password=password,
-                                               tenant_id=tenant_id, api_key=api_key)
-        mock_context.authenticate.assert_called_with()
-        mock_context.get_client.assert_called_with("swift", region, public=public)
-        self.assertEqual(
-            storagelib.storage.DEFAULT_SWIFT_TIMEOUT,
-            mock_context.get_client.return_value.timeout)
-
-    def _assert_default_login_correct(
-            self, mock_create_context, mock_timeout, api_key=False, public=True):
-        self._assert_login_correct(
-            mock_create_context,
-            mock_timeout,
-            api_key=self.params["api_key"] if api_key is True else None,
-            password=self.params["password"],
-            public=public,
-            region=self.params["region"],
-            username=self.params["username"],
-            tenant_id=self.params["tenant_id"]
-        )
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_authenticates_with_full_uri(self, mock_timeout, mock_create_context):
-        mock_context = mock_create_context.return_value
-        mock_swift = mock_context.get_client.return_value
-
-        temp_output = tempfile.NamedTemporaryFile()
-        mock_swift.fetch_object.return_value = ["FOOBAR", ]
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s&api_key=%(api_key)s" \
-              "&tenant_id=%(tenant_id)s&download_url_key=%(download_url_key)s" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.save_to_filename(temp_output.name)
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout, api_key=True)
-        mock_swift.fetch_object.assert_called_with(
-            self.params["container"], self.params["file"], chunk_size=EXPECTED_CHUNK_SIZE)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_authenticates_with_partial_uri(self, mock_timeout, mock_create_context):
-        mock_context = mock_create_context.return_value
-        mock_swift = mock_context.get_client.return_value
-
-        temp_output = tempfile.NamedTemporaryFile()
-        mock_swift.fetch_object.return_value = ["FOOBAR", ]
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.save_to_filename(temp_output.name)
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.fetch_object.assert_called_with(self.params["container"],
-                                                   self.params["file"],
-                                                   chunk_size=EXPECTED_CHUNK_SIZE)
-
-    @mock.patch("pyrax.create_context")
-    def test_swift_authenticate_fails_with_missing_params(self, mock_create_context):
-        mock_context = mock_create_context.return_value
-        mock_swift = mock_context.get_client.return_value
-
-        temp_output = tempfile.NamedTemporaryFile()
-        mock_swift.fetch_object.return_value = ["FOOBAR", ]
-
-        # uri with missing auth_endpoint... should fail.
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "region=%(region)s&tenant_id=%(tenant_id)s" % self.params
-        storage = storagelib.get_storage(uri)
-        with self.assertRaises(storagelib.storage.InvalidStorageUri):
-            storage.save_to_filename(temp_output.name)
-
-        # uri with missing region... should fail.
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&tenant_id=%(tenant_id)s" % self.params
-        storage = storagelib.get_storage(uri)
-        with self.assertRaises(storagelib.storage.InvalidStorageUri):
-            storage.save_to_filename(temp_output.name)
-
-        # uri with missing tenant_id... should fail.
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" % self.params
-        storage = storagelib.get_storage(uri)
-        with self.assertRaises(storagelib.storage.InvalidStorageUri):
-            storage.save_to_filename(temp_output.name)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_save_to_filename(self, mock_timeout, mock_create_context):
-        mock_context = mock_create_context.return_value
-        mock_swift = mock_context.get_client.return_value
-
-        temp_output = tempfile.NamedTemporaryFile()
-        mock_swift.fetch_object.return_value = ["FOOBAR", ]
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.save_to_filename(temp_output.name)
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.fetch_object.assert_called_with(
-            self.params["container"], self.params["file"], chunk_size=EXPECTED_CHUNK_SIZE)
-
-        with open(temp_output.name) as output_fp:
-            self.assertEqual("FOOBAR", output_fp.read())
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_save_to_file(self, mock_timeout, mock_create_context):
-        mock_context = mock_create_context.return_value
-        mock_swift = mock_context.get_client.return_value
-
-        mock_swift.fetch_object.return_value = iter(["foo", "bar"])
-
-        out_file = StringIO()
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.save_to_file(out_file)
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.fetch_object.assert_called_with(
-            self.params["container"], self.params["file"], chunk_size=EXPECTED_CHUNK_SIZE)
-
-        self.assertEqual("foobar", out_file.getvalue())
-
-    @mock.patch("os.path.exists", return_value=False)
-    @mock.patch("os.makedirs")
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_save_to_directory(
-            self, mock_timeout, mock_create_context, mock_makedirs, mock_path_exists):
-
-        expected_jpg = self.RackspaceObject("file/a/0.jpg", "image/jpg")
-        expected_mp4 = self.RackspaceObject("file/a/b/c/1.mp4", "video/mp4")
-
-        expected_files = [
-            expected_jpg,
-            expected_mp4
-        ]
-        mock_context = mock_create_context.return_value
-        mock_swift = mock_context.get_client.return_value
-
-        mock_swift.list_container_objects.return_value = expected_files
-
-        uri = "swift://{username}:{password}@{container}/{file}?" \
-              "auth_endpoint={auth_endpoint}&region={region}" \
-              "&tenant_id={tenant_id}".format(**self.params)
-
-        storagelib.get_storage(uri).save_to_directory("/tmp/cat/pants")
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.list_container_objects.assert_called_with(
-            self.params["container"], prefix=self.params["file"])
-
-        mock_makedirs.assert_has_calls([
-            mock.call("/tmp/cat/pants/a"), mock.call("/tmp/cat/pants/a/b/c")])
-
-        mock_swift.download_object.assert_any_call(
-            self.params["container"], expected_jpg, "/tmp/cat/pants/a", structure=False)
-        mock_swift.download_object.assert_any_call(
-            self.params["container"], expected_mp4, "/tmp/cat/pants/a/b/c", structure=False)
-
-    @mock.patch("storage.retry.time.sleep", autospec=True)
-    @mock.patch("storage.retry.random.uniform", autospec=True)
-    @mock.patch("os.path.exists", return_value=False)
-    @mock.patch("os.makedirs")
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_save_to_directory_retries_failed_file_downloads(
-            self, mock_timeout, mock_create_context, mock_makedirs, mock_path_exists, mock_uniform,
-            mock_sleep):
-
-        expected_jpg = self.RackspaceObject("file/a/0.jpg", "image/jpg")
-        expected_mp4 = self.RackspaceObject("file/a/b/c/1.mp4", "video/mp4")
-
-        expected_files = [
-            expected_jpg,
-            expected_mp4
-        ]
-        mock_context = mock_create_context.return_value
-        mock_swift = mock_context.get_client.return_value
-
-        mock_swift.list_container_objects.return_value = expected_files
-
-        mock_swift.download_object.side_effect = [
-            None,
-            storagelib.storage.TimeoutError,
-            None
-        ]
-
-        uri = "swift://{username}:{password}@{container}/{file}?" \
-              "auth_endpoint={auth_endpoint}&region={region}" \
-              "&tenant_id={tenant_id}".format(**self.params)
-
-        storagelib.get_storage(uri).save_to_directory("/tmp/cat/pants")
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.list_container_objects.assert_called_with(
-            self.params["container"], prefix=self.params["file"])
-
-        mock_makedirs.assert_has_calls([
-            mock.call("/tmp/cat/pants/a"), mock.call("/tmp/cat/pants/a/b/c")])
-
-        self.assertEqual(3, mock_swift.download_object.call_count)
-        mock_swift.download_object.assert_has_calls([
-            mock.call(self.params["container"], expected_jpg, "/tmp/cat/pants/a", structure=False),
-            mock.call(
-                self.params["container"], expected_mp4, "/tmp/cat/pants/a/b/c", structure=False),
-            mock.call(
-                self.params["container"], expected_mp4, "/tmp/cat/pants/a/b/c", structure=False)
-        ])
-
-        mock_uniform.assert_called_once_with(0, 1)
-
-        mock_sleep.assert_called_once_with(mock_uniform.return_value)
-
-    @mock.patch("storage.retry.time.sleep", autospec=True)
-    @mock.patch("storage.retry.random.uniform", autospec=True)
-    @mock.patch("os.path.exists", return_value=False)
-    @mock.patch("os.makedirs")
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_save_to_directory_fails_after_five_failed_file_download_retries(
-            self, mock_timeout, mock_create_context, mock_makedirs, mock_path_exists, mock_uniform,
-            mock_sleep):
-
-        expected_jpg = self.RackspaceObject("file/a/0.jpg", "image/jpg")
-        expected_mp4 = self.RackspaceObject("file/a/b/c/1.mp4", "video/mp4")
-
-        expected_files = [
-            expected_jpg,
-            expected_mp4
-        ]
-        mock_context = mock_create_context.return_value
-        mock_swift = mock_context.get_client.return_value
-
-        mock_swift.list_container_objects.return_value = expected_files
-
-        mock_swift.download_object.side_effect = [
-            storagelib.storage.TimeoutError,
-            IOError,
-            IOError,
-            IOError,
-            RuntimeError,
-        ]
-
-        uri = "swift://{username}:{password}@{container}/{file}?" \
-              "auth_endpoint={auth_endpoint}&region={region}" \
-              "&tenant_id={tenant_id}".format(**self.params)
-
-        with self.assertRaises(RuntimeError):
-            storagelib.get_storage(uri).save_to_directory("/tmp/cat/pants")
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.list_container_objects.assert_called_with(
-            self.params["container"], prefix=self.params["file"])
-
-        mock_makedirs.assert_called_once_with("/tmp/cat/pants/a")
-
-        self.assertEqual(5, mock_swift.download_object.call_count)
-        mock_swift.download_object.assert_has_calls([
-            mock.call(self.params["container"], expected_jpg, "/tmp/cat/pants/a", structure=False),
-            mock.call(self.params["container"], expected_jpg, "/tmp/cat/pants/a", structure=False),
-            mock.call(self.params["container"], expected_jpg, "/tmp/cat/pants/a", structure=False),
-            mock.call(self.params["container"], expected_jpg, "/tmp/cat/pants/a", structure=False),
-            mock.call(self.params["container"], expected_jpg, "/tmp/cat/pants/a", structure=False)
-        ])
-
-        mock_uniform.assert_has_calls([
-            mock.call(0, 1),
-            mock.call(0, 3),
-            mock.call(0, 7),
-            mock.call(0, 15)
-        ])
-
-        self.assertEqual(4, mock_sleep.call_count)
-        mock_sleep.assert_called_with(mock_uniform.return_value)
-
-    @mock.patch("os.path.exists", return_value=False)
-    @mock.patch("os.makedirs")
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_save_to_directory_works_with_empty_directories(
-            self, mock_timeout, mock_create_context, mock_makedirs, mock_path_exists):
-
-        expected_jpg = self.RackspaceObject("a/0.jpg", "image/jpg")
-        expected_mp4 = self.RackspaceObject("a/b/c/1.mp4", "video/mp4")
-
-        expected_files = [
-            self.RackspaceObject("nothing", "application/directory"),
-            expected_jpg,
-            self.RackspaceObject("to see", "application/directory"),
-            self.RackspaceObject("here", "application/directory"),
-            expected_mp4
-        ]
-        mock_context = mock_create_context.return_value
-        mock_swift = mock_context.get_client.return_value
-
-        mock_swift.list_container_objects.return_value = expected_files
-        mock_path_exists.return_value = False
-
-        uri = "swift://{username}:{password}@{container}/{file}?" \
-              "auth_endpoint={auth_endpoint}&region={region}" \
-              "&tenant_id={tenant_id}".format(**self.params)
-
-        storagelib.get_storage(uri).save_to_directory("/tmp/cat/pants")
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.list_container_objects.assert_called_with(
-            self.params["container"], prefix=self.params["file"])
-
-        mock_makedirs.assert_has_calls([
-            mock.call("/tmp/cat/pants/nothing"),
-            mock.call("/tmp/cat/pants/to see"),
-            mock.call("/tmp/cat/pants/here"),
-        ])
-
-        mock_swift.download_object.assert_any_call(
-            self.params["container"], expected_jpg, "a", structure=False)
-        mock_swift.download_object.assert_any_call(
-            self.params["container"], expected_mp4, "a/b/c", structure=False)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_load_from_filename(self, mock_timeout, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        temp_input = tempfile.NamedTemporaryFile()
-        temp_input.write("FOOBAR")
-        temp_input.flush()
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.load_from_filename(temp_input.name)
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.upload_file.assert_called_with(
-            self.params["container"], temp_input.name, self.params["file"])
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_load_from_filename_provides_content_type(
-            self, mock_timeout, mock_create_context):
-        self.params["file"] = "foobar.mp4"
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        temp_input = tempfile.NamedTemporaryFile()
-        temp_input.write("FOOBAR")
-        temp_input.flush()
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s" % self.params
-
-        storage = storagelib.get_storage(uri)
-        storage.load_from_filename(temp_input.name)
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.upload_file.assert_called_with(
-            self.params["container"], temp_input.name, self.params["file"],
-            content_type="video/mp4")
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_load_from_file(self, mock_timeout, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        mock_input = mock.Mock()
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.load_from_file(mock_input)
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.upload_file.assert_called_with(
-            self.params["container"], mock_input, self.params["file"])
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_load_from_directory(self, mock_timeout, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        uri = "swift://{username}:{password}@{container}/{file}?" \
-              "auth_endpoint={auth_endpoint}&region={region}" \
-              "&tenant_id={tenant_id}".format(**self.params)
-
-        storage = storagelib.get_storage(uri)
-
-        temp_directory = create_temp_nested_directory_with_files()
-        storage.load_from_directory(temp_directory["temp_directory"]["path"])
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-
-        mock_swift.upload_file.assert_has_calls([
-            mock.call(
-                self.params["container"], temp_directory["temp_input_two"]["path"],
-                os.path.join(self.params["file"], temp_directory["temp_input_two"]["name"])),
-            mock.call(
-                self.params["container"], temp_directory["temp_input_one"]["path"],
-                os.path.join(self.params["file"], temp_directory["temp_input_one"]["name"])),
-            mock.call(
-                self.params["container"], temp_directory["nested_temp_input"]["path"],
-                os.path.join(
-                    self.params["file"], temp_directory["nested_temp_directory"]["name"],
-                    temp_directory["nested_temp_input"]["name"]))
-        ], any_order=True)
-
-    @mock.patch("storage.retry.time.sleep", autospec=True)
-    @mock.patch("storage.retry.random.uniform", autospec=True)
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_load_from_directory_retries_failed_file_uploads(
-            self, mock_timeout, mock_create_context, mock_uniform, mock_sleep):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        mock_swift.upload_file.side_effect = [
-            None,
-            storagelib.storage.TimeoutError,
-            None,
-            None
-        ]
-
-        uri = "swift://{username}:{password}@{container}/{file}?" \
-              "auth_endpoint={auth_endpoint}&region={region}" \
-              "&tenant_id={tenant_id}".format(**self.params)
-
-        storage = storagelib.get_storage(uri)
-
-        temp_directory = create_temp_nested_directory_with_files()
-        storage.load_from_directory(temp_directory["temp_directory"]["path"])
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-
-        self.assertEqual(4, mock_swift.upload_file.call_count)
-        mock_swift.upload_file.assert_has_calls([
-            mock.call(
-                self.params["container"], temp_directory["temp_input_two"]["path"],
-                os.path.join(self.params["file"], temp_directory["temp_input_two"]["name"])),
-            mock.call(
-                self.params["container"], temp_directory["temp_input_one"]["path"],
-                os.path.join(self.params["file"], temp_directory["temp_input_one"]["name"])),
-            mock.call(
-                self.params["container"], temp_directory["nested_temp_input"]["path"],
-                os.path.join(
-                    self.params["file"], temp_directory["nested_temp_directory"]["name"],
-                    temp_directory["nested_temp_input"]["name"]))
-        ], any_order=True)
-        self.assertEqual(
-            mock_swift.upload_file.call_args_list[1], mock_swift.upload_file.call_args_list[2])
-
-        mock_uniform.assert_called_once_with(0, 1)
-
-        mock_sleep.assert_called_once_with(mock_uniform.return_value)
-
-    @mock.patch("storage.retry.time.sleep", autospec=True)
-    @mock.patch("storage.retry.random.uniform", autospec=True)
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_load_from_directory_fails_after_five_failed_file_upload_retries(
-            self, mock_timeout, mock_create_context, mock_uniform, mock_sleep):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        mock_swift.upload_file.side_effect = [
-            storagelib.storage.TimeoutError,
-            storagelib.storage.TimeoutError,
-            IOError,
-            IOError,
-            IOError
-        ]
-
-        uri = "swift://{username}:{password}@{container}/{file}?" \
-              "auth_endpoint={auth_endpoint}&region={region}" \
-              "&tenant_id={tenant_id}".format(**self.params)
-
-        storage = storagelib.get_storage(uri)
-
-        temp_directory = create_temp_nested_directory_with_files()
-
-        with self.assertRaises(IOError):
-            storage.load_from_directory(temp_directory["temp_directory"]["path"])
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-
-        self.assertEqual(5, mock_swift.upload_file.call_count)
-        self.assertEqual(
-            mock_swift.upload_file.call_args, mock_swift.upload_file.call_args_list[0])
-        self.assertEqual(
-            mock_swift.upload_file.call_args, mock_swift.upload_file.call_args_list[1])
-        self.assertEqual(
-            mock_swift.upload_file.call_args, mock_swift.upload_file.call_args_list[2])
-        self.assertEqual(
-            mock_swift.upload_file.call_args, mock_swift.upload_file.call_args_list[3])
-
-        mock_uniform.assert_has_calls([
-            mock.call(0, 1),
-            mock.call(0, 3),
-            mock.call(0, 7),
-            mock.call(0, 15)
-        ])
-
-        self.assertEqual(4, mock_sleep.call_count)
-        mock_sleep.assert_called_with(mock_uniform.return_value)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_delete(self, mock_timeout, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.delete()
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.delete_object.assert_called_with(self.params["container"], self.params["file"])
-
-    @mock.patch("pyrax.create_context")
-    def test_swift_delete_directory(self, mock_create_context):
-
-        expected_files = [
-            self.RackspaceObject("file/a/0.txt", "text/plain"),
-            self.RackspaceObject("file/a/b/1.mp4", "video/mp4"),
-            self.RackspaceObject("file/a/b/c/2.mp4", "video/mp4")
-        ]
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        mock_swift.list_container_objects.return_value = expected_files
-
-        uri = "swift://{username}:{password}@{container}/{file}?" \
-              "auth_endpoint={auth_endpoint}&region={region}" \
-              "&tenant_id={tenant_id}".format(**self.params)
-
-        storage = storagelib.get_storage(uri)
-        storage.delete_directory()
-
-        mock_swift.delete_object.assert_has_calls([
-            mock.call(self.params["container"], "file/a/b/c/2.mp4"),
-            mock.call(self.params["container"], "file/a/b/1.mp4"),
-            mock.call(self.params["container"], "file/a/0.txt")
-        ], any_order=True)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_uses_servicenet_when_requested(self, mock_timeout, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s&public=False" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.delete()
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout, public=False)
-        mock_swift.delete_object.assert_called_with(self.params["container"], self.params["file"])
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_get_download_url(self, mock_timeout, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s&download_url_key=%(download_url_key)s" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.get_download_url()
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.get_temp_url.assert_called_with(
-            self.params["container"], self.params["file"],
-            seconds=60, method="GET", key="super_secret_key")
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_get_download_url_without_temp_url_key(self, mock_timeout, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.get_download_url()
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.get_temp_url.assert_called_with(
-            self.params["container"], self.params["file"], seconds=60, method="GET", key=None)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_get_download_url_with_override(self, mock_timeout, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s&download_url_key=%(download_url_key)s" % self.params
-        storage = storagelib.get_storage(uri)
-
-        storage.get_download_url(key="NOT-THE-URI-KEY")
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.get_temp_url.assert_called_with(
-            self.params["container"], self.params["file"],
-            seconds=60, method="GET", key="NOT-THE-URI-KEY")
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_swift_get_download_url_with_non_default_expiration(
-            self, mock_timeout, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        uri = "swift://%(username)s:%(password)s@%(container)s/%(file)s?" \
-              "auth_endpoint=%(auth_endpoint)s&region=%(region)s" \
-              "&tenant_id=%(tenant_id)s" % self.params
-        storage = storagelib.get_storage(uri)
-        storage.get_download_url(seconds=10 * 60)
-
-        self._assert_default_login_correct(mock_create_context, mock_timeout)
-        mock_swift.get_temp_url.assert_called_with(
-            self.params["container"], self.params["file"],
-            seconds=600, method="GET", key=None)
-
-    @mock.patch("pyrax.create_context")
-    def test_swift_get_download_url_encodes_object_names_with_spaces(self, mock_create_context):
-        mock_swift = mock_create_context.return_value.get_client.return_value
-
-        updated_params = self.params.copy()
-        updated_params["file"] = "filename with spaces.txt"
-
-        uri = "swift://{username}:{password}@{container}/{file}?" \
-            "auth_endpoint={auth_endpoint}&region={region}" \
-            "&tenant_id={tenant_id}".format(**updated_params)
-
-        mock_swift.get_temp_url.return_value = "http://cloudfiles.com/path/to/{file}" \
-            "?param1=12345&param2=67890".format(**updated_params)
-
-        storage = storagelib.get_storage(uri)
-        download_url = storage.get_download_url()
-
-        mock_swift.get_temp_url.assert_called_with(
-            updated_params["container"], updated_params["file"],
-            seconds=60, method="GET", key=None)
-
-        self.assertEqual(
-            download_url,
-            "http://cloudfiles.com/path/to/filename%20with%20spaces.txt?param1=12345&param2=67890")
-
-
-class TestRegisterSwiftProtocol(TestCase):
-
-    def setUp(self):
-        self.scheme = "myscheme"
-        self.auth_endpoint = "http://identity.server.com:1234/v2.0/"
-
-    def test_register_swift_protocol_updates_storage_types(self):
-
-        @storagelib.register_swift_protocol(scheme=self.scheme, auth_endpoint=self.auth_endpoint)
-        class MyStorageClass(storagelib.swift_storage.SwiftStorage):
-            pass
-
-        self.assertIn(self.scheme, storagelib.storage._STORAGE_TYPES)
-
-        uri = "{0}://username:password@containter/object?region=region-a".format(self.scheme)
-        store_obj = storagelib.get_storage(uri)
-        self.assertIsInstance(store_obj, MyStorageClass)
-
-    @mock.patch("pyrax.create_context")
-    def test_register_allows_override_of_auth_url(self, mock_create_context):
-        @storagelib.register_swift_protocol(scheme=self.scheme, auth_endpoint=self.auth_endpoint)
-        class MyStorageClass(storagelib.swift_storage.SwiftStorage):
-            pass
-
-        uri = "{0}://username:password@container/object?region=region-a&tenant_id=tennant".format(
-            self.scheme)
-
-        storage = storagelib.get_storage(uri)
-
-        storage._authenticate()
-
-        self.assertEqual(
-            self.auth_endpoint, mock_create_context.return_value.auth_endpoint)
-
-    def test_register_swift_protocol_only_wraps_swiftstorage_subclasses(self):
-
-        # wrapped class must be an instance of SwiftStorage
-        with self.assertRaises(Exception):
-            @storagelib.register_swift_protocol(scheme=self.scheme,
-                                                auth_endpoint=self.auth_endpoint)
-            class NonStorageClass(object):
-                pass
-
-
-class TestRackspaceStorage(TestCase):
-    def _assert_login_correct(
-            self, mock_create_context, mock_timeout, username, password, region, public):
-        mock_timeout.assert_called_with(storagelib.storage.DEFAULT_SWIFT_TIMEOUT, mock.ANY)
-        mock_context = mock_create_context.return_value
-        mock_create_context.assert_called_with("rackspace", username=username, password=password)
-        mock_context.authenticate.assert_called_with()
-        mock_context.get_client.assert_called_with("cloudfiles", region, public=public)
-        self.assertEqual(
-            storagelib.storage.DEFAULT_SWIFT_TIMEOUT,
-            mock_context.get_client.return_value.timeout)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_rackspace_authenticate_with_defaults(self, mock_timeout, mock_create_context):
-        uri = "cloudfiles://{username}:{api_key}@{container}/{file}".format(
-            username="username", api_key="apikey", container="container", file="file.txt")
-
-        storage = storagelib.get_storage(uri)
-        storage.delete()
-
-        self._assert_login_correct(
-            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
-            public=True)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_rackspace_authenticate_with_public_false(self, mock_timeout, mock_create_context):
-        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?public=False".format(
-            username="username", api_key="apikey", container="container", file="file.txt")
-
-        storage = storagelib.get_storage(uri)
-        storage.delete()
-
-        self._assert_login_correct(
-            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
-            public=False)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_rackspace_authenticate_with_region(self, mock_timeout, mock_create_context):
-        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?region=ORD".format(
-            username="username", api_key="apikey", container="container", file="file.txt")
-
-        storage = storagelib.get_storage(uri)
-        storage.delete()
-
-        self._assert_login_correct(
-            mock_create_context, mock_timeout, username="username", password="apikey", region="ORD",
-            public=True)
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_rackspace_uses_download_url_key_when_provided_in_url(
-            self, mock_timeout, mock_create_context):
-        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?download_url_key={key}".format(
-            username="username", api_key="apikey", container="container", file="file.txt",
-            key="super_secret_key")
-
-        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
-
-        storage = storagelib.get_storage(uri)
-        storage.get_download_url()
-
-        self._assert_login_correct(
-            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
-            public=True)
-
-        mock_cloudfiles.get_temp_url.assert_called_once_with(
-            "container", "file.txt", seconds=60, method="GET", key="super_secret_key")
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_rackspace_uses_download_url_key_when_provided_call(
-            self, mock_timeout, mock_create_context):
-        uri = "cloudfiles://{username}:{api_key}@{container}/{file}?download_url_key={key}".format(
-            username="username", api_key="apikey", container="container", file="file.txt",
-            key="super_secret_key")
-
-        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
-
-        storage = storagelib.get_storage(uri)
-        storage.get_download_url(key="other_key")
-
-        self._assert_login_correct(
-            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
-            public=True)
-
-        mock_cloudfiles.get_temp_url.assert_called_once_with(
-            "container", "file.txt", seconds=60, method="GET", key="other_key")
-
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_rackspace_fetches_download_url_key_when_not_provided(
-            self, mock_timeout, mock_create_context):
-        uri = "cloudfiles://{username}:{api_key}@{container}/{file}".format(
-            username="username", api_key="apikey", container="container", file="file.txt")
-
-        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
-
-        mock_cloudfiles.get_account_metadata.return_value = {
-            "some_metadata": "values",
-            "temp_url_key": "secret_key_from_server"
+        self.identity_service = self.add_service()
+        self.identity_service.add_handler("GET", "/v2.0", self.identity_handler)
+        self.identity_service.add_handler("POST", "/v2.0/tokens", self.authentication_handler)
+
+        self.mock_sleep_patch = mock.patch("time.sleep")
+        self.mock_sleep = self.mock_sleep_patch.start()
+        self.mock_sleep.side_effect = lambda x: None
+
+    def tearDown(self) -> None:
+        super().tearDown()
+        self.mock_sleep_patch.stop()
+
+    def identity_handler(self, environ: "Environ", start_response: "StartResponse") -> List[bytes]:
+        start_response("200 OK", [("Content-Type", "application/json")])
+        return [json.dumps({
+            "version": {
+                "media-types": {
+                    "values": [
+                        {
+                            "type": "application/vnd.openstack.identity+json;version=2.0",
+                            "base": "application/json"
+                        }
+                    ]
+                },
+                "links": [
+                    {
+                        "rel": "self",
+                        "href": self.identity_service.url("/v2.0")
+                    }
+                ],
+                "id": "v2.0",
+                "status": "CURRENT"
+            }
+        }).encode("utf8")]
+
+    def _valid_credentials(self, body_credentials: Dict[str, Any]) -> bool:
+        tenant_name = body_credentials["tenantName"]
+        username = body_credentials["passwordCredentials"]["username"]
+        password = body_credentials["passwordCredentials"]["password"]
+
+        if username == self.keystone_credentials["username"] and \
+           password == self.keystone_credentials["password"] and \
+           tenant_name == self.keystone_credentials["tenant_id"]:
+            return True
+        else:
+            return False
+
+    def authentication_handler(
+            self, environ: "Environ", start_response: "StartResponse") -> List[bytes]:
+        body_size = int(environ.get("CONTENT_LENGTH", 0))
+        body = json.loads(environ["wsgi.input"].read(body_size))
+
+        if len(self.auth_failure) > 0:
+            failure = self.auth_failure
+
+            start_response(failure, [("Content-type", "text/plain")])
+            return [b"Internal Server Error"]
+
+        # Forcing a 401 since swift service won't let us provide it
+        if self.keystone_credentials == {}:
+            start_response("401 Unauthorized", [("Content-type", "text/plain")])
+            return [b"Unauthorized keystone credentials."]
+        if not self._valid_credentials(body["auth"]):
+            start_response("403 Forbidden", [("Content-type", "text/plain")])
+            return [b"Invalid keystone credentials."]
+
+        start_response("200 OK", [("Content-type", "application/json")])
+        return [json.dumps({
+            "access": {
+                "token": {
+                    "expires": "2999-12-05T00:00:00",
+                    "id": "TOKEN",
+                    "tenant": {
+                        "id": "1234",
+                        "name": "1234"
+                    }
+                },
+                "serviceCatalog": [{
+                    "endpoints": [{
+                        "adminURL": self.swift_service.url("/v2.0/1234"),
+                        "region": "DFW",
+                        "internalURL": self.swift_service.url("/v2.0/1234"),
+                        "publicURL": self.swift_service.url("/v2.0/1234")
+                    }],
+                    "type": "object-store",
+                    "name": "swift"
+                }],
+                "user": {
+                    "id": "USERID",
+                    "roles": [{
+                        "tenantId": "1234",
+                        "id": "3",
+                        "name": "Member"
+                    }],
+                    "name": "USER"
+                }
+            }
+        }).encode("utf8")]
+
+    def _generate_storage_uri(
+            self, filename: str, parameters: Optional[Dict[str, str]] = None) -> str:
+        base_uri = f"swift://USER:KEY@CONTAINER{filename}"
+        query_args = {
+            "auth_endpoint": self.identity_service.url("/v2.0"),
+            "tenant_id": "1234",
+            "region": "DFW"
         }
 
-        storage = storagelib.get_storage(uri)
-        storage.get_download_url()
+        if parameters is not None:
+            query_args.update(parameters)
 
-        self._assert_login_correct(
-            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
-            public=True)
+        return f"{base_uri}?{urlencode(query_args)}"
 
-        mock_cloudfiles.get_temp_url.assert_called_once_with(
-            "container", "file.txt", seconds=60, method="GET", key="secret_key_from_server")
+    @contextlib.contextmanager
+    def assert_raises_on_forbidden_keystone_access(self) -> Generator[None, None, None]:
+        self.keystone_credentials["username"] = "nobody"
+        with self.run_services():
+            with self.assertRaises(Forbidden):
+                yield
 
-    @mock.patch("pyrax.create_context")
-    @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
-    def test_rackspace_handles_incorrectly_filtered_metadata_when_fetching_download_url_key(
-            self, mock_timeout, mock_create_context):
-        uri = "cloudfiles://{username}:{api_key}@{container}/{file}".format(
-            username="username", api_key="apikey", container="container", file="file.txt")
+    @contextlib.contextmanager
+    def assert_raises_on_unauthorized_keystone_access(self) -> Generator[None, None, None]:
+        self.keystone_credentials = {}
+        with self.run_services():
+            with self.assertRaises(Unauthorized):
+                yield
 
-        mock_cloudfiles = mock_create_context.return_value.get_client.return_value
-
-        mock_cloudfiles.get_account_metadata.return_value = {
-            "some_metadata": "values",
-            "X_Account_Meta_Temp_Url_Key": "secret_key_from_server"
+    def assert_requires_all_parameters(self, path: str) -> None:
+        base_uri = f"swift://USER:KEY@CONTAINER"
+        all_params = {
+            "tenant_id": "1234",
+            "region": "DFW",
+            "auth_endpoint": self.identity_service.url("/v2.0")
         }
 
-        storage = storagelib.get_storage(uri)
-        storage.get_download_url()
+        for key in all_params:
+            params = all_params.copy()
+            del params[key]
+            uri = f"{base_uri}{path}?{urlencode(params)}"
 
-        self._assert_login_correct(
-            mock_create_context, mock_timeout, username="username", password="apikey", region="DFW",
-            public=True)
+            with self.assertRaises(SwiftStorageError):
+                get_storage(uri)
 
-        mock_cloudfiles.get_temp_url.assert_called_once_with(
-            "container", "file.txt", seconds=60, method="GET", key="secret_key_from_server")
+        for auth_string in ["USER:@", ":KEY@"]:
+            uri = f"swift://{auth_string}CONTAINER{path}?{urlencode(all_params)}"
+
+            with self.assertRaises(InvalidStorageUri):
+                get_storage(uri)
+
+    def test_save_to_file_raises_exception_when_missing_required_parameters(self) -> None:
+        self.assert_requires_all_parameters("/path/to/file.mp4")
+
+    def test_save_to_file_writes_file_contents_to_file_object(self) -> None:
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = BytesIO()
+
+        with self.run_services():
+            storage_object.save_to_file(tmp_file)
+
+        tmp_file.seek(0)
+
+        self.assertEqual(b"FOOBAR", tmp_file.read())
+
+    def test_save_to_file_writes_different_file_contents_to_file(self) -> None:
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/other/file.mp4", b"BARFOO")
+
+        swift_uri = self._generate_storage_uri("/path/to/other/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = BytesIO()
+
+        with self.run_services():
+            storage_object.save_to_file(tmp_file)
+
+        tmp_file.seek(0)
+
+        self.assertEqual(b"BARFOO", tmp_file.read())
+
+    def test_save_to_file_makes_multiple_requests_when_chunking(self) -> None:
+        file_contents = b"F" * _LARGE_CHUNK * 3
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/large/file.mp4", file_contents)
+
+        swift_uri = self._generate_storage_uri("/path/to/large/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = FileSpy()
+
+        with self.run_services():
+            storage_object.save_to_file(tmp_file)
+
+        tmp_file.assert_written(file_contents)
+        tmp_file.assert_number_of_chunks(3)
+
+    def test_save_to_file_raises_on_forbidden_keystone_credentials(self) -> None:
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = BytesIO()
+
+        with self.assert_raises_on_forbidden_keystone_access():
+            storage_object.save_to_file(tmp_file)
+
+        with self.assert_raises_on_unauthorized_keystone_access():
+            storage_object.save_to_file(tmp_file)
+
+    def test_save_to_file_raises_internal_server_exception(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
+
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = BytesIO()
+
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
+                storage_object.save_to_file(tmp_file)
+
+    def test_save_to_file_raises_bad_gateway_exception(self) -> None:
+        self.auth_failure = "502 Bad Gateway"
+
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = BytesIO()
+
+        with self.run_services():
+            with self.assertRaises(BadGateway):
+                storage_object.save_to_file(tmp_file)
+
+    def test_save_to_file_raises_storage_error_on_swift_service_not_found(self) -> None:
+        self.add_file_error("404 Not Found")
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = BytesIO()
+
+        with self.run_services():
+            with self.assertRaises(ClientException):
+                storage_object.save_to_file(tmp_file)
+
+        self.swift_service.assert_requested_n_times(
+            "GET", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
+
+    def test_save_to_filename_raises_exception_when_missing_parameters(self) -> None:
+        self.assert_requires_all_parameters("/path/to/file.mp4")
+
+    def test_save_to_filename_writes_file_contents_to_file_object(self) -> None:
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = tempfile.NamedTemporaryFile()
+
+        with self.run_services():
+            storage_object.save_to_filename(tmp_file.name)
+
+        tmp_file.seek(0)
+
+        self.assertEqual(b"FOOBAR", tmp_file.read())
+
+    def test_save_to_filename_writes_different_file_contents_to_file(self) -> None:
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"BARFOO")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = tempfile.NamedTemporaryFile()
+
+        with self.run_services():
+            storage_object.save_to_filename(tmp_file.name)
+
+        tmp_file.seek(0)
+
+        self.assertEqual(b"BARFOO", tmp_file.read())
+
+    def test_save_to_filename_makes_multiple_requests_when_chunking(self) -> None:
+        file_contents = b"F" * _LARGE_CHUNK * 3
+
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", file_contents)
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            with mock.patch("builtins.open", mock.mock_open()) as mock_file:
+                storage_object.save_to_filename("/foobar.mp4")
+
+                mock_file.return_value.write.assert_has_calls([
+                    mock.call(b"F" * _LARGE_CHUNK),
+                    mock.call(b"F" * _LARGE_CHUNK),
+                    mock.call(b"F" * _LARGE_CHUNK)
+                ])
+
+    def test_save_to_filename_raises_on_forbidden_keystone_credentials(self) -> None:
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = tempfile.NamedTemporaryFile()
+
+        with self.assert_raises_on_forbidden_keystone_access():
+            storage_object.save_to_filename(tmp_file.name)
+
+        with self.assert_raises_on_unauthorized_keystone_access():
+            storage_object.save_to_filename(tmp_file.name)
+
+    def test_save_to_filename_raises_internal_server_exception(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
+
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = tempfile.NamedTemporaryFile()
+
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
+                storage_object.save_to_filename(tmp_file.name)
+
+    def test_save_to_filename_raises_bad_gateway_exception(self) -> None:
+        self.auth_failure = "502 Bad Gateway"
+
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = tempfile.NamedTemporaryFile()
+
+        with self.run_services():
+            with self.assertRaises(BadGateway):
+                storage_object.save_to_filename(tmp_file.name)
+
+    def test_save_to_filename_raises_storage_error_on_swift_service_not_found(self) -> None:
+        self.add_file_error("404 Not Found")
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = tempfile.NamedTemporaryFile()
+
+        with self.run_services():
+            with self.assertRaises(ClientException):
+                storage_object.save_to_filename(tmp_file.name)
+
+        self.swift_service.assert_requested_n_times(
+            "GET", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
+
+    def test_load_from_file_raises_when_missing_required_parameters(self) -> None:
+        self.assert_requires_all_parameters("/path/to/file.mp4")
+
+    def test_load_from_file_puts_file_contents_at_object_endpoint(self) -> None:
+        tmp_file = BytesIO(b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_put_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_file(tmp_file)
+
+    def test_load_from_file_does_not_rety_on_error(self) -> None:
+        self.remaining_object_put_failures.append("500 Internal server error")
+
+        tmp_file = BytesIO(b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        put_path = "/v2.0/1234/CONTAINER/path/to/file.mp4"
+        self.swift_service.add_handler("PUT", put_path, self.object_put_handler)
+
+        with self.run_services():
+            with self.assertRaises(ClientException):
+                storage_object.load_from_file(tmp_file)
+
+        self.swift_service.assert_requested_n_times(
+            "PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
+
+    def test_load_from_file_does_not_retry_with_invalid_keystone_creds(self) -> None:
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = BytesIO(b"FOOBAR")
+
+        with self.assert_raises_on_forbidden_keystone_access():
+            storage_object.load_from_file(tmp_file)
+
+        with self.assert_raises_on_unauthorized_keystone_access():
+            storage_object.load_from_file(tmp_file)
+
+        self.swift_service.assert_not_requested("PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4")
+
+    def test_load_from_file_raises_on_authentication_server_errors(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = BytesIO(b"FOOBAR")
+
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
+                storage_object.load_from_file(tmp_file)
+
+    def test_load_from_filename_raises_when_missing_required_parameters(self) -> None:
+        self.assert_requires_all_parameters("/path/to/file.mp4")
+
+    def test_load_from_filename_puts_file_contents_at_object_endpoint(self) -> None:
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_put_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_filename(tmp_file.name)
+
+    def test_load_from_filename_sends_guessed_content_type_from_extension(self) -> None:
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_put_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_filename(tmp_file.name)
+
+        request = self.swift_service.assert_requested(
+            "PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4")
+        request.assert_header_equals("Content-type", "video/mp4")
+
+    def test_load_from_filename_sends_default_content_type_when_none_is_determined(self) -> None:
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        swift_uri = self._generate_storage_uri("/path/to/file")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_put_object("/v2.0/1234/CONTAINER", "/path/to/file", b"FOOBAR"):
+            with self.run_services():
+                storage_object.load_from_filename(tmp_file.name)
+
+        request = self.swift_service.assert_requested(
+            "PUT", "/v2.0/1234/CONTAINER/path/to/file")
+        request.assert_header_equals("Content-type", "application/octet-stream")
+
+    def test_load_from_filename_does_not_retry_on_error(self) -> None:
+        self.remaining_object_put_failures.append("500 Internal server error")
+
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        put_path = "/v2.0/1234/CONTAINER/path/to/file.mp4"
+        self.swift_service.add_handler("PUT", put_path, self.object_put_handler)
+
+        with self.run_services():
+            with self.assertRaises(ClientException):
+                storage_object.load_from_filename(tmp_file.name)
+
+        self.swift_service.assert_requested_n_times(
+            "PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
+
+    def test_load_from_filename_does_not_retry_with_invalid_keystone_creds(self) -> None:
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        with self.assert_raises_on_forbidden_keystone_access():
+            storage_object.load_from_filename(tmp_file.name)
+
+        with self.assert_raises_on_unauthorized_keystone_access():
+            storage_object.load_from_filename(tmp_file.name)
+
+        self.swift_service.assert_not_requested("PUT", "/v2.0/1234/CONTAINER/path/to/file.mp4")
+
+    def test_load_from_filename_raises_on_authentication_server_errors(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        tmp_file = tempfile.NamedTemporaryFile()
+        tmp_file.write(b"FOOBAR")
+        tmp_file.flush()
+
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
+                storage_object.load_from_filename(tmp_file.name)
+
+    def test_delete_raises_on_missing_parameters(self) -> None:
+        self.assert_requires_all_parameters("/path/to/file.mp4")
+
+    def test_delete_makes_delete_request_against_swift_service(self) -> None:
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_delete_object("/v2.0/1234/CONTAINER", "/path/to/file.mp4"):
+            with self.run_services():
+                storage_object.delete()
+
+    def test_delete_raises_on_authentication_server_errors(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
+                storage_object.delete()
+
+    def test_delete_does_not_retry_on_swift_server_errors(self) -> None:
+        self.remaining_file_delete_failures = ["500 Error", "500 Error"]
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        self.container_contents["/path/to/file.mp4"] = b"UNDELETED!"
+        delete_path = "/v2.0/1234/CONTAINER/path/to/file.mp4"
+        self.swift_service.add_handler("DELETE", delete_path, self.object_delete_handler)
+
+        with self.run_services():
+            with self.assertRaises(ClientException):
+                storage_object.delete()
+
+        self.swift_service.assert_requested_n_times(
+            "DELETE", "/v2.0/1234/CONTAINER/path/to/file.mp4", 1)
+
+    @mock.patch("time.time")
+    def test_get_download_url_raises_with_missing_download_url_key(
+            self, mock_time: mock.Mock) -> None:
+        mock_time.return_value = 9000
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            with self.assertRaises(SwiftStorageError):
+                storage_object.get_download_url()
+
+    @mock.patch("time.time")
+    def test_get_download_url_returns_signed_url(self, mock_time: mock.Mock) -> None:
+        mock_time.return_value = 9000
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4", {"download_url_key": "KEY"})
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url()
+
+        parsed = urlparse(url)
+        expected = urlparse(self.swift_service.url("/v2.0/1234/CONTAINER/path/to/file.mp4"))
+
+        self.assertEqual(parsed.path, expected.path)
+        self.assertEqual(parsed.netloc, expected.netloc)
+
+        query = dict(parse_qsl(parsed.query))
+
+        self.assertEqual("9060", query["temp_url_expires"])
+        self.assertTrue("temp_url_sig" in query)
+
+    @mock.patch("time.time")
+    def test_get_download_url_accepts_variable_seconds(self, mock_time: mock.Mock) -> None:
+        mock_time.return_value = 9000
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4", {"download_url_key": "KEY"})
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url(seconds=120)
+
+        parsed = urlparse(url)
+        query = dict(parse_qsl(parsed.query))
+
+        self.assertEqual("9120", query["temp_url_expires"])
+
+    def generate_signature(self, path: str, key: bytes, expires: int = 60) -> str:
+        timestamp = time.time()
+        raw_string = f"GET\n{timestamp + expires}\n/v2.0/1234/CONTAINER{path}"
+        return hmac.new(key, raw_string.encode("utf8"), sha1).hexdigest()
+
+    @mock.patch("time.time")
+    def test_get_download_url_uses_download_url_key_by_default(self, mock_time: mock.Mock) -> None:
+        mock_time.return_value = 9000
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4", {"download_url_key": "KEY"})
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url()
+
+        parsed = urlparse(url)
+        signature = dict(parse_qsl(parsed.query))["temp_url_sig"]
+        expected_signature = self.generate_signature("/path/to/file.mp4", b"KEY")
+
+        self.assertEqual(expected_signature, signature)
+
+    @mock.patch("time.time")
+    def test_get_download_url_uses_alternate_download_url_key(self, mock_time: mock.Mock) -> None:
+        mock_time.return_value = 9000
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4", {"download_url_key": "FOOBAR"})
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url()
+
+        parsed = urlparse(url)
+        signature = dict(parse_qsl(parsed.query))["temp_url_sig"]
+
+        expected_signature = self.generate_signature("/path/to/file.mp4", b"FOOBAR")
+        self.assertEqual(expected_signature, signature)
+
+    @mock.patch("time.time")
+    def test_get_download_url_uses_provided_key(self, mock_time: mock.Mock) -> None:
+        mock_time.return_value = 9000
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url(key="BLARGH")
+
+        parsed = urlparse(url)
+        signature = dict(parse_qsl(parsed.query))["temp_url_sig"]
+
+        expected_signature = self.generate_signature("/path/to/file.mp4", b"BLARGH")
+        self.assertEqual(expected_signature, signature)
+
+    @mock.patch("time.time")
+    def test_get_download_url_overrides_download_url_key_with_provided_key(
+            self, mock_time: mock.Mock) -> None:
+        mock_time.return_value = 9000
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4", {"download_url_key": "FOOBAR"})
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            url = storage_object.get_download_url(key="BARFOO")
+
+        parsed = urlparse(url)
+        signature = dict(parse_qsl(parsed.query))["temp_url_sig"]
+
+        expected_signature = self.generate_signature("/path/to/file.mp4", b"BARFOO")
+        self.assertEqual(expected_signature, signature)
+
+    def test_save_to_directory_raises_exception_when_missing_required_parameters(self) -> None:
+        self.assert_requires_all_parameters("/path/to/files")
+
+    def test_save_to_directory_raises_on_forbidden_keystone_credentials(self) -> None:
+        self.add_container_object("/v2.0/1234/CONTAINER", "/path/to/files/file.mp4", b"FOOBAR")
+        self.add_container_object(
+            "/v2.0/1234/CONTAINER", "/path/to/files/other_file.mp4", b"BARFOO")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.assert_raises_on_forbidden_keystone_access():
+            storage_object.save_to_directory(self.tmp_dir.name)
+
+        with self.assert_raises_on_unauthorized_keystone_access():
+            storage_object.save_to_directory(self.tmp_dir.name)
+
+    def test_save_to_directory_downloads_files_matching_prefix_to_directory_location(self) -> None:
+        self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
+        self._add_file_to_directory("/path/to/files/other_file.mp4", b"Other Contents")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            storage_object.save_to_directory(self.tmp_dir.name)
+
+        self.assert_container_contents_equal("/path/to/files")
+
+    def test_save_to_directory_includes_subdirectories_in_local_path(self) -> None:
+        self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
+        self._add_file_to_directory("/path/to/files/other_file.mp4", b"Other Contents")
+        self._add_file_to_directory("/path/to/files/folder/file2.mp4", b"Video Content")
+        self._add_file_to_directory("/path/to/files/folder2/folder3/files3.mp4", b"Video Contents")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            storage_object.save_to_directory(self.tmp_dir.name)
+
+        self.assert_container_contents_equal("/path/to/files")
+
+    def test_save_to_directory_retries_on_error(self) -> None:
+        self.remaining_file_failures.append("500 Internal server error")
+        self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            storage_object.save_to_directory(self.tmp_dir.name)
+
+        self.swift_service.assert_requested_n_times(
+            "GET", "/v2.0/1234/CONTAINER/path/to/files/file.mp4", 2)
+
+    def test_save_to_directory_only_retries_put_object_when_store_object_fails(self) -> None:
+        self.remaining_file_failures.append("500 Internal server error")
+        self.remaining_file_failures.append("500 Internal server error")
+        self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            storage_object.save_to_directory(self.tmp_dir.name)
+
+        self.identity_service.assert_requested_n_times("POST", "/v2.0/tokens", 1)
+        self.swift_service.assert_requested("GET", "/v2.0/1234/CONTAINER")
+        self.swift_service.assert_requested_n_times(
+            "GET", "/v2.0/1234/CONTAINER/path/to/files/file.mp4", 3)
+
+    def test_save_to_directory_raises_internal_server_exception(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
+
+        self._add_file_to_directory("/path/to/files/file.mp4", b"contents")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
+                storage_object.save_to_directory(self.tmp_dir.name)
+
+    def test_load_from_directory_raises_when_missing_required_parameters(self) -> None:
+        self.assert_requires_all_parameters("/path/to/files")
+
+    def test_load_from_directory_puts_file_contents_at_object_endpoint(self) -> None:
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+    def test_load_from_directory_sends_guessed_content_type_from_extension(self) -> None:
+        temp_file = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR", suffix=".mp4")
+        temp_file2 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ", suffix=".jpg")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+        request = self.swift_service.assert_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(temp_file.name)}")
+        request.assert_header_equals("Content-type", "video/mp4")
+
+        other_request = self.swift_service.assert_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(temp_file2.name)}")
+        other_request.assert_header_equals("Content-type", "image/jpeg")
+
+    def test_load_from_directory_sends_default_content_type_when_none_is_determined(self) -> None:
+        temp_file = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR", suffix=".mp4")
+        temp_file2 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+        request = self.swift_service.assert_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(temp_file.name)}")
+        request.assert_header_equals("Content-type", "video/mp4")
+
+        other_request = self.swift_service.assert_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(temp_file2.name)}")
+        other_request.assert_header_equals("Content-type", "application/octet-stream")
+
+    def test_load_from_directory_does_not_retry_with_invalid_keystone_creds(self) -> None:
+        file1 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+        file2 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.assert_raises_on_forbidden_keystone_access():
+            storage_object.load_from_directory(self.tmp_dir.name)
+
+        with self.assert_raises_on_unauthorized_keystone_access():
+            storage_object.load_from_directory(self.tmp_dir.name)
+
+        self.swift_service.assert_not_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(file1.name)}")
+        self.swift_service.assert_not_requested(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(file2.name)}")
+
+    def test_load_from_directory_retries_on_error(self) -> None:
+        self.remaining_object_put_failures.append("500 Internal server error")
+
+        file1 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+        file2 = self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+        file1_requests = self.swift_service.get_all_requests(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(file1.name)}")
+        file2_requests = self.swift_service.get_all_requests(
+            "PUT", f"/v2.0/1234/CONTAINER/path/to/files/{os.path.basename(file2.name)}")
+        self.assertCountEqual([2, 1], [len(file1_requests), len(file2_requests)])
+
+    def test_load_from_directory_includes_subdirectories_in_object_endpoint(self) -> None:
+        dir_name = os.path.join(self.tmp_dir.name, "files2")
+        self._add_tmp_file_to_dir(dir_name, b"NESTED")
+
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FIZZBUZZ")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+        self.assert_container_contents_equal("/path/to/files")
+
+    def test_load_from_directory_raises_internal_server_exception(self) -> None:
+        self.auth_failure = "500 Internal Server Error"
+
+        self._add_tmp_file_to_dir(self.tmp_dir.name, b"FOOBAR")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
+                storage_object.load_from_directory(self.tmp_dir.name)
+
+    def test_delete_directory_raises_on_missing_parameters(self) -> None:
+        self.assert_requires_all_parameters("/path/to/files")
+
+    def test_delete_directory_makes_delete_request_against_swift_service(self) -> None:
+        self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
+        self.container_contents["/path/to/files/file.mp4"] = b"Contents"
+        self.container_contents["/path/to/files/folder/file2.mp4"] = b"Video Content"
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.expect_delete_directory("/path/to/files"):
+            with self.run_services():
+                storage_object.delete_directory()
+
+    def test_delete_directory_raises_on_authentication_server_errors(self) -> None:
+        self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
+        self.auth_failure = "500 Internal Server Error"
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            with self.assertRaises(InternalServerError):
+                storage_object.delete_directory()
+
+    def test_delete_directory_does_not_retry_on_swift_server_errors(self) -> None:
+        self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
+        self.remaining_file_delete_failures = ["500 Error", "500 Error"]
+        self.container_contents["/path/to/files/file.mp4"] = b"UNDELETED"
+        self.container_contents["/path/to/files/folder/file2.mp4"] = b"UNDELETED"
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        expected_delete_paths = []
+        for name in self.container_contents:
+            delete_path = f"/v2.0/1234/CONTAINER/{strip_slashes(name)}"
+            expected_delete_paths.append(delete_path)
+            self.swift_service.add_handler("DELETE", delete_path, self.object_delete_handler)
+
+        with self.run_services():
+            with self.assertRaises(ClientException):
+                storage_object.delete_directory()
+
+        file1_requests = self.swift_service.get_all_requests(
+            "DELETE", "/v2.0/1234/CONTAINER/path/to/files/file.mp4")
+        file2_requests = self.swift_service.get_all_requests(
+            "DELETE", "/v2.0/1234/CONTAINER/path/to/files/folder/file2.mp4")
+        self.assertCountEqual([1, 0], [len(file1_requests), len(file2_requests)])
+
+    def test_swift_rejects_multiple_query_values_for_auth_endpoint_setting(self) -> None:
+        self.assert_rejects_multiple_query_values("object.mp4", "auth_endpoint")
+
+    def test_swift_rejects_multiple_query_values_for_region_setting(self) -> None:
+        self.assert_rejects_multiple_query_values("object.mp4", "region", values=["DFW", "ORD"])
+
+    def test_swift_rejects_multiple_query_values_for_download_url_key_setting(self) -> None:
+        self.assert_rejects_multiple_query_values(
+            "object.mp4", "download_url_key", values=["KEY", "ALT-KEY"])
+
+    def test_swift_rejects_multiple_query_values_for_tenant_setting(self) -> None:
+        self.assert_rejects_multiple_query_values("object.mp4", "tenant_id", values=["1234", "567"])

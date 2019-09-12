@@ -1,9 +1,12 @@
 import distutils.dir_util
 import os
 import shutil
-import urlparse
+from urllib.parse import parse_qs
 
-from .storage import Storage, register_storage_protocol, _generate_download_url_from_base
+from typing import BinaryIO, Optional
+
+from storage.storage import get_optional_query_parameter, Storage, register_storage_protocol
+from storage.storage import _generate_download_url_from_base
 
 
 @register_storage_protocol("file")
@@ -18,51 +21,50 @@ class LocalStorage(Storage):
 
     """
 
-    def __init__(self, storage_uri):
-        super(LocalStorage, self).__init__(storage_uri)
-        query = urlparse.parse_qs(self._parsed_storage_uri.query)
-        self._download_url_base = query.get("download_url_base", [None])[0]
+    def _validate_parsed_uri(self) -> None:
+        query = parse_qs(self._parsed_storage_uri.query)
+        self._download_url_base = get_optional_query_parameter(query, "download_url_base")
 
-    def save_to_filename(self, file_path):
+    def save_to_filename(self, file_path: str) -> None:
         shutil.copy(self._parsed_storage_uri.path, file_path)
 
-    def save_to_file(self, out_file):
-        with open(self._parsed_storage_uri.path) as in_file:
+    def save_to_file(self, out_file: BinaryIO) -> None:
+        with open(self._parsed_storage_uri.path, "rb") as in_file:
             for chunk in in_file:
                 out_file.write(chunk)
 
-    def save_to_directory(self, destination_directory):
+    def save_to_directory(self, destination_directory: str) -> None:
         distutils.dir_util.copy_tree(self._parsed_storage_uri.path, destination_directory)
 
-    def _ensure_exists(self):
+    def _ensure_exists(self) -> None:
         dirname = os.path.dirname(self._parsed_storage_uri.path)
 
         if not os.path.exists(dirname):
             os.makedirs(dirname)
 
-    def load_from_filename(self, file_path):
+    def load_from_filename(self, file_path: str) -> None:
         self._ensure_exists()
 
         shutil.copy(file_path, self._parsed_storage_uri.path)
 
-    def load_from_file(self, in_file):
+    def load_from_file(self, in_file: BinaryIO) -> None:
         self._ensure_exists()
 
         with open(self._parsed_storage_uri.path, "wb") as out_file:
             for chunk in in_file:
                 out_file.write(chunk)
 
-    def load_from_directory(self, source_directory):
+    def load_from_directory(self, source_directory: str) -> None:
         self._ensure_exists()
         distutils.dir_util.copy_tree(source_directory, self._parsed_storage_uri.path)
 
-    def delete(self):
+    def delete(self) -> None:
         os.remove(self._parsed_storage_uri.path)
 
-    def delete_directory(self):
+    def delete_directory(self) -> None:
         shutil.rmtree(self._parsed_storage_uri.path, True)
 
-    def get_download_url(self, seconds=60, key=None):
+    def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         """
         Return a temporary URL allowing access to the storage object.
 

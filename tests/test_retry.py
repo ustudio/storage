@@ -1,17 +1,18 @@
-import mock
 import unittest
+from unittest import mock
 
 from storage import retry
 
 
-class UnRetriableError(StandardError):
+class UnRetriableError(Exception):
     do_not_retry = True
 
 
 class TestRetry(unittest.TestCase):
     @mock.patch("random.uniform")
     @mock.patch("time.sleep")
-    def test_does_not_retry_on_success(self, mock_sleep, mock_uniform):
+    def test_does_not_retry_on_success(
+            self, mock_sleep: mock.Mock, mock_uniform: mock.Mock) -> None:
         successful_function = mock.Mock(return_value="result")
 
         result = retry.attempt(successful_function, 1, 2, foo="bar", biz="baz")
@@ -24,7 +25,8 @@ class TestRetry(unittest.TestCase):
 
     @mock.patch("random.uniform")
     @mock.patch("time.sleep")
-    def test_retries_on_failure(self, mock_sleep, mock_uniform):
+    def test_retries_on_failure(
+            self, mock_sleep: mock.Mock, mock_uniform: mock.Mock) -> None:
         mock_uniform.side_effect = [0.5, 2.4]
 
         failing_function = mock.Mock(side_effect=[RuntimeError, RuntimeError, "result"])
@@ -47,7 +49,8 @@ class TestRetry(unittest.TestCase):
 
     @mock.patch("random.uniform")
     @mock.patch("time.sleep")
-    def test_reraises_last_exception_on_attempt_exhaustion(self, mock_sleep, mock_uniform):
+    def test_reraises_last_exception_on_attempt_exhaustion(
+            self, mock_sleep: mock.Mock, mock_uniform: mock.Mock) -> None:
         mock_uniform.side_effect = [0.5, 2.4, 3.6, 5.6]
 
         failing_function = mock.Mock(
@@ -64,7 +67,8 @@ class TestRetry(unittest.TestCase):
 
     @mock.patch("random.uniform")
     @mock.patch("time.sleep")
-    def test_does_not_retry_unretriable_errors(self, mock_sleep, mock_uniform):
+    def test_does_not_retry_unretriable_errors(
+            self, mock_sleep: mock.Mock, mock_uniform: mock.Mock) -> None:
         failing_function = mock.Mock(side_effect=UnRetriableError)
 
         with self.assertRaises(UnRetriableError):
