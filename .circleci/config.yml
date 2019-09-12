@@ -168,6 +168,7 @@ workflows:
       - publish:
           requires:
             - test
+            - test-3.6
           filters:
             tags:
               only: /^v[0-9]+(\.[0-9]+)*.*/
