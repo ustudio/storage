@@ -104,21 +104,27 @@ class TestGoogleStorage(TestCase):
         self.assert_gets_bucket_with_credentials()
 
         self.mock_bucket.blob.assert_called_once_with("path/filename")
-        self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=60))
+        self.mock_blob.generate_signed_url.assert_called_once_with(
+            expiration=datetime.timedelta(seconds=60),
+            response_disposition="attachment")
 
     def test_get_download_url_returns_signed_url_with_provided_expiration(self):
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         storage.get_download_url(1000)
 
-        self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=1000))
+        self.mock_blob.generate_signed_url.assert_called_once_with(
+            expiration=datetime.timedelta(seconds=1000),
+            response_disposition="attachment")
 
     def test_get_download_url_does_not_use_key_when_provided(self):
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
 
         storage.get_download_url(key="KEY")
 
-        self.mock_blob.generate_signed_url.assert_called_once_with(datetime.timedelta(seconds=60))
+        self.mock_blob.generate_signed_url.assert_called_once_with(
+            expiration=datetime.timedelta(seconds=60),
+            response_disposition="attachment")
 
     def _mock_blob(self, name):
         blob = mock.Mock()
