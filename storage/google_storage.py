@@ -53,7 +53,9 @@ class GoogleStorage(Storage):
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         blob = self._get_blob()
-        return blob.generate_signed_url(datetime.timedelta(seconds=seconds))
+        return blob.generate_signed_url(
+            expiration=datetime.timedelta(seconds=seconds),
+            response_disposition="attachment")
 
     def save_to_directory(self, directory_path: str) -> None:
         bucket = self._get_bucket()
