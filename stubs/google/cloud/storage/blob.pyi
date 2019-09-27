@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from typing import BinaryIO
+from typing import BinaryIO, Optional
 
 
 class Blob(object):
@@ -17,4 +17,6 @@ class Blob(object):
 
     def delete(self) -> None: ...
 
-    def generate_signed_url(self, expires: timedelta) -> str: ...
+    def generate_signed_url(
+        self, expiration: Optional[timedelta] = None,
+        response_disposition: Optional[str] = None) -> str: ...
