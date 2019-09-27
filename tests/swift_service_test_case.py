@@ -162,19 +162,20 @@ class SwiftServiceTestCase(ServiceTestCase):
             self, environ: "Environ", start_response: "StartResponse") -> List[bytes]:
         path = environ["REQUEST_PATH"].split("CONTAINER")[1]
 
+        contents = b""
         while True:
             header = b""
             while not header.endswith(b"\r\n"):
                 header += environ["wsgi.input"].read(1)
 
             body_size = int(header.strip())
-            contents = environ["wsgi.input"].read(body_size)
+            contents += environ["wsgi.input"].read(body_size)
             environ["wsgi.input"].read(2)  # read trailing "\r\n"
 
             if body_size == 0:
                 break
 
-            self.container_contents[path] = contents
+        self.container_contents[path] = contents
 
         if len(self.remaining_object_put_failures) > 0:
             failure = self.remaining_object_put_failures.pop(0)
