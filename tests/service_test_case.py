@@ -4,7 +4,6 @@ import logging
 import unittest
 import socket
 from threading import Thread, Event
-import time
 from wsgiref.headers import Headers
 from wsgiref.simple_server import make_server
 from wsgiref.util import request_uri
@@ -65,7 +64,8 @@ class ServiceRequest(object):
 class Service(object):
 
     fetches: Dict[Tuple[str, str], List[ServiceRequest]]
-    event: Optional[Event]
+    server_started: Optional[Event]
+    stop_server: Optional[Event]
     thread: Optional[Thread]
 
     def __init__(self) -> None:
@@ -73,7 +73,8 @@ class Service(object):
         self.handlers: "Dict[HandlerIdentifier, Handler]" = {}
         self.thread = None
         self.fetches = {}
-        self.event = None
+        self.server_started = None
+        self.stop_server = None
 
     def url(self, path: str) -> str:
         return f"http://localhost:{self.port}{path}"
@@ -119,45 +120,41 @@ class Service(object):
         return self.handlers[identifier](environ, start_response)
 
     def start(self) -> None:
-        if self.event is not None:
+        if self.server_started is not None or self.stop_server is not None:
             raise Exception(f"Service already started on port {self.port}")
 
-        self.event = Event()
-        self.event.set()
+        self.server_started = Event()
+        self.stop_server = Event()
 
-        event = self.event
+        # work around mypy failing to infer that these variables can't be None
+        server_started = self.server_started
+        stop_server = self.stop_server
 
-        if event is None:
-            raise ValueError("Event flag is unexpectedly none.")
-
-        self.thread = Thread(target=lambda: self.loop(event))
+        self.thread = Thread(target=lambda: self.loop(server_started, stop_server))
         self.thread.start()
 
         logging.info(f"Starting server on port {self.port}...")
 
-        while event.is_set():
-            # waiting until the event is clear, e.g. the server has been
-            # started and is ready for connections
-            time.sleep(0.005)
+        server_started.wait()
 
         logging.info(f"Server on port {self.port} ready for requests.")
 
     def stop(self) -> None:
-        if self.event is not None and self.thread is not None:
-            self.event.set()
+        if self.server_started is not None and self.stop_server is not None \
+                and self.thread is not None:
+            self.stop_server.set()
             self.thread.join()
-        self.event = None
+        self.server_started = None
+        self.stop_server = None
         self.thread = None
 
-    def loop(self, event: Event) -> None:
-        httpd = make_server("localhost", self.port, self.handler)
-        httpd.timeout = 0.01
+    def loop(self, server_started: Event, stop_server: Event) -> None:
+        with make_server("localhost", self.port, self.handler) as httpd:
+            httpd.timeout = 0.01
 
-        event.clear()
-        while not event.is_set():
-            httpd.handle_request()
-
-        httpd.server_close()
+            server_started.set()
+            while not stop_server.is_set():
+                httpd.handle_request()
 
     def assert_requested(
             self, method: str, path: str,
