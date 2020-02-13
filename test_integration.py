@@ -14,7 +14,7 @@ from storage import get_storage
 class IntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.dest_prefix = "".join([random.choice(string.letters) for i in range(16)])
+        cls.dest_prefix = "".join([random.choice(string.ascii_letters) for i in range(16)])
         cls.directory = tempfile.mkdtemp(prefix="source-root")
         contents = "storage-test-{}".format(time.time()).encode("utf8")
 
