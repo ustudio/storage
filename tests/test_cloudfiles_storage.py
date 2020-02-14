@@ -184,7 +184,7 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
 
         self.assertEqual(
             "https://identity.api.rackspacecloud.com/v2.0",
-            storage_object.auth_endpoint)
+            storage_object.auth_endpoint)  # type: ignore
 
     def test_save_to_file_raises_exception_when_missing_required_parameters(self) -> None:
         self.assert_requires_all_parameters("/path/to/file.mp4")
