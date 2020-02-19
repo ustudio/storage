@@ -7,7 +7,6 @@ from urllib.parse import parse_qsl, urlencode, urlparse
 from keystoneauth1.exceptions.http import Forbidden, Unauthorized
 from typing import Dict, Generator, List, Optional, TYPE_CHECKING
 
-from storage import cloudfiles_storage
 from storage.storage import get_storage, InvalidStorageUri
 from tests.storage_test_case import StorageTestCase
 from tests.swift_service_test_case import SwiftServiceTestCase
@@ -180,9 +179,12 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
         return [b""]
 
     def test_cloudfiles_default_auth_endpoint_points_to_correct_host(self) -> None:
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", self.download_url_key)
+        storage_object = get_storage(cloudfiles_uri)
+
         self.assertEqual(
             "https://identity.api.rackspacecloud.com/v2.0",
-            cloudfiles_storage.CloudFilesStorage.auth_endpoint)
+            storage_object.auth_endpoint)  # type: ignore
 
     def test_save_to_file_raises_exception_when_missing_required_parameters(self) -> None:
         self.assert_requires_all_parameters("/path/to/file.mp4")
