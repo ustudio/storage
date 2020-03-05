@@ -15,4 +15,5 @@ setup(name="object_storage",
       description="Python library for accessing files over various file transfer protocols.",
       url="https://github.com/ustudio/storage",
       packages=["storage"],
+      package_data={"storage": ["py.typed"]},
       install_requires=install_requires)
