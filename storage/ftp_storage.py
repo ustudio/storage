@@ -239,6 +239,12 @@ class FTPStorage(Storage):
         object_name = self._parsed_storage_uri.path.split('/')[-1]
         return _generate_download_url_from_base(base, object_name)
 
+    def get_sanitized_uri(self) -> None:
+        sanitized_uri = self._parsed_storage_uri._replace(
+            netloc="{}".format(self._parsed_storage_uri.hostname))
+
+        return sanitized_uri.geturl()
+
 
 @register_storage_protocol("ftps")
 class FTPSStorage(FTPStorage):
