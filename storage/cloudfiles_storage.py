@@ -1,4 +1,4 @@
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from keystoneauth1 import session
 from keystoneauth1.identity import v2
@@ -64,3 +64,9 @@ class CloudFilesStorage(SwiftStorage):
 
             self._connection = connection
         return self._connection
+
+    def get_sanitized_uri(self) -> str:
+        sanitized_uri = self._parsed_storage_uri._replace(
+            netloc="{}".format(self._parsed_storage_uri.hostname))
+
+        return sanitized_uri.geturl()

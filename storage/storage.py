@@ -129,6 +129,10 @@ class Storage(object):
         raise NotImplementedError(
             "{} does not implement 'get_download_url'".format(self._class_name()))
 
+    def get_sanitized_uri(self) -> str:
+        raise NotImplementedError(
+            "{} does not implement 'get_sanitized_uri'".format(self._class_name()))
+
 
 def _generate_download_url_from_base(base: Union[str, None], object_name: str) -> str:
     """Generate a download url by joining the base with the storage object_name.
