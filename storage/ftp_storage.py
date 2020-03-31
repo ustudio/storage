@@ -10,6 +10,7 @@ from typing import BinaryIO, Generator, List, Optional, Tuple
 from storage.storage import Storage, register_storage_protocol, _generate_download_url_from_base
 from storage.storage import DEFAULT_FTP_TIMEOUT, DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT
 from storage.storage import DEFAULT_FTP_KEEPIDLE, DEFAULT_FTP_KEEPINTVL
+from storage.url_parser import sanitized_uri
 
 
 class FTPStorageError(Exception):
@@ -240,10 +241,7 @@ class FTPStorage(Storage):
         return _generate_download_url_from_base(base, object_name)
 
     def get_sanitized_uri(self) -> None:
-        sanitized_uri = self._parsed_storage_uri._replace(
-            netloc="{}".format(self._parsed_storage_uri.hostname))
-
-        return sanitized_uri.geturl()
+        return sanitized_uri(self._parsed_storage_uri)
 
 
 @register_storage_protocol("ftps")

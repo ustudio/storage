@@ -1,4 +1,4 @@
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs
 
 from keystoneauth1 import session
 from keystoneauth1.identity import v2
@@ -8,6 +8,7 @@ from typing import Any, Dict
 
 from storage.storage import get_optional_query_parameter, InvalidStorageUri, DEFAULT_SWIFT_TIMEOUT
 from storage.swift_storage import register_swift_protocol, SwiftStorage
+from storage.url_parser import sanitized_uri
 
 
 class RackspaceAuth(v2.Password):
@@ -66,7 +67,4 @@ class CloudFilesStorage(SwiftStorage):
         return self._connection
 
     def get_sanitized_uri(self) -> str:
-        sanitized_uri = self._parsed_storage_uri._replace(
-            netloc="{}".format(self._parsed_storage_uri.hostname))
-
-        return sanitized_uri.geturl()
+        return sanitized_uri(self._parsed_storage_uri)
