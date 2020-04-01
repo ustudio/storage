@@ -240,7 +240,7 @@ class FTPStorage(Storage):
         object_name = self._parsed_storage_uri.path.split('/')[-1]
         return _generate_download_url_from_base(base, object_name)
 
-    def get_sanitized_uri(self) -> None:
+    def get_sanitized_uri(self) -> str:
         return sanitized_uri(self._parsed_storage_uri)
 
 

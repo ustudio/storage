@@ -58,7 +58,7 @@ class GoogleStorage(Storage):
             expiration=datetime.timedelta(seconds=seconds),
             response_disposition="attachment")
 
-    def get_sanitized_uri(self) -> None:
+    def get_sanitized_uri(self) -> str:
         return sanitized_uri(self._parsed_storage_uri)
 
     def save_to_directory(self, directory_path: str) -> None:
