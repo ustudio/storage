@@ -643,6 +643,22 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
 
         self.assertEqual("9120", query["temp_url_expires"])
 
+    def test_get_sanitized_uri_returns_storage_uri_without_username_and_password(self) -> None:
+        query_args = {
+            "auth_endpoint": self.identity_service.url("/v2.0"),
+            "tenant_id": "1234",
+            "region": "DFW"
+        }
+
+        swift_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            sanitized_uri = storage_object.get_sanitized_uri()
+
+        self.assertEqual(
+            f"swift://container/path/to/file.mp4?{urlencode(query_args)}", sanitized_uri)
+
     def generate_signature(self, path: str, key: bytes, expires: int = 60) -> str:
         timestamp = time.time()
         raw_string = f"GET\n{timestamp + expires}\n/v2.0/1234/CONTAINER{path}"
