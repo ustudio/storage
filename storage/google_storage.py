@@ -12,7 +12,7 @@ from typing import BinaryIO, Optional
 
 from storage import retry
 from storage.storage import Storage, register_storage_protocol
-from storage.url_parser import sanitized_uri
+from storage.url_parser import remove_user_info
 
 
 @register_storage_protocol("gs")
@@ -59,7 +59,7 @@ class GoogleStorage(Storage):
             response_disposition="attachment")
 
     def get_sanitized_uri(self) -> str:
-        return sanitized_uri(self._parsed_storage_uri)
+        return remove_user_info(self._parsed_storage_uri)
 
     def save_to_directory(self, directory_path: str) -> None:
         bucket = self._get_bucket()

@@ -1,7 +1,7 @@
 from urllib.parse import parse_qsl, ParseResult, urlencode
 
 
-def sanitized_uri(parsed_uri: ParseResult) -> str:
+def remove_user_info(parsed_uri: ParseResult) -> str:
     new_netloc = parsed_uri.hostname
 
     if parsed_uri.port is not None:

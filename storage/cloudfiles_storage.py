@@ -8,7 +8,7 @@ from typing import Any, Dict
 
 from storage.storage import get_optional_query_parameter, InvalidStorageUri, DEFAULT_SWIFT_TIMEOUT
 from storage.swift_storage import register_swift_protocol, SwiftStorage
-from storage.url_parser import sanitized_uri
+from storage.url_parser import remove_user_info
 
 
 class RackspaceAuth(v2.Password):
@@ -67,4 +67,4 @@ class CloudFilesStorage(SwiftStorage):
         return self._connection
 
     def get_sanitized_uri(self) -> str:
-        return sanitized_uri(self._parsed_storage_uri)
+        return remove_user_info(self._parsed_storage_uri)

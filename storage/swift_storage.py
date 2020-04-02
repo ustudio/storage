@@ -11,7 +11,7 @@ from typing import BinaryIO, Callable, cast, Dict, List, Optional, Tuple, Type, 
 from storage import retry
 from storage.storage import InvalidStorageUri, register_storage_protocol, Storage
 from storage.storage import get_optional_query_parameter, _LARGE_CHUNK, DEFAULT_SWIFT_TIMEOUT
-from storage.url_parser import sanitized_uri
+from storage.url_parser import remove_user_info
 
 
 def register_swift_protocol(
@@ -157,7 +157,7 @@ class SwiftStorage(Storage):
         return urljoin(host, path)
 
     def get_sanitized_uri(self) -> str:
-        return sanitized_uri(self._parsed_storage_uri)
+        return remove_user_info(self._parsed_storage_uri)
 
     def _find_storage_objects_with_prefix(
             self, container: str, prefix: str) -> List[Dict[str, str]]:

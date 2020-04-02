@@ -7,7 +7,7 @@ from typing import BinaryIO, Optional
 
 from storage.storage import get_optional_query_parameter, Storage, register_storage_protocol
 from storage.storage import _generate_download_url_from_base
-from storage.url_parser import sanitized_uri
+from storage.url_parser import remove_user_info
 
 
 @register_storage_protocol("file")
@@ -91,4 +91,4 @@ class LocalStorage(Storage):
             self._download_url_base, self._parsed_storage_uri.path.split('/')[-1])
 
     def get_sanitized_uri(self) -> str:
-        return sanitized_uri(self._parsed_storage_uri)
+        return remove_user_info(self._parsed_storage_uri)
