@@ -396,6 +396,16 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
         self.assert_rejects_multiple_query_values("object.mp4", "download_url_key")
 
     def test_get_sanitized_uri_returns_storage_uri_without_username_and_password(self) -> None:
+        cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4")
+        storage_object = get_storage(cloudfiles_uri)
+
+        with self.use_local_identity_service():
+            with self.run_services():
+                sanitized_uri = storage_object.get_sanitized_uri()
+
+        self.assertEqual("cloudfiles://container/path/to/file.mp4", sanitized_uri)
+
+    def test_get_sanitized_uri_returns_storage_uri_without_download_url_key(self) -> None:
         cloudfiles_uri = self._generate_storage_uri("/path/to/file.mp4", self.download_url_key)
         storage_object = get_storage(cloudfiles_uri)
 
@@ -403,5 +413,4 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.run_services():
                 sanitized_uri = storage_object.get_sanitized_uri()
 
-        self.assertEqual(
-            "cloudfiles://container/path/to/file.mp4?download_url_key=KEY", sanitized_uri)
+        self.assertEqual("cloudfiles://container/path/to/file.mp4", sanitized_uri)
