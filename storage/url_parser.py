@@ -1,7 +1,9 @@
 from urllib.parse import parse_qsl, ParseResult, urlencode
 
+from typing import Dict
 
-def _new_uri(parsed_uri: ParseResult, new_netloc: str, new_query: str) -> ParseResult:
+
+def _new_uri(parsed_uri: ParseResult, new_netloc: str, new_query: Dict[str, str]) -> ParseResult:
     return ParseResult(
         parsed_uri.scheme, new_netloc, parsed_uri.path, parsed_uri.params, urlencode(new_query),
         parsed_uri.fragment)
