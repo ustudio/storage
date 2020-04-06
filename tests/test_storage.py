@@ -1,6 +1,7 @@
+import threading
+
 from storage.storage import get_storage, InvalidStorageUri, register_storage_protocol, Storage
 from storage.storage import timeout, TimeoutError, _STORAGE_TYPES
-import threading
 from unittest import mock, TestCase
 
 
@@ -61,3 +62,23 @@ class TestRegisterStorageProtocol(TestCase):
 
         with self.assertRaises(InvalidStorageUri):
             get_storage(f"{self.scheme}://some/uri/path")
+
+
+class TestStorage(TestCase):
+    def test_get_sanitized_uri_removes_username_and_password(self) -> None:
+        storage = Storage(storage_uri="https://username:password@bucket/path/filename")
+        sanitized_uri = storage.get_sanitized_uri()
+
+        self.assertEqual("https://bucket/path/filename", sanitized_uri)
+
+    def test_get_sanitized_uri_does_not_preserves_parameters(self) -> None:
+        storage = Storage(storage_uri="https://username:password@bucket/path/filename?other=param")
+        sanitized_uri = storage.get_sanitized_uri()
+
+        self.assertEqual("https://bucket/path/filename", sanitized_uri)
+
+    def test_get_sanitized_uri_preserves_port_number(self) -> None:
+        storage = Storage(storage_uri="ftp://username:password@ftp.foo.com:8080/path/filename")
+        sanitized_uri = storage.get_sanitized_uri()
+
+        self.assertEqual("ftp://ftp.foo.com:8080/path/filename", sanitized_uri)

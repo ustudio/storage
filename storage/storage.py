@@ -4,6 +4,8 @@ from urllib.parse import ParseResult, urljoin, urlparse, uses_query
 
 from typing import BinaryIO, Callable, Dict, List, Optional, Type, TypeVar, Union
 
+from storage.url_parser import sanitize_filepath
+
 
 _STORAGE_TYPES = {}         # maintains supported storage protocols
 _LARGE_CHUNK = 32 * 1024 * 1024
@@ -130,8 +132,7 @@ class Storage(object):
             "{} does not implement 'get_download_url'".format(self._class_name()))
 
     def get_sanitized_uri(self) -> str:
-        raise NotImplementedError(
-            "{} does not implement 'get_sanitized_uri'".format(self._class_name()))
+        return sanitize_filepath(self._parsed_storage_uri)
 
 
 def _generate_download_url_from_base(base: Union[str, None], object_name: str) -> str:

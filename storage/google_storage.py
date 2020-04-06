@@ -12,7 +12,6 @@ from typing import BinaryIO, Optional
 
 from storage import retry
 from storage.storage import Storage, register_storage_protocol
-from storage.url_parser import remove_user_info
 
 
 @register_storage_protocol("gs")
@@ -57,9 +56,6 @@ class GoogleStorage(Storage):
         return blob.generate_signed_url(
             expiration=datetime.timedelta(seconds=seconds),
             response_disposition="attachment")
-
-    def get_sanitized_uri(self) -> str:
-        return remove_user_info(self._parsed_storage_uri)
 
     def save_to_directory(self, directory_path: str) -> None:
         bucket = self._get_bucket()
