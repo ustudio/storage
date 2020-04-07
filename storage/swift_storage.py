@@ -1,6 +1,6 @@
 import mimetypes
 import os
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, parse_qsl, ParseResult, urlencode, urljoin, urlparse
 
 from keystoneauth1 import session
 from keystoneauth1.identity import v2
@@ -11,7 +11,6 @@ from typing import BinaryIO, Callable, cast, Dict, List, Optional, Tuple, Type, 
 from storage import retry
 from storage.storage import InvalidStorageUri, register_storage_protocol, Storage
 from storage.storage import get_optional_query_parameter, _LARGE_CHUNK, DEFAULT_SWIFT_TIMEOUT
-from storage.url_parser import remove_user_info
 
 
 def register_swift_protocol(
@@ -157,7 +156,17 @@ class SwiftStorage(Storage):
         return urljoin(host, path)
 
     def get_sanitized_uri(self) -> str:
-        return remove_user_info(self._parsed_storage_uri)
+        parsed_uri = self._parsed_storage_uri
+        new_query = dict(parse_qsl(parsed_uri.query))
+
+        if "download_url_key" in new_query:
+            del new_query["download_url_key"]
+
+        new_uri = ParseResult(
+            parsed_uri.scheme, parsed_uri.hostname, parsed_uri.path, parsed_uri.params,
+            urlencode(new_query), parsed_uri.fragment)
+
+        return new_uri.geturl()
 
     def _find_storage_objects_with_prefix(
             self, container: str, prefix: str) -> List[Dict[str, str]]:
