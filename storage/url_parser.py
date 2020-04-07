@@ -15,7 +15,7 @@ def remove_user_info(parsed_uri: ParseResult) -> str:
     if parsed_uri.port is not None:
         new_netloc = ":".join((new_netloc, str(parsed_uri.port)))
 
-    new_uri = _new_uri(parsed_uri, new_netloc, parse_qsl(parsed_uri.query))
+    new_uri = _new_uri(parsed_uri, new_netloc, dict(parse_qsl(parsed_uri.query)))
 
     return new_uri.geturl()
 
