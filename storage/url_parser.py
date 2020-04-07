@@ -20,7 +20,7 @@ def remove_user_info(parsed_uri: ParseResult) -> str:
     return new_uri.geturl()
 
 
-def sanitize_filepath(parsed_uri: ParseResult) -> str:
+def sanitize_base_uri(parsed_uri: ParseResult) -> str:
     new_netloc = parsed_uri.hostname
 
     if parsed_uri.port is not None:
