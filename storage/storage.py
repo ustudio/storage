@@ -4,7 +4,7 @@ from urllib.parse import ParseResult, urljoin, urlparse, uses_query
 
 from typing import BinaryIO, Callable, Dict, List, Optional, Type, TypeVar, Union
 
-from storage.url_parser import sanitize_base_uri
+from storage.url_parser import sanitize_resource_uri
 
 
 _STORAGE_TYPES = {}         # maintains supported storage protocols
@@ -132,7 +132,7 @@ class Storage(object):
             "{} does not implement 'get_download_url'".format(self._class_name()))
 
     def get_sanitized_uri(self) -> str:
-        return sanitize_base_uri(self._parsed_storage_uri)
+        return sanitize_resource_uri(self._parsed_storage_uri)
 
 
 def _generate_download_url_from_base(base: Union[str, None], object_name: str) -> str:

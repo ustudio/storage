@@ -25,20 +25,20 @@ class TestUrlParser(TestCase):
 
         self.assertEqual("ftp://ftp.foo.com:8080/path/filename", sanitized_uri)
 
-    def test_sanitize_base_uri_removes_username_and_password(self) -> None:
+    def test_sanitize_resource_uri_removes_username_and_password(self) -> None:
         storage_uri = urlparse("https://username:password@bucket/path/filename")
-        sanitized_uri = url_parser.sanitize_base_uri(storage_uri)
+        sanitized_uri = url_parser.sanitize_resource_uri(storage_uri)
 
         self.assertEqual("https://bucket/path/filename", sanitized_uri)
 
-    def test_sanitize_base_uri_does_not_preserves_parameters(self) -> None:
+    def test_sanitize_resource_uri_does_not_preserves_parameters(self) -> None:
         storage_uri = urlparse("https://username:password@bucket/path/filename?other=parameter")
-        sanitized_uri = url_parser.sanitize_base_uri(storage_uri)
+        sanitized_uri = url_parser.sanitize_resource_uri(storage_uri)
 
         self.assertEqual("https://bucket/path/filename", sanitized_uri)
 
-    def test_sanitize_base_uri_preserves_port_number(self) -> None:
+    def test_sanitize_resource_uri_preserves_port_number(self) -> None:
         storage_uri = urlparse("ftp://username:password@ftp.foo.com:8080/path/filename")
-        sanitized_uri = url_parser.sanitize_base_uri(storage_uri)
+        sanitized_uri = url_parser.sanitize_resource_uri(storage_uri)
 
         self.assertEqual("ftp://ftp.foo.com:8080/path/filename", sanitized_uri)
