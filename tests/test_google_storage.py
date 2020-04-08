@@ -126,6 +126,12 @@ class TestGoogleStorage(TestCase):
             expiration=datetime.timedelta(seconds=60),
             response_disposition="attachment")
 
+    def test_get_sanitized_uri_returns_storage_uri_without_username_and_password(self):
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+        sanitized_uri = storage.get_sanitized_uri()
+
+        self.assertEqual("gs://bucketname/path/filename", sanitized_uri)
+
     def _mock_blob(self, name):
         blob = mock.Mock()
         blob.name = name
