@@ -257,3 +257,22 @@ class TestLocalStorage(TestCase):
 
         with self.assertRaises(DownloadUrlBaseUndefinedError):
             out_storage.get_download_url()
+
+    def test_local_storage_get_sanitized_uri_returns_filepath(self):
+        temp_input = tempfile.NamedTemporaryFile()
+        temp_input.write("FOOBAR")
+        temp_input.flush()
+
+        download_url_base = "http://host:123/path/to/"
+        download_url_base_encoded = urllib.quote_plus(download_url_base)
+
+        storage_uri = "file://{}?download_url_base={}".format(
+            temp_input.name, download_url_base_encoded)
+        out_storage = storagelib.get_storage(storage_uri)
+
+        sanitized_uri = out_storage.get_sanitized_uri()
+
+        self.assertEqual(
+            "file://{}?download_url_base={}".format(
+                temp_input.name, download_url_base_encoded),
+            sanitized_uri)

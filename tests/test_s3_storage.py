@@ -642,3 +642,12 @@ class TestS3Storage(TestCase):
             Params={"Bucket": "some_bucket", "Key": "some/file"},
             ExpiresIn=1000
         )
+
+    def test_get_sanitized_uri_returns_storage_uri_without_username_and_password(self):
+        url = "s3://access_key:access_secret@some_bucket/"
+        key = "some/filename"
+
+        storage = storagelib.get_storage("".join([url, key, "?region=US_EAST"]))
+        sanitized_uri = storage.get_sanitized_uri()
+
+        self.assertEqual("s3://some_bucket/some/filename?region=US_EAST", sanitized_uri)

@@ -2,7 +2,9 @@ import functools
 import mimetypes
 import os
 import urllib
+from urllib import urlencode
 import urlparse
+from urlparse import parse_qsl, ParseResult
 
 import pyrax
 
@@ -191,6 +193,19 @@ class SwiftStorage(Storage):
 
         return urlparse.urlunparse(parsed_url)
 
+    def get_sanitized_uri(self):
+        parsed_uri = self._parsed_storage_uri
+        new_query = dict(parse_qsl(parsed_uri.query))
+
+        if "download_url_key" in new_query:
+            del new_query["download_url_key"]
+
+        new_uri = ParseResult(
+            parsed_uri.scheme, parsed_uri.hostname, parsed_uri.path, parsed_uri.params,
+            urlencode(new_query), parsed_uri.fragment)
+
+        return new_uri.geturl()
+
 
 def register_swift_protocol(scheme, auth_endpoint):
     """Register a Swift based storage protocol under the specified scheme."""
@@ -213,8 +228,7 @@ def register_swift_protocol(scheme, auth_endpoint):
     return decorate_swift_protocol
 
 
-@register_swift_protocol(scheme="cloudfiles",
-                         auth_endpoint=None)
+@register_swift_protocol(scheme="cloudfiles", auth_endpoint=None)
 class CloudFilesStorage(SwiftStorage):
     """Rackspace Cloudfiles storage.
 

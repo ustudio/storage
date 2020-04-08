@@ -1,6 +1,7 @@
 import os
 from StringIO import StringIO
 import tempfile
+from urllib import urlencode
 from unittest import TestCase
 
 import mock
@@ -697,6 +698,43 @@ class TestSwiftStorage(TestCase):
             download_url,
             "http://cloudfiles.com/path/to/filename%20with%20spaces.txt?param1=12345&param2=67890")
 
+    def test_get_sanitized_uri_returns_storage_uri_without_username_and_password(self):
+        base_uri = "swift://USER:KEY@CONTAINER/path/to/file.mp4"
+        query_args = {
+            "auth_endpoint": "http://identity.server.com:1234/v2/",
+            "tenant_id": "1234",
+            "region": "DFW"
+        }
+
+        swift_uri = "{}?{}".format(base_uri, urlencode(query_args))
+        storage_object = storagelib.get_storage(swift_uri)
+
+        sanitized_uri = storage_object.get_sanitized_uri()
+
+        self.assertEqual(
+            "swift://container/path/to/file.mp4?{}".format(urlencode(query_args)),
+            sanitized_uri)
+
+    def test_get_sanitized_uri_returns_storage_uri_without_download_url_key(self):
+        base_uri = "swift://USER:KEY@CONTAINER/path/to/file.mp4"
+        query_args = {
+            "auth_endpoint": "http://identity.server.com:1234/v2/",
+            "tenant_id": "1234",
+            "region": "DFW"
+        }
+
+        updated_query_args = query_args.copy()
+        updated_query_args.update({"download_url_key": "KEY"})
+
+        swift_uri = "{}?{}".format(base_uri, urlencode(updated_query_args))
+        storage_object = storagelib.get_storage(swift_uri)
+
+        sanitized_uri = storage_object.get_sanitized_uri()
+
+        self.assertEqual(
+            "swift://container/path/to/file.mp4?{}".format(urlencode(query_args)),
+            sanitized_uri)
+
 
 class TestRegisterSwiftProtocol(TestCase):
 
@@ -880,3 +918,40 @@ class TestRackspaceStorage(TestCase):
 
         mock_cloudfiles.get_temp_url.assert_called_once_with(
             "container", "file.txt", seconds=60, method="GET", key="secret_key_from_server")
+
+    def test_get_sanitized_uri_returns_storage_uri_without_username_and_password(self):
+        base_uri = "cloudfiles://USER:KEY@CONTAINER/path/to/file.mp4"
+        query_args = {
+            "auth_endpoint": "http://identity.server.com:1234/v2/",
+            "tenant_id": "1234",
+            "region": "DFW"
+        }
+
+        cloudfiles_uri = "{}?{}".format(base_uri, urlencode(query_args))
+        storage_object = storagelib.get_storage(cloudfiles_uri)
+
+        sanitized_uri = storage_object.get_sanitized_uri()
+
+        self.assertEqual(
+            "cloudfiles://container/path/to/file.mp4?{}".format(urlencode(query_args)),
+            sanitized_uri)
+
+    def test_get_sanitized_uri_returns_storage_uri_without_download_url_key(self):
+        base_uri = "cloudfiles://USER:KEY@CONTAINER/path/to/file.mp4"
+        query_args = {
+            "auth_endpoint": "http://identity.server.com:1234/v2/",
+            "tenant_id": "1234",
+            "region": "DFW"
+        }
+
+        updated_query_args = query_args.copy()
+        updated_query_args.update({"download_url_key": "KEY"})
+
+        cloudfiles_uri = "{}?{}".format(base_uri, urlencode(updated_query_args))
+        storage_object = storagelib.get_storage(cloudfiles_uri)
+
+        sanitized_uri = storage_object.get_sanitized_uri()
+
+        self.assertEqual(
+            "cloudfiles://container/path/to/file.mp4?{}".format(urlencode(query_args)),
+            sanitized_uri)

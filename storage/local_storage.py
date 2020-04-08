@@ -4,6 +4,7 @@ import shutil
 import urlparse
 
 from .storage import Storage, register_storage_protocol, _generate_download_url_from_base
+from url_parser import remove_user_info
 
 
 @register_storage_protocol("file")
@@ -86,3 +87,6 @@ class LocalStorage(Storage):
         """
         return _generate_download_url_from_base(
             self._download_url_base, self._parsed_storage_uri.path.split('/')[-1])
+
+    def get_sanitized_uri(self):
+        return remove_user_info(self._parsed_storage_uri)
