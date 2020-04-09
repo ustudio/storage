@@ -349,6 +349,24 @@ retry.
 Currently, no methods in the storage library mark exceptions as
 `do_not_retry`.
 
+### url_parser ###
+
+The `url_parser` module provides a means for client code to sanitize URIs in
+such a way that is most appropriate for the way it encodes secret data.
+
+#### API ####
+
+##### `sanitize_resource_uri(parsed_uri)` #####
+
+Implementation is overly restrictive -- only returning the scheme, hostname,
+port and path, no query parameters.
+
+##### `remove_user_info(parsed_uri)` #####
+
+Implementation all credential information before the hostname (if present), and
+returns the scheme, hostname, port, path, and query parameters.
+
+
 ### Extending ###
 
 There are two decorators that can be used when extending the storage library.
