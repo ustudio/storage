@@ -669,6 +669,15 @@ class TestS3Storage(StorageTestCase, TestCase):
             ExpiresIn=1000
         )
 
+    def test_get_sanitized_uri_returns_storage_uri_without_username_and_password(self) -> None:
+        url = "s3://access_key:access_secret@some_bucket/"
+        key = "some/filename"
+
+        storage = get_storage("".join([url, key, "?region=US_EAST"]))
+        sanitized_uri = storage.get_sanitized_uri()
+
+        self.assertEqual("s3://some_bucket/some/filename?region=US_EAST", sanitized_uri)
+
     def test_s3_storage_rejects_multiple_query_values_for_region_setting(self) -> None:
         self.assert_rejects_multiple_query_values(
             "/foo/bar/object.mp4", "region", values=["US_EAST", "US_WEST"])

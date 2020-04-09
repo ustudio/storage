@@ -10,6 +10,7 @@ from typing import BinaryIO, Generator, List, Optional, Tuple
 from storage.storage import Storage, register_storage_protocol, _generate_download_url_from_base
 from storage.storage import DEFAULT_FTP_TIMEOUT, DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT
 from storage.storage import DEFAULT_FTP_KEEPIDLE, DEFAULT_FTP_KEEPINTVL
+from storage.url_parser import remove_user_info
 
 
 class FTPStorageError(Exception):
@@ -238,6 +239,9 @@ class FTPStorage(Storage):
         base = self._download_url_base
         object_name = self._parsed_storage_uri.path.split('/')[-1]
         return _generate_download_url_from_base(base, object_name)
+
+    def get_sanitized_uri(self) -> str:
+        return remove_user_info(self._parsed_storage_uri)
 
 
 @register_storage_protocol("ftps")

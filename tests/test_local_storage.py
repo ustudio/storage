@@ -267,3 +267,20 @@ class TestLocalStorage(StorageTestCase):
 
     def test_local_storage_rejects_multiple_query_values_for_download_url_key_setting(self) -> None:
         self.assert_rejects_multiple_query_values("/foo/bar/object.mp4", "download_url_base")
+
+    def test_local_storage_get_sanitized_uri_returns_filepath(self) -> None:
+        temp_input = tempfile.NamedTemporaryFile()
+        temp_input.write(b"FOOBAR")
+        temp_input.flush()
+
+        download_url_base = "http://host:123/path/to/"
+        download_url_base_encoded = quote_plus(download_url_base)
+
+        storage_uri = f"file://{temp_input.name}?download_url_base={download_url_base_encoded}"
+        out_storage = get_storage(storage_uri)
+
+        sanitized_uri = out_storage.get_sanitized_uri()
+
+        self.assertEqual(
+            f"file://{temp_input.name}?download_url_base={download_url_base_encoded}",
+            sanitized_uri)

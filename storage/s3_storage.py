@@ -10,6 +10,7 @@ from typing import BinaryIO, Optional
 from storage import retry
 from storage.storage import Storage, register_storage_protocol, _LARGE_CHUNK
 from storage.storage import get_optional_query_parameter
+from storage.url_parser import remove_user_info
 
 
 @register_storage_protocol("s3")
@@ -107,3 +108,6 @@ class S3Storage(Storage):
 
         return client.generate_presigned_url(
             "get_object", Params={"Bucket": self._bucket, "Key": self._keyname}, ExpiresIn=seconds)
+
+    def get_sanitized_uri(self) -> str:
+        return remove_user_info(self._parsed_storage_uri)

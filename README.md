@@ -13,7 +13,8 @@ Install via pip:
 pip install object_storage
 ```
 
-The current version is `0.13.3`.
+The current version is `0.14.0`.
+The current Python 2.7 version is `0.12.7`
 
 ## Quick Start ##
 
@@ -102,6 +103,11 @@ For local file storage, the call will return a URL formed by joining the `downlo
 (included in the URI that was passed to `get_storage`) with the object name. If no
 `download_url_base` query param was included in the storage URI, `get_download_url`
 will raise a `DownloadUrlBaseUndefinedError` exception. (*see* [**file**](#file) *below*)
+
+
+#### `get_sanitized_uri()` ####
+
+Removes the username/password, as well as all query parameters, form the URL.
 
 ### Supported Protocols ###
 
@@ -344,6 +350,23 @@ retry.
 
 Currently, no methods in the storage library mark exceptions as
 `do_not_retry`.
+
+### url_parser ###
+
+The `url_parser` module provides a means for client code to sanitize URIs in
+such a way that is most appropriate for the way it encodes secret data.
+
+#### API ####
+
+##### `sanitize_resource_uri(parsed_uri)` #####
+
+Implementation is overly restrictive -- only returning the scheme, hostname,
+port and path, no query parameters.
+
+##### `remove_user_info(parsed_uri)` #####
+
+Implementation all credential information before the hostname (if present), and
+returns the scheme, hostname, port, path, and query parameters.
 
 ### Extending ###
 
