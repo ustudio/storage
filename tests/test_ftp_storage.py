@@ -593,6 +593,20 @@ class TestFTPStorage(TestCase):
 
         mock_ftp_class.assert_not_called()
 
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_get_sanitized_uri(self, mock_ftp_class):
+        download_url_base = urllib.quote_plus("http://hostname/path/to/")
+
+        ftpuri = "ftp://user:password@ftp.foo.com/some/dir/file.txt?download_url_base={}".format(
+            download_url_base)
+
+        storage = storagelib.get_storage(ftpuri)
+        sanitized_uri = storage.get_sanitized_uri()
+
+        self.assertEqual(
+            "ftp://ftp.foo.com/some/dir/file.txt?download_url_base={}".format(download_url_base),
+            sanitized_uri)
+
 
 class TestFTPSStorage(TestCase):
     @mock.patch("ftplib.FTP_TLS", autospec=True)

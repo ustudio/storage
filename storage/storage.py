@@ -2,6 +2,8 @@ import Queue
 import threading
 import urlparse
 
+from url_parser import sanitize_resource_uri
+
 
 _STORAGE_TYPES = {}         # maintains supported storage protocols
 _LARGE_CHUNK = 32 * 1024 * 1024
@@ -117,6 +119,9 @@ class Storage(object):
     def get_download_url(self, seconds=60, key=None):
         raise NotImplementedError(
             "{0} does not implement 'get_download_url'".format(self._class_name()))
+
+    def get_sanitized_uri(self):
+        return sanitize_resource_uri(self._parsed_storage_uri)
 
 
 def _generate_download_url_from_base(base, object_name):

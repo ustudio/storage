@@ -1,7 +1,10 @@
 import mock
-import storage as storagelib
 import threading
+
 from unittest import TestCase
+
+import storage as storagelib
+from storage.storage import Storage
 
 
 class TestTimeout(TestCase):
@@ -51,3 +54,23 @@ class TestRegisterStorageProtocol(TestCase):
         uri = "{0}://some/uri/path".format(self.scheme)
         store_obj = storagelib.get_storage(uri)
         self.assertIsInstance(store_obj, MyStorageClass)
+
+
+class TestStorage(TestCase):
+    def test_get_sanitized_uri_removes_username_and_password(self):
+        storage = Storage(storage_uri="https://username:password@bucket/path/filename")
+        sanitized_uri = storage.get_sanitized_uri()
+
+        self.assertEqual("https://bucket/path/filename", sanitized_uri)
+
+    def test_get_sanitized_uri_does_not_preserves_parameters(self):
+        storage = Storage(storage_uri="https://username:password@bucket/path/filename?other=param")
+        sanitized_uri = storage.get_sanitized_uri()
+
+        self.assertEqual("https://bucket/path/filename", sanitized_uri)
+
+    def test_get_sanitized_uri_preserves_port_number(self):
+        storage = Storage(storage_uri="ftp://username:password@ftp.foo.com:8080/path/filename")
+        sanitized_uri = storage.get_sanitized_uri()
+
+        self.assertEqual("ftp://ftp.foo.com:8080/path/filename", sanitized_uri)

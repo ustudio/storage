@@ -7,6 +7,7 @@ import urlparse
 from .storage import Storage, register_storage_protocol, _generate_download_url_from_base, \
     DEFAULT_FTP_TIMEOUT, DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT, \
     DEFAULT_FTP_KEEPIDLE, DEFAULT_FTP_KEEPINTVL
+from url_parser import remove_user_info
 
 
 @register_storage_protocol("ftp")
@@ -220,6 +221,9 @@ class FTPStorage(Storage):
         """
         return _generate_download_url_from_base(
             self._download_url_base, self._parsed_storage_uri.path.split('/')[-1])
+
+    def get_sanitized_uri(self):
+        return remove_user_info(self._parsed_storage_uri)
 
 
 @register_storage_protocol("ftps")

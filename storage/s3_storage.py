@@ -7,6 +7,7 @@ import boto3.s3.transfer
 
 from . import retry
 from .storage import Storage, register_storage_protocol, _LARGE_CHUNK
+from url_parser import remove_user_info
 
 
 @register_storage_protocol("s3")
@@ -114,3 +115,6 @@ class S3Storage(Storage):
             Params={"Bucket": self._bucket, "Key": self._keyname},
             ExpiresIn=seconds
         )
+
+    def get_sanitized_uri(self):
+        return remove_user_info(self._parsed_storage_uri)
