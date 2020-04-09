@@ -14,6 +14,7 @@ pip install object_storage
 ```
 
 The current version is `0.14.0`.
+The current Python 2.7 version is `0.12.7`
 
 ## Quick Start ##
 
