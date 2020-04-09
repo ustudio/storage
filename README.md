@@ -103,6 +103,10 @@ For local file storage, the call will return a URL formed by joining the `downlo
 `download_url_base` query param was included in the storage URI, `get_download_url`
 will raise a `DownloadUrlBaseUndefinedError` exception. (*see* [**file**](#file) *below*)
 
+#### `get_sanitized_uri()` ####
+
+Removes the username/password, as well as all query parameters, form the URL.
+
 ### Supported Protocols ###
 
 The following protocols are supported, and can be selected by
