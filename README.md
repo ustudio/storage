@@ -106,7 +106,7 @@ will raise a `DownloadUrlBaseUndefinedError` exception. (*see* [**file**](#file)
 
 #### `get_sanitized_uri()` ####
 
-Removes the username/password, as well as all query paramters, form the URL.
+Removes the username/password, as well as all query parameters, form the URL.
 
 ### Supported Protocols ###
 
