@@ -70,6 +70,22 @@ class TestS3Storage(StorageTestCase, TestCase):
 
         mock_s3.put_object.assert_called_with(Bucket="bucket", Key="some/file", Body=mock_file)
 
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_load_from_file_guesses_content_type_based_on_filename(
+            self, mock_session_class: mock.Mock) -> None:
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_file = mock.Mock()
+
+        storage = get_storage(
+            "s3://access_key:access_secret@bucket/some/whatever.jpg")
+
+        storage.load_from_file(mock_file)
+
+        mock_s3.put_object.assert_called_with(
+            Bucket="bucket", Key="some/whatever.jpg", Body=mock_file, ContentType="image/jpeg")
+
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
     def test_load_from_filename(
@@ -92,7 +108,21 @@ class TestS3Storage(StorageTestCase, TestCase):
 
         mock_transfer_class.assert_called_with(mock_s3)
 
-        mock_transfer.upload_file.assert_called_with("source/file", "bucket", "some/file")
+        mock_transfer.upload_file.assert_called_with(
+            "source/file", "bucket", "some/file", extra_args=None)
+
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_load_fromname_file_guesses_content_type_based_on_filename(
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock) -> None:
+        mock_transfer = mock_transfer_class.return_value
+
+        storage = get_storage("s3://access_key:access_secret@bucket/some/whatever.jpeg")
+
+        storage.load_from_filename("source/file")
+
+        mock_transfer.upload_file.assert_called_with(
+            "source/file", "bucket", "some/whatever.jpeg", extra_args={"ContentType": "image/jpeg"})
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_save_to_file(self, mock_session_class: mock.Mock) -> None:
