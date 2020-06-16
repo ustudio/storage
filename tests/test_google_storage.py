@@ -80,7 +80,16 @@ class TestGoogleStorage(TestCase):
         self.assert_gets_bucket_with_credentials()
 
         self.mock_bucket.blob.assert_called_once_with("path/filename")
-        self.mock_blob.upload_from_file.assert_called_once_with(mock_file)
+        self.mock_blob.upload_from_file.assert_called_once_with(mock_file, content_type=None)
+
+    def test_load_from_file_guesses_content_type_based_on_filename(self):
+        mock_file = mock.Mock()
+
+        storage = get_storage("gs://{}@bucketname/path/whatever.html".format(self.credentials))
+
+        storage.load_from_file(mock_file)
+
+        self.mock_blob.upload_from_file.assert_called_once_with(mock_file, content_type="text/html")
 
     def test_delete_deletes_blob(self):
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))

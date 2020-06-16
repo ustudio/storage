@@ -1,6 +1,7 @@
 import base64
 import datetime
 import json
+import mimetypes
 import os
 
 import google.cloud.storage
@@ -39,7 +40,7 @@ class GoogleStorage(Storage):
 
     def load_from_file(self, in_file):
         blob = self._get_blob()
-        blob.upload_from_file(in_file)
+        blob.upload_from_file(in_file, content_type=mimetypes.guess_type(self._storage_uri)[0])
 
     def delete(self):
         blob = self._get_blob()
