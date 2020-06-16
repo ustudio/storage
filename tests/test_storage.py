@@ -4,7 +4,7 @@ import threading
 from unittest import TestCase
 
 import storage as storagelib
-from storage.storage import Storage
+from storage.storage import Storage, InvalidStorageUri
 
 
 class TestTimeout(TestCase):
@@ -54,6 +54,26 @@ class TestRegisterStorageProtocol(TestCase):
         uri = "{0}://some/uri/path".format(self.scheme)
         store_obj = storagelib.get_storage(uri)
         self.assertIsInstance(store_obj, MyStorageClass)
+
+
+class TestGetStorage(TestCase):
+    def test_raises_for_unsupported_scheme(self):
+        with self.assertRaises(InvalidStorageUri) as error:
+            storagelib.get_storage("unsupported://creds:secret@bucket/path")
+
+        self.assertEqual("Invalid storage type 'unsupported'", str(error.exception))
+
+    def test_raises_for_missing_scheme(self):
+        with self.assertRaises(InvalidStorageUri) as error:
+            storagelib.get_storage("//creds:secret@invalid/storage/uri")
+
+        self.assertEqual("Invalid storage type ''", str(error.exception))
+
+    def test_raises_for_missing_scheme_and_netloc(self):
+        with self.assertRaises(InvalidStorageUri) as error:
+            storagelib.get_storage("invalid/storage/uri")
+
+        self.assertEqual("Invalid storage type ''", str(error.exception))
 
 
 class TestStorage(TestCase):
