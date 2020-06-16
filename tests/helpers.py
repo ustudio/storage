@@ -22,8 +22,8 @@ class TempDirectory(object):
     def name(self) -> str:
         return self.directory.name
 
-    def add_file(self, contents: bytes) -> NamedIO:
-        temp = cast(NamedIO, tempfile.NamedTemporaryFile(dir=self.directory.name))
+    def add_file(self, contents: bytes, suffix: str = "") -> NamedIO:
+        temp = cast(NamedIO, tempfile.NamedTemporaryFile(dir=self.directory.name, suffix=suffix))
         temp.write(contents)
         temp.flush()
         temp.seek(0)
@@ -89,7 +89,9 @@ def cleanup_nested_directory(value: NestedDirectoryDict) -> None:
     value["temp_directory"]["object"].cleanup()
 
 
-def create_temp_nested_directory_with_files() -> NestedDirectoryDict:
+def create_temp_nested_directory_with_files(
+        suffixes: List[str] = ["", "", ""]
+) -> NestedDirectoryDict:
     # temp_directory/
     #   temp_input_one
     #   temp_input_two
@@ -97,11 +99,11 @@ def create_temp_nested_directory_with_files() -> NestedDirectoryDict:
     #      nested_temp_input
 
     directory = TempDirectory()
-    new_file_1 = directory.add_file(b"FOO")
-    new_file_2 = directory.add_file(b"BAR")
+    new_file_1 = directory.add_file(b"FOO", suffixes[0])
+    new_file_2 = directory.add_file(b"BAR", suffixes[1])
 
     nested_directory = directory.add_dir()
-    nested_file = nested_directory.add_file(b"FOOBAR")
+    nested_file = nested_directory.add_file(b"FOOBAR", suffixes[2])
 
     return {
         "temp_directory": {

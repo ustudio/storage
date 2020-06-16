@@ -101,8 +101,13 @@ class S3Storage(Storage):
 
             for filename in files:
                 upload_path = os.path.join(relative_path, filename)
+                extra_args = None
+                content_type = mimetypes.guess_type(filename)[0]
+                if content_type is not None:
+                    extra_args = {"ContentType": content_type}
                 retry.attempt(
-                    client.upload_file, os.path.join(root, filename), self._bucket, upload_path)
+                    client.upload_file, os.path.join(root, filename), self._bucket, upload_path,
+                    ExtraArgs=extra_args)
 
     def delete(self) -> None:
         client = self._connect()
