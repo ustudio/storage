@@ -1,3 +1,4 @@
+import mimetypes
 import os
 import urllib
 import urlparse
@@ -70,13 +71,24 @@ class S3Storage(Storage):
     def load_from_filename(self, file_path):
         client = self._connect()
 
+        extra_args = None
+        content_type = mimetypes.guess_type(file_path)[0]
+        if content_type is not None:
+            extra_args = {"ContentType": content_type}
+
         transfer = boto3.s3.transfer.S3Transfer(client)
-        transfer.upload_file(file_path, self._bucket, self._keyname)
+        transfer.upload_file(file_path, self._bucket, self._keyname, extra_args=extra_args)
 
     def load_from_file(self, in_file):
         client = self._connect()
 
-        client.put_object(Bucket=self._bucket, Key=self._keyname, Body=in_file)
+        extra_args = {}
+
+        content_type = mimetypes.guess_type(self._storage_uri)[0]
+        if content_type is not None:
+            extra_args["ContentType"] = content_type
+
+        client.put_object(Bucket=self._bucket, Key=self._keyname, Body=in_file, **extra_args)
 
     def load_from_directory(self, source_directory):
         client = self._connect()
@@ -86,11 +98,16 @@ class S3Storage(Storage):
 
             for file in files:
                 upload_path = os.path.join(relative_path, file)
+                extra_args = None
+                content_type = mimetypes.guess_type(file)[0]
+                if content_type is not None:
+                    extra_args = {"ContentType": content_type}
                 retry.attempt(
                     client.upload_file,
                     os.path.join(root, file),
                     self._bucket,
-                    upload_path)
+                    upload_path,
+                    ExtraArgs=extra_args)
 
     def delete(self):
         client = self._connect()
