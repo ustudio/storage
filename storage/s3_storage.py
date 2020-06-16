@@ -75,7 +75,7 @@ class S3Storage(Storage):
         client = self._connect()
 
         extra_args = None
-        content_type = mimetypes.guess_type(self._storage_uri)[0]
+        content_type = mimetypes.guess_type(file_path)[0]
         if content_type is not None:
             extra_args = {"ContentType": content_type}
 
