@@ -152,8 +152,11 @@ class InvalidStorageUri(RuntimeError):
 
 
 def get_storage(storage_uri: str) -> Storage:
-    storage_type = storage_uri.split("://")[0]
-    return _STORAGE_TYPES[storage_type](storage_uri)
+    storage_type = urlparse(storage_uri).scheme
+    try:
+        return _STORAGE_TYPES[storage_type](storage_uri)
+    except KeyError:
+        raise InvalidStorageUri(f"Invalid storage type '{storage_type}'")
 
 
 ParsedQuery = Dict[str, List[str]]

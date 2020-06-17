@@ -35,6 +35,12 @@ class IntegrationTests(unittest.TestCase):
             os.write(handle, contents)
             os.close(handle)
 
+            handle, _ = tempfile.mkstemp(
+                prefix="source-mimetyped-file", suffix=".png",
+                dir=tempfile.mkdtemp(prefix="source-contentdir", dir=cls.directory))
+            os.write(handle, contents)
+            os.close(handle)
+
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.directory)

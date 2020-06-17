@@ -64,6 +64,26 @@ class TestRegisterStorageProtocol(TestCase):
             get_storage(f"{self.scheme}://some/uri/path")
 
 
+class TestGetStorage(TestCase):
+    def test_raises_for_unsupported_scheme(self) -> None:
+        with self.assertRaises(InvalidStorageUri) as error:
+            get_storage("unsupported://creds:secret@bucket/path")
+
+        self.assertEqual("Invalid storage type 'unsupported'", str(error.exception))
+
+    def test_raises_for_missing_scheme(self) -> None:
+        with self.assertRaises(InvalidStorageUri) as error:
+            get_storage("//creds:secret@invalid/storage/uri")
+
+        self.assertEqual("Invalid storage type ''", str(error.exception))
+
+    def test_raises_for_missing_scheme_and_netloc(self) -> None:
+        with self.assertRaises(InvalidStorageUri) as error:
+            get_storage("invalid/storage/uri")
+
+        self.assertEqual("Invalid storage type ''", str(error.exception))
+
+
 class TestStorage(TestCase):
     def test_get_sanitized_uri_removes_username_and_password(self) -> None:
         storage = Storage(storage_uri="https://username:password@bucket/path/filename")

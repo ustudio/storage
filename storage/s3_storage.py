@@ -1,3 +1,4 @@
+import mimetypes
 import os
 from urllib.parse import parse_qs, unquote
 
@@ -5,7 +6,7 @@ import boto3.session
 import boto3.s3.transfer
 from botocore.session import Session
 
-from typing import BinaryIO, Optional
+from typing import BinaryIO, Dict, Optional
 
 from storage import retry
 from storage.storage import Storage, register_storage_protocol, _LARGE_CHUNK
@@ -73,13 +74,24 @@ class S3Storage(Storage):
     def load_from_filename(self, file_path: str) -> None:
         client = self._connect()
 
+        extra_args = None
+        content_type = mimetypes.guess_type(file_path)[0]
+        if content_type is not None:
+            extra_args = {"ContentType": content_type}
+
         transfer = boto3.s3.transfer.S3Transfer(client)
-        transfer.upload_file(file_path, self._bucket, self._keyname)
+        transfer.upload_file(file_path, self._bucket, self._keyname, extra_args=extra_args)
 
     def load_from_file(self, in_file: BinaryIO) -> None:
         client = self._connect()
 
-        client.put_object(Bucket=self._bucket, Key=self._keyname, Body=in_file)
+        extra_args: Dict[str, str] = {}
+
+        content_type = mimetypes.guess_type(self._storage_uri)[0]
+        if content_type is not None:
+            extra_args["ContentType"] = content_type
+
+        client.put_object(Bucket=self._bucket, Key=self._keyname, Body=in_file, **extra_args)
 
     def load_from_directory(self, source_directory: str) -> None:
         client = self._connect()
@@ -89,8 +101,13 @@ class S3Storage(Storage):
 
             for filename in files:
                 upload_path = os.path.join(relative_path, filename)
+                extra_args = None
+                content_type = mimetypes.guess_type(filename)[0]
+                if content_type is not None:
+                    extra_args = {"ContentType": content_type}
                 retry.attempt(
-                    client.upload_file, os.path.join(root, filename), self._bucket, upload_path)
+                    client.upload_file, os.path.join(root, filename), self._bucket, upload_path,
+                    ExtraArgs=extra_args)
 
     def delete(self) -> None:
         client = self._connect()
