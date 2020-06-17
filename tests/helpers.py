@@ -2,7 +2,7 @@ import os
 import tempfile
 
 
-def create_temp_nested_directory_with_files():
+def create_temp_nested_directory_with_files(suffixes=["", "", ""]):
     # temp_directory/
     #   temp_input_one
     #   temp_input_two
@@ -11,7 +11,8 @@ def create_temp_nested_directory_with_files():
     temp_dir = {}
     temp_dir["temp_directory"] = {"path": tempfile.mkdtemp()}
     temp_dir["temp_input_one"] = {
-        "file": tempfile.NamedTemporaryFile(dir=temp_dir["temp_directory"]["path"])}
+        "file": tempfile.NamedTemporaryFile(
+            dir=temp_dir["temp_directory"]["path"], suffix=suffixes[0])}
     temp_dir["temp_input_one"]["path"] = temp_dir["temp_input_one"]["file"].name
     temp_dir["temp_input_one"]["name"] = os.path.basename(temp_dir["temp_input_one"]["file"].name)
 
@@ -19,7 +20,8 @@ def create_temp_nested_directory_with_files():
     temp_dir["temp_input_one"]["file"].flush()
 
     temp_dir["temp_input_two"] = {
-        "file": tempfile.NamedTemporaryFile(dir=temp_dir["temp_directory"]["path"])}
+        "file": tempfile.NamedTemporaryFile(
+            dir=temp_dir["temp_directory"]["path"], suffix=suffixes[1])}
     temp_dir["temp_input_two"]["path"] = temp_dir["temp_input_two"]["file"].name
     temp_dir["temp_input_two"]["name"] = os.path.basename(temp_dir["temp_input_two"]["file"].name)
     temp_dir["temp_input_two"]["file"].write("BAR")
@@ -31,7 +33,8 @@ def create_temp_nested_directory_with_files():
         temp_dir["nested_temp_directory"]["path"])
 
     temp_dir["nested_temp_input"] = {
-        "file": tempfile.NamedTemporaryFile(dir=temp_dir["nested_temp_directory"]["path"])}
+        "file": tempfile.NamedTemporaryFile(
+            dir=temp_dir["nested_temp_directory"]["path"], suffix=suffixes[2])}
     temp_dir["nested_temp_input"]["path"] = temp_dir["nested_temp_input"]["file"].name
     temp_dir["nested_temp_input"]["name"] = os.path.basename(
         temp_dir["nested_temp_input"]["file"].name)
