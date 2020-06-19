@@ -221,7 +221,7 @@ class SwiftServiceTestCase(ServiceTestCase):
         written_files = {}
         expected_files = {
             strip_slashes(f.split(object_path)[1]): v
-            for f, v in self.container_contents.items()
+            for f, v in self.container_contents.items() if not f.endswith("/")
         }
 
         for root, dirs, files in os.walk(self.tmp_dir.name):
