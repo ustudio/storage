@@ -788,6 +788,21 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
 
         self.assert_container_contents_equal("/path/to/files")
 
+    def test_save_to_directory_ignores_directory_placeholder_objects(self) -> None:
+        self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")
+        self._add_file_to_directory("/path/to/files/other_file.mp4", b"Other Contents")
+        self._add_file_to_directory("/path/to/files/folder/", b"")
+        self._add_file_to_directory("/path/to/files/folder/file2.mp4", b"Video Content")
+        self._add_file_to_directory("/path/to/files/folder2/folder3/files3.mp4", b"Video Contents")
+
+        swift_uri = self._generate_storage_uri("/path/to/files")
+        storage_object = get_storage(swift_uri)
+
+        with self.run_services():
+            storage_object.save_to_directory(self.tmp_dir.name)
+
+        self.assert_container_contents_equal("/path/to/files")
+
     def test_save_to_directory_retries_on_error(self) -> None:
         self.remaining_file_failures.append("500 Internal server error")
         self._add_file_to_directory("/path/to/files/file.mp4", b"Contents")

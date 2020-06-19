@@ -180,6 +180,9 @@ class SwiftStorage(Storage):
         prefix = self._parsed_storage_uri.path[1:] + "/"
 
         for container_object in self._find_storage_objects_with_prefix(container, prefix):
+            if container_object["name"].endswith("/"):
+                continue
+
             base_path = container_object["name"].split(prefix)[1]
             relative_path = os.path.sep.join(base_path.split("/"))
             file_path = os.path.join(directory_path, relative_path)
