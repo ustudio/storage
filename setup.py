@@ -11,7 +11,7 @@ install_requires = [
 ]
 
 setup(name="object_storage",
-      version="0.12.8",
+      version="0.12.9",
       description="Python library for accessing files over various file transfer protocols.",
       url="https://github.com/ustudio/storage",
       packages=["storage"],
