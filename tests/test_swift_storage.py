@@ -333,15 +333,17 @@ class TestSwiftStorage(TestCase):
     def test_swift_save_to_directory_works_with_empty_directories(
             self, mock_timeout, mock_create_context, mock_makedirs, mock_path_exists):
 
-        expected_jpg = self.RackspaceObject("a/0.jpg", "image/jpg")
-        expected_mp4 = self.RackspaceObject("a/b/c/1.mp4", "video/mp4")
+        expected_jpg = self.RackspaceObject("file/a/0.jpg", "image/jpg")
+        expected_mp4 = self.RackspaceObject("file/a/b/c/1.mp4", "video/mp4")
+        expected_binary = self.RackspaceObject("file/some-binary", "application/octet-stream")
 
         expected_files = [
-            self.RackspaceObject("nothing", "application/directory"),
+            self.RackspaceObject("file/nothing", "application/directory"),
             expected_jpg,
-            self.RackspaceObject("to see", "application/directory"),
-            self.RackspaceObject("here", "application/directory"),
-            expected_mp4
+            self.RackspaceObject("file/to see/", "any/mimetype"),
+            self.RackspaceObject("file/here/", "application/directory"),
+            expected_mp4,
+            expected_binary
         ]
         mock_context = mock_create_context.return_value
         mock_swift = mock_context.get_client.return_value
@@ -359,16 +361,22 @@ class TestSwiftStorage(TestCase):
         mock_swift.list_container_objects.assert_called_with(
             self.params["container"], prefix=self.params["file"])
 
+        self.assertEqual(6, mock_makedirs.call_count)
         mock_makedirs.assert_has_calls([
             mock.call("/tmp/cat/pants/nothing"),
             mock.call("/tmp/cat/pants/to see"),
             mock.call("/tmp/cat/pants/here"),
+            mock.call("/tmp/cat/pants/a"),
+            mock.call("/tmp/cat/pants/a/b/c"),
+            mock.call("/tmp/cat/pants")
         ])
 
         mock_swift.download_object.assert_any_call(
-            self.params["container"], expected_jpg, "a", structure=False)
+            self.params["container"], expected_jpg, "/tmp/cat/pants/a", structure=False)
         mock_swift.download_object.assert_any_call(
-            self.params["container"], expected_mp4, "a/b/c", structure=False)
+            self.params["container"], expected_mp4, "/tmp/cat/pants/a/b/c", structure=False)
+        mock_swift.download_object.assert_any_call(
+            self.params["container"], expected_binary, "/tmp/cat/pants", structure=False)
 
     @mock.patch("pyrax.create_context")
     @mock.patch("storage.swift_storage.timeout", wraps=storagelib.swift_storage.timeout)
