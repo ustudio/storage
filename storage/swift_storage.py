@@ -86,7 +86,8 @@ class SwiftStorage(Storage):
         files = []
 
         for container_object in container_objects:
-            if container_object.content_type == "application/directory":
+            if container_object.content_type == "application/directory" \
+                    or container_object.name.endswith("/"):
                 directories.append(container_object)
             else:
                 files.append(container_object)
@@ -115,7 +116,7 @@ class SwiftStorage(Storage):
             if directory.name == prefix:
                 continue
 
-            directory_path = directory.name.split('/', 1).pop()
+            directory_path = directory.name.rstrip('/').split('/', 1).pop()
             target_directory = os.path.join(destination_directory, directory_path)
 
             if not os.path.exists(target_directory):
