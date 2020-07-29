@@ -41,6 +41,10 @@ def register_storage_protocol(scheme: str) -> Callable[[Type["Storage"]], Type["
     return decorate_storage_protocol
 
 
+class NotFoundError(Exception):
+    pass
+
+
 class DownloadUrlBaseUndefinedError(Exception):
     """Exception raised when a download url has been requested and
     no download_url_base has been defined for the storage object.

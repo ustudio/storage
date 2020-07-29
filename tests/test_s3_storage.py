@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 from typing import cast, Dict, List, Optional
 
-from storage.storage import get_storage
+from storage.storage import get_storage, NotFoundError
 from storage.s3_storage import S3Storage
 from tests.helpers import create_temp_nested_directory_with_files, NestedDirectoryDict
 from tests.helpers import cleanup_nested_directory
@@ -619,8 +619,7 @@ class TestS3Storage(StorageTestCase, TestCase):
             ]
         }
 
-        storage = get_storage(
-            "s3://access_key:access_secret@bucket/some/dir")
+        storage = get_storage("s3://access_key:access_secret@bucket/some/dir")
 
         storage.delete_directory()
 
@@ -656,6 +655,28 @@ class TestS3Storage(StorageTestCase, TestCase):
                     }
                 ]
             })
+
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_delete_directory_raises_when_empty(self, mock_session_class: mock.Mock) -> None:
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_s3.list_objects.return_value = {}
+
+        storage = get_storage("s3://access_key:access_secret@bucket/some/dir")
+
+        with self.assertRaises(NotFoundError):
+            storage.delete_directory()
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name=None)
+
+        mock_session.client.assert_called_with("s3")
+
+        mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
+        mock_s3.delete_objects.assert_not_called()
 
     @mock.patch("boto3.session.Session", autospec=True)
     def test_get_download_url_calls_boto_generate_presigned_url_with_correct_data(

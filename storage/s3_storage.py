@@ -9,7 +9,7 @@ from botocore.session import Session
 from typing import BinaryIO, Dict, Optional
 
 from storage import retry
-from storage.storage import Storage, register_storage_protocol, _LARGE_CHUNK
+from storage.storage import Storage, NotFoundError, register_storage_protocol, _LARGE_CHUNK
 from storage.storage import get_optional_query_parameter
 from storage.url_parser import remove_user_info
 
@@ -117,7 +117,12 @@ class S3Storage(Storage):
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
         dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
-        object_keys = [{"Key": o.get("Key", None)} for o in dir_object["Contents"]]
+
+        try:
+            object_keys = [{"Key": o.get("Key", None)} for o in dir_object["Contents"]]
+        except KeyError:
+            raise NotFoundError("No Files Found")
+
         client.delete_objects(Bucket=self._bucket, Delete={"Objects": object_keys})
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
