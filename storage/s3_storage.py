@@ -118,11 +118,10 @@ class S3Storage(Storage):
         directory_prefix = "{}/".format(self._keyname)
         dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
 
-        try:
-            object_keys = [{"Key": o.get("Key", None)} for o in dir_object["Contents"]]
-        except KeyError:
+        if "Contents" not in dir_object:
             raise NotFoundError("No Files Found")
 
+        object_keys = [{"Key": o.get("Key", None)} for o in dir_object["Contents"]]
         client.delete_objects(Bucket=self._bucket, Delete={"Objects": object_keys})
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
