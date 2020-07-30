@@ -57,6 +57,10 @@ class S3Storage(Storage):
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
         dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
+
+        if "Contents" not in dir_object:
+            raise NotFoundError("No Files Found")
+
         dir_contents = dir_object["Contents"]
 
         for obj in dir_contents:

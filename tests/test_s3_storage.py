@@ -422,6 +422,32 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.assertEqual(4, mock_sleep.call_count)
         mock_sleep.assert_called_with(mock_uniform.return_value)
 
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists")
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_save_to_directory_raises_when_empty(
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock,
+            mock_path_exists: mock.Mock, mock_makedirs: mock.Mock) -> None:
+        mock_session = mock_session_class.return_value
+        mock_s3_client = mock_session.client.return_value
+        mock_s3_client.list_objects.return_value = {}
+
+        storage = get_storage(
+            "s3://access_key:access_secret@bucket/directory?region=US_EAST")
+
+        with self.assertRaises(NotFoundError):
+            storage.save_to_directory("save_to_directory")
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name="US_EAST")
+
+        mock_session.client.assert_called_with("s3")
+
+        mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
+
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
     def test_load_from_directory(
