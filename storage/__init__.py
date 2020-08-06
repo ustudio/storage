@@ -1,4 +1,4 @@
-from storage.storage import get_storage, register_storage_protocol  # noqa: F401
+from storage.storage import get_storage, register_storage_protocol, NotFoundError  # noqa: f401
 from storage import local_storage  # noqa: F401
 from storage import swift_storage  # noqa: F401
 from storage import cloudfiles_storage  # noqa: F401
