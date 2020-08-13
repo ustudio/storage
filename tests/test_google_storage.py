@@ -66,7 +66,7 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.download_to_file.assert_called_once_with(mock_file)
 
-    def test_save_to_file_raises_when_file_does_not_exist(self) -> None:
+    def test_save_to_file_raises_when_filename_does_not_exist(self) -> None:
         mock_file = mock.Mock()
 
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
@@ -361,7 +361,7 @@ class TestGoogleStorage(TestCase):
     @mock.patch("os.path.exists")
     @mock.patch("random.uniform")
     @mock.patch("time.sleep")
-    def test_save_to_directory_raises_when_file_does_not_exist(
+    def test_save_to_directory_raises_when_file_not_found(
             self, mock_sleep: mock.Mock, mock_uniform: mock.Mock, mock_exists: mock.Mock) -> None:
         mock_uniform_results = [mock.Mock() for i in range(4)]
         mock_uniform.side_effect = mock_uniform_results
