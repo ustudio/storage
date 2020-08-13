@@ -5,11 +5,12 @@ from urllib.parse import parse_qs, parse_qsl, ParseResult, urlencode, urljoin, u
 from keystoneauth1 import session
 from keystoneauth1.identity import v2
 import swiftclient.client
+from swiftclient.exceptions import ClientException
 import swiftclient.utils
 from typing import BinaryIO, Callable, cast, Dict, List, Optional, Tuple, Type, TypeVar
 
 from storage import retry
-from storage.storage import InvalidStorageUri, register_storage_protocol, Storage
+from storage.storage import InvalidStorageUri, register_storage_protocol, Storage, NotFoundError
 from storage.storage import get_optional_query_parameter, _LARGE_CHUNK, DEFAULT_SWIFT_TIMEOUT
 
 
@@ -98,8 +99,11 @@ class SwiftStorage(Storage):
         # may need to truncate file if retrying...
         out_file.seek(0)
 
-        resp_headers, object_contents = connection.get_object(
-            container, object_name, resp_chunk_size=_LARGE_CHUNK)
+        try:
+            resp_headers, object_contents = connection.get_object(
+                container, object_name, resp_chunk_size=_LARGE_CHUNK)
+        except ClientException:
+            raise NotFoundError("No File Found")
 
         for object_content in object_contents:
             out_file.write(object_content)
@@ -132,7 +136,10 @@ class SwiftStorage(Storage):
         connection = self.get_connection()
         container, object_name = self.get_container_and_object_names()
 
-        connection.delete_object(container, object_name)
+        try:
+            connection.delete_object(container, object_name)
+        except ClientException:
+            raise NotFoundError("No File Found")
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         connection = self.get_connection()
@@ -171,8 +178,11 @@ class SwiftStorage(Storage):
     def _find_storage_objects_with_prefix(
             self, container: str, prefix: str) -> List[Dict[str, str]]:
         connection = self.get_connection()
-        _, container_objects = connection.get_container(container, prefix=prefix)
-        return container_objects
+        try:
+            _, container_objects = connection.get_container(container, prefix=prefix)
+            return container_objects
+        except ClientException:
+            raise NotFoundError("No File Found")
 
     def save_to_directory(self, directory_path: str) -> None:
         container, object_name = self.get_container_and_object_names()
