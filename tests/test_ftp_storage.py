@@ -1,4 +1,5 @@
 import contextlib
+from ftplib import error_perm
 import socket
 from io import BytesIO
 import tempfile
@@ -7,7 +8,7 @@ from typing import Any, Callable, Collection, cast, Generator, List, Optional, U
 from unittest import mock, TestCase
 from urllib.parse import quote_plus
 
-from storage.storage import get_storage, DownloadUrlBaseUndefinedError
+from storage.storage import get_storage, DownloadUrlBaseUndefinedError, NotFoundError
 from storage.storage import DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT, DEFAULT_FTP_KEEPIDLE
 from storage.storage import DEFAULT_FTP_KEEPINTVL, DEFAULT_FTP_TIMEOUT
 
@@ -151,6 +152,22 @@ class TestFTPStorage(TestCase):
             self.assertEqual("foobar", output_fp.read())
 
     @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_save_to_filename_raises_when_file_does_not_exist(
+            self, mock_ftp_class: mock.Mock) -> None:
+        temp_output = tempfile.NamedTemporaryFile()
+
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.retrbinary.side_effect = error_perm
+
+        storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        with self.assertRaises(NotFoundError):
+            storage.save_to_filename(temp_output.name)
+
+        self.assertEqual(1, mock_ftp.retrbinary.call_count)
+        self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
+
+    @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_save_to_file(self, mock_ftp_class: mock.Mock) -> None:
         out_file = BytesIO(b"")
 
@@ -203,6 +220,22 @@ class TestFTPStorage(TestCase):
         self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
 
         self.assertEqual(b"foobar", out_file.getvalue())
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_save_to_file_raises_when_file_does_not_exist(
+            self, mock_ftp_class: mock.Mock) -> None:
+        out_file = BytesIO(b"")
+
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.retrbinary.side_effect = error_perm
+
+        storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        with self.assertRaises(NotFoundError):
+            storage.save_to_file(out_file)
+
+        self.assertEqual(1, mock_ftp.retrbinary.call_count)
+        self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
 
     @mock.patch("os.chdir")
     @mock.patch("os.makedirs")
@@ -309,6 +342,57 @@ class TestFTPStorage(TestCase):
             mock.call(
                 "RETR file with spaces",
                 callback=mock_open.return_value.__enter__.return_value.write),
+        ])
+
+        mock_ftp.storbinary.assert_not_called()
+
+    @mock.patch("builtins.open", autospec=True)
+    @mock.patch("os.chdir")
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists", return_value=False)
+    def test_ftp_save_to_directory_raises_when_files_does_not_exist(
+            self, mock_path_exists: mock.Mock, mock_makedirs: mock.Mock,
+            mock_chdir: mock.Mock, mock_open: mock.Mock) -> None:
+
+        directory_listing = [
+            # root
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir1",
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir2",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file1",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file2",
+            ],
+            # dir1
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir with spaces",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file3",
+            ],
+            # dir with spaces
+            [
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file with spaces"
+            ],
+            # dir2
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir4",
+            ],
+        ]
+
+        with patch_ftp_client(directory_listing) as mock_ftp:
+            mock_ftp.pwd.return_value = "some/place/special"
+            mock_ftp.retrbinary.side_effect = error_perm
+
+            storage = get_storage("ftp://user:password@ftp.foo.com/some/place/special")
+            with self.assertRaises(NotFoundError):
+                storage.save_to_directory("/cat/pants")
+
+        self.assertEqual(1, mock_open.call_count)
+        mock_open.assert_has_calls([
+            mock.call("/cat/pants/file1", "wb"),
+        ])
+
+        self.assertEqual(1, mock_ftp.retrbinary.call_count)
+        mock_ftp.retrbinary.assert_has_calls([
+            mock.call("RETR file1", callback=mock_open.return_value.__enter__.return_value.write)
         ])
 
         mock_ftp.storbinary.assert_not_called()
@@ -510,6 +594,16 @@ class TestFTPStorage(TestCase):
         mock_ftp.cwd.assert_called_with("some/dir")
         mock_ftp.delete.assert_called_with("file")
 
+    def test_ftp_delete_raises_when_file_does_not_exist(self) -> None:
+        with patch_ftp_client() as mock_ftp:
+            mock_ftp.delete.side_effect = error_perm
+            storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+            with self.assertRaises(NotFoundError):
+                storage.delete()
+
+        mock_ftp.cwd.assert_called_with("some/dir")
+        mock_ftp.delete.assert_called_with("file")
+
     def test_ftp_delete_directory(self) -> None:
         directory_listing = [
             # root
@@ -565,6 +659,50 @@ class TestFTPStorage(TestCase):
             mock.call("/some/dir/file")
         ])
         self.assertEqual(5, mock_ftp.rmd.call_count)
+
+    def test_ftp_delete_directory_raises_when_file_does_not_exist(self) -> None:
+        directory_listing = [
+            # root
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir1",
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir2",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file1",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file2",
+            ],
+            # dir1
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir with spaces",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file3",
+            ],
+            # dir with spaces
+            [
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file with spaces"
+            ],
+            # dir2
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir4",
+            ]
+        ]
+
+        with patch_ftp_client(directory_listing) as mock_ftp:
+            mock_ftp.pwd.return_value = "some/dir/file"
+            mock_ftp.delete.side_effect = error_perm
+
+            storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+            with self.assertRaises(NotFoundError):
+                storage.delete_directory()
+
+        mock_ftp.cwd.assert_has_calls([
+            mock.call("/some/dir/file")
+        ])
+        self.assertEqual(1, mock_ftp.cwd.call_count)
+
+        mock_ftp.delete.assert_has_calls([
+            mock.call("/some/dir/file/file1")
+        ])
+        self.assertEqual(1, mock_ftp.delete.call_count)
+
+        self.assertEqual(0, mock_ftp.rmd.call_count)
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_get_download_url(self, mock_ftp_class: mock.Mock) -> None:
