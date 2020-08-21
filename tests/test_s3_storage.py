@@ -3,6 +3,7 @@ from unittest import mock, TestCase
 from urllib.parse import quote
 
 from typing import cast, Dict, List, Optional
+from botocore.exceptions import ClientError
 
 from storage.storage import get_storage, NotFoundError
 from storage.s3_storage import S3Storage
@@ -204,7 +205,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         mock_s3 = mock_session.client.return_value
 
         mock_transfer = mock_transfer_class.return_value
-        mock_transfer.download_file.side_effect = IOError
+        mock_transfer.download_file.side_effect = ClientError({}, {})
 
         storage = get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")

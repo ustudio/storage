@@ -4,6 +4,7 @@ from urllib.parse import parse_qs, unquote
 
 import boto3.session
 import boto3.s3.transfer
+from botocore.exceptions import ClientError
 from botocore.session import Session
 
 from typing import BinaryIO, Dict, Optional
@@ -42,7 +43,7 @@ class S3Storage(Storage):
         transfer = boto3.s3.transfer.S3Transfer(client)
         try:
             transfer.download_file(self._bucket, self._keyname, file_path)
-        except IOError:
+        except ClientError:
             raise NotFoundError("No File Found")
 
     def save_to_file(self, out_file: BinaryIO) -> None:
