@@ -148,7 +148,10 @@ class FTPStorage(Storage):
         ftp_client = self._connect()
         base_ftp_path = self._parsed_storage_uri.path
 
-        ftp_client.cwd(base_ftp_path)
+        try:
+            ftp_client.cwd(base_ftp_path)
+        except error_perm:
+            raise NotFoundError("No Files Found")
 
         for root, dirs, files in self._walk(ftp_client):
             relative_path = "/{}".format(root).replace(base_ftp_path, destination_directory, 1)
@@ -164,7 +167,7 @@ class FTPStorage(Storage):
                         ftp_client.retrbinary(
                             "RETR {0}".format(filename), callback=output_file.write)
                     except error_perm:
-                        raise NotFoundError("No Files Found")
+                        raise NotFoundError("No File Found")
 
     def load_from_filename(self, file_path: str) -> None:
         with open(file_path, "rb") as input_file:
@@ -208,7 +211,10 @@ class FTPStorage(Storage):
     def delete_directory(self) -> None:
         ftp_client = self._connect()
         base_ftp_path = self._parsed_storage_uri.path
-        ftp_client.cwd(base_ftp_path)
+        try:
+            ftp_client.cwd(base_ftp_path)
+        except error_perm:
+            raise NotFoundError("No Files Found")
 
         directories_to_remove = []
         for root, directories, files in self._walk(ftp_client):
@@ -216,7 +222,7 @@ class FTPStorage(Storage):
                 try:
                     ftp_client.delete("/{}/{}".format(root, filename))
                 except error_perm:
-                    raise NotFoundError("No Files Found")
+                    raise NotFoundError("No File Found")
 
             directories_to_remove.append("/{}".format(root))
 

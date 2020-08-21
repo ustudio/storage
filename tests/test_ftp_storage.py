@@ -346,6 +346,16 @@ class TestFTPStorage(TestCase):
 
         mock_ftp.storbinary.assert_not_called()
 
+    def test_ftp_save_to_directory_raises_when_directory_does_not_exist(self) -> None:
+        directory_listing = []
+
+        with patch_ftp_client(directory_listing) as mock_ftp:
+            mock_ftp.cwd.side_effect = error_perm
+
+            storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+            with self.assertRaises(NotFoundError):
+                storage.save_to_directory("/cat/pants")
+
     @mock.patch("builtins.open", autospec=True)
     @mock.patch("os.chdir")
     @mock.patch("os.makedirs")
@@ -659,6 +669,16 @@ class TestFTPStorage(TestCase):
             mock.call("/some/dir/file")
         ])
         self.assertEqual(5, mock_ftp.rmd.call_count)
+
+    def test_ftp_delete_directory_raises_when_directory_does_not_exist(self) -> None:
+        directory_listing = []
+
+        with patch_ftp_client(directory_listing) as mock_ftp:
+            mock_ftp.cwd.side_effect = error_perm
+
+            storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+            with self.assertRaises(NotFoundError):
+                storage.delete_directory()
 
     def test_ftp_delete_directory_raises_when_file_does_not_exist(self) -> None:
         directory_listing = [
