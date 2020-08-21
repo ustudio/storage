@@ -361,6 +361,24 @@ class TestGoogleStorage(TestCase):
     @mock.patch("os.path.exists")
     @mock.patch("random.uniform")
     @mock.patch("time.sleep")
+    def test_save_to_directory_raises_when_listed_blobs_is_empty(
+            self, mock_sleep: mock.Mock, mock_uniform: mock.Mock, mock_exists: mock.Mock) -> None:
+        mock_uniform_results = [mock.Mock() for i in range(4)]
+        mock_uniform.side_effect = mock_uniform_results
+        mock_exists.return_value = True
+
+        self.mock_bucket.list_blobs.return_value = iter([])
+
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        with self.assertRaises(NotFoundError):
+            storage.save_to_directory("directory-name")
+
+        self.assertEqual(0, self.mock_bucket.blob.call_count)
+
+    @mock.patch("os.path.exists")
+    @mock.patch("random.uniform")
+    @mock.patch("time.sleep")
     def test_save_to_directory_raises_when_file_not_found(
             self, mock_sleep: mock.Mock, mock_uniform: mock.Mock, mock_exists: mock.Mock) -> None:
         mock_uniform_results = [mock.Mock() for i in range(4)]
@@ -561,7 +579,7 @@ class TestGoogleStorage(TestCase):
         mock_unversioned_blobs[1].delete.assert_called_once_with()
         mock_unversioned_blobs[2].delete.assert_called_once_with()
 
-    def test_delete_directory_raises_when_empty(self) -> None:
+    def test_delete_directory_raises_when_file_does_not_exist(self) -> None:
         mock_listed_blobs = [
             self._mock_blob("path/filename/file1"),
             self._mock_blob("path/filename/file2"),
@@ -594,3 +612,13 @@ class TestGoogleStorage(TestCase):
         mock_unversioned_blobs[0].delete.assert_called_once_with()
         mock_unversioned_blobs[1].delete.assert_called_once_with()
         mock_unversioned_blobs[2].delete.assert_not_called()
+
+    def test_delete_directory_raises_when_list_blobs_is_empty(self):
+        self.mock_bucket.list_blobs.return_value = iter([])
+
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        with self.assertRaises(NotFoundError):
+            storage.delete_directory()
+
+        self.mock_bucket.list_blobs.assert_called_once_with(prefix="path/filename/")
