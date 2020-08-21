@@ -79,8 +79,11 @@ class S3Storage(Storage):
                 if not os.path.exists(directory_path + file_path):
                     os.makedirs(directory_path + file_path)
 
-                retry.attempt(
-                    client.download_file, self._bucket, obj["Key"], directory_path + file_key)
+                try:
+                    retry.attempt(
+                        client.download_file, self._bucket, obj["Key"], directory_path + file_key)
+                except ClientError:
+                    raise NotFoundError("No File Found")
 
     def load_from_filename(self, file_path: str) -> None:
         client = self._connect()
@@ -136,7 +139,11 @@ class S3Storage(Storage):
             raise NotFoundError("No Files Found")
 
         object_keys = [{"Key": o.get("Key", None)} for o in dir_object["Contents"]]
-        client.delete_objects(Bucket=self._bucket, Delete={"Objects": object_keys})
+
+        try:
+            client.delete_objects(Bucket=self._bucket, Delete={"Objects": object_keys})
+        except ClientError:
+            raise NotFoundError("No Files Found")
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         client = self._connect()
