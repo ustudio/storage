@@ -347,9 +347,7 @@ class TestFTPStorage(TestCase):
         mock_ftp.storbinary.assert_not_called()
 
     def test_ftp_save_to_directory_raises_when_directory_does_not_exist(self) -> None:
-        directory_listing = []
-
-        with patch_ftp_client(directory_listing) as mock_ftp:
+        with patch_ftp_client() as mock_ftp:
             mock_ftp.cwd.side_effect = error_perm
 
             storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -671,9 +669,7 @@ class TestFTPStorage(TestCase):
         self.assertEqual(5, mock_ftp.rmd.call_count)
 
     def test_ftp_delete_directory_raises_when_directory_does_not_exist(self) -> None:
-        directory_listing = []
-
-        with patch_ftp_client(directory_listing) as mock_ftp:
+        with patch_ftp_client() as mock_ftp:
             mock_ftp.cwd.side_effect = error_perm
 
             storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
