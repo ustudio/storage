@@ -1,4 +1,5 @@
 import distutils.dir_util
+from distutils.errors import DistutilsFileError
 import os
 import shutil
 from urllib.parse import parse_qs
@@ -37,11 +38,14 @@ class LocalStorage(Storage):
             with open(self._parsed_storage_uri.path, "rb") as in_file:
                 for chunk in in_file:
                     out_file.write(chunk)
-        except OSError:
+        except FileNotFoundError:
             raise NotFoundError("No File Found")
 
     def save_to_directory(self, destination_directory: str) -> None:
-        distutils.dir_util.copy_tree(self._parsed_storage_uri.path, destination_directory)
+        try:
+            distutils.dir_util.copy_tree(self._parsed_storage_uri.path, destination_directory)
+        except DistutilsFileError:
+            raise NotFoundError("No Files Found")
 
     def _ensure_exists(self) -> None:
         dirname = os.path.dirname(self._parsed_storage_uri.path)
@@ -68,11 +72,14 @@ class LocalStorage(Storage):
     def delete(self) -> None:
         try:
             os.remove(self._parsed_storage_uri.path)
-        except OSError:
+        except FileNotFoundError:
             raise NotFoundError("No File Found")
 
     def delete_directory(self) -> None:
-        shutil.rmtree(self._parsed_storage_uri.path, True)
+        try:
+            shutil.rmtree(self._parsed_storage_uri.path)
+        except FileNotFoundError:
+            raise NotFoundError("No Files Found")
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         """

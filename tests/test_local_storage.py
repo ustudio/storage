@@ -42,13 +42,14 @@ class TestLocalStorage(StorageTestCase):
         with open(temp_output.name, "rb") as temp_output_fp:
             self.assertEqual(b"FOOBAR", temp_output_fp.read())
 
-    @mock.patch("shutil.copy", autospec=True)
-    def test_local_storage_raises_when_filename_does_not_exist(self, mock_copy: mock.Mock) -> None:
-        mock_copy.side_effect = FileNotFoundError
+    def test_local_storage_raises_when_filename_does_not_exist(self) -> None:
+        with tempfile.NamedTemporaryFile() as fp:
+            removed_path = fp.name
 
+        self.assertFalse(os.path.exists(removed_path))
         temp_output = tempfile.NamedTemporaryFile()
 
-        storage = get_storage("file://some.file")
+        storage = get_storage(f"file://{removed_path}")
         with self.assertRaises(NotFoundError):
             storage.save_to_filename(temp_output.name)
 
@@ -100,6 +101,21 @@ class TestLocalStorage(StorageTestCase):
 
             with open(nested_temp_input_path, "rb") as temp_output_fp:
                 self.assertEqual(b"FOOBAR", temp_output_fp.read())
+
+    def test_local_storage_save_to_directory_raises_when_source_directory_does_not_exist(
+            self) -> None:
+        self.temp_directory = create_temp_nested_directory_with_files()
+        fake_path = os.path.join(self.temp_directory["temp_directory"]["path"], "invalid")
+        self.assertFalse(os.path.exists(fake_path))
+
+        storage = get_storage("file://{0}".format(fake_path))
+
+        with TempDirectory() as temp_output:
+            temp_output_dir = temp_output.name
+            destination_directory_path = os.path.join(temp_output_dir, "tmp")
+
+            with self.assertRaises(NotFoundError):
+                storage.save_to_directory(destination_directory_path)
 
     def test_local_storage_load_from_directory(self) -> None:
         self.temp_directory = create_temp_nested_directory_with_files()
@@ -157,16 +173,15 @@ class TestLocalStorage(StorageTestCase):
 
         mock_remove.assert_called_with("/folder/file")
 
-    @mock.patch("os.remove", autospec=True)
-    def test_local_storage_delete_raises_when_file_does_not_exist(
-            self, mock_remove: mock.Mock) -> None:
-        mock_remove.side_effect = OSError
+    def test_local_storage_delete_raises_when_file_does_not_exist(self) -> None:
+        with tempfile.NamedTemporaryFile() as fp:
+            removed_path = fp.name
 
-        storage = get_storage("file:///folder/file")
+        self.assertFalse(os.path.exists(removed_path))
+
+        storage = get_storage(f"file:///{removed_path}")
         with self.assertRaises(NotFoundError):
             storage.delete()
-
-        mock_remove.assert_called_with("/folder/file")
 
     @mock.patch("shutil.rmtree", autospec=True)
     @mock.patch("os.remove", autospec=True)
@@ -178,7 +193,17 @@ class TestLocalStorage(StorageTestCase):
         storage.delete_directory()
 
         self.assertFalse(mock_remove.called)
-        mock_rmtree.assert_called_once_with(self.temp_directory["temp_directory"]["path"], True)
+        mock_rmtree.assert_called_once_with(self.temp_directory["temp_directory"]["path"])
+
+    def test_local_storage_delete_directory_raises_when_directory_does_not_exist(self) -> None:
+        self.temp_directory = create_temp_nested_directory_with_files()
+        fake_path = os.path.join(self.temp_directory["temp_directory"]["path"], "invalid")
+
+        self.assertFalse(os.path.exists(fake_path))
+
+        storage = get_storage("file://{0}".format(fake_path))
+        with self.assertRaises(NotFoundError):
+            storage.delete_directory()
 
     def test_local_storage_save_to_file(self) -> None:
         temp_input = tempfile.NamedTemporaryFile()
@@ -191,6 +216,18 @@ class TestLocalStorage(StorageTestCase):
         storage.save_to_file(out_file)
 
         self.assertEqual(b"FOOBAR", out_file.getvalue())
+
+    def test_local_storage_raises_when_file_does_not_exist(self) -> None:
+        with tempfile.NamedTemporaryFile() as fp:
+            removed_path = fp.name
+
+        self.assertFalse(os.path.exists(removed_path))
+
+        out_file = BytesIO()
+
+        storage = get_storage(f"file://{removed_path}")
+        with self.assertRaises(NotFoundError):
+            storage.save_to_file(out_file)
 
     def test_local_storage_load_from_file(self) -> None:
         in_file = BytesIO(b"foobar")
