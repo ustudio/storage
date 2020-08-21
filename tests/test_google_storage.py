@@ -613,7 +613,7 @@ class TestGoogleStorage(TestCase):
         mock_unversioned_blobs[1].delete.assert_called_once_with()
         mock_unversioned_blobs[2].delete.assert_not_called()
 
-    def test_delete_directory_raises_when_list_blobs_is_empty(self):
+    def test_delete_directory_raises_when_list_blobs_is_empty(self) -> None:
         self.mock_bucket.list_blobs.return_value = iter([])
 
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
