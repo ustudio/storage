@@ -142,7 +142,7 @@ class FTPStorage(Storage):
         try:
             ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
         except error_perm:
-            raise NotFoundError("File not found")
+            raise NotFoundError("No File Found")
 
     def save_to_directory(self, destination_directory: str) -> None:
         ftp_client = self._connect()
@@ -164,7 +164,7 @@ class FTPStorage(Storage):
                         ftp_client.retrbinary(
                             "RETR {0}".format(filename), callback=output_file.write)
                     except error_perm:
-                        raise NotFoundError("File not found")
+                        raise NotFoundError("No Files Found")
 
     def load_from_filename(self, file_path: str) -> None:
         with open(file_path, "rb") as input_file:
@@ -203,7 +203,7 @@ class FTPStorage(Storage):
         try:
             ftp_client.delete(filename)
         except error_perm:
-            raise NotFoundError("File not found")
+            raise NotFoundError("No File Found")
 
     def delete_directory(self) -> None:
         ftp_client = self._connect()
@@ -216,7 +216,7 @@ class FTPStorage(Storage):
                 try:
                     ftp_client.delete("/{}/{}".format(root, filename))
                 except error_perm:
-                    raise NotFoundError("File not found")
+                    raise NotFoundError("No Files Found")
 
             directories_to_remove.append("/{}".format(root))
 

@@ -87,7 +87,7 @@ class GoogleStorage(Storage):
                 try:
                     retry.attempt(unversioned_blob.download_to_filename, local_file_path)
                 except NotFound as original_exc:
-                    raise NotFoundError("No File Found") from original_exc
+                    raise NotFoundError("No Files Found") from original_exc
 
     def load_from_directory(self, directory_path: str) -> None:
         bucket = self._get_bucket()
@@ -109,4 +109,4 @@ class GoogleStorage(Storage):
             try:
                 unversioned_blob.delete()
             except NotFound as original_exc:
-                raise NotFoundError("No File Found") from original_exc
+                raise NotFoundError("No Files Found") from original_exc

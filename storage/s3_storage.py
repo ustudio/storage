@@ -43,7 +43,7 @@ class S3Storage(Storage):
         try:
             transfer.download_file(self._bucket, self._keyname, file_path)
         except IOError:
-            raise NotFoundError("No Files Found")
+            raise NotFoundError("No File Found")
 
     def save_to_file(self, out_file: BinaryIO) -> None:
         client = self._connect()
@@ -51,7 +51,7 @@ class S3Storage(Storage):
         response = client.get_object(Bucket=self._bucket, Key=self._keyname)
 
         if "Body" not in response:
-            raise NotFoundError("No Files Found")
+            raise NotFoundError("No File Found")
 
         while True:
             chunk = response["Body"].read(_LARGE_CHUNK)
@@ -124,7 +124,7 @@ class S3Storage(Storage):
         response = client.delete_object(Bucket=self._bucket, Key=self._keyname)
 
         if "DeleteMarker" not in response:
-            raise NotFoundError("No Files Found")
+            raise NotFoundError("No File Found")
 
     def delete_directory(self) -> None:
         client = self._connect()

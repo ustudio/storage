@@ -182,7 +182,7 @@ class SwiftStorage(Storage):
             _, container_objects = connection.get_container(container, prefix=prefix)
             return container_objects
         except ClientException:
-            raise NotFoundError("No File Found")
+            raise NotFoundError("No Files Found")
 
     def save_to_directory(self, directory_path: str) -> None:
         container, object_name = self.get_container_and_object_names()
