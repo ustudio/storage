@@ -6,7 +6,7 @@ from urllib.parse import quote_plus
 
 from typing import Dict, Optional
 
-from storage.storage import get_storage, DownloadUrlBaseUndefinedError
+from storage.storage import get_storage, DownloadUrlBaseUndefinedError, NotFoundError
 from tests.helpers import create_temp_nested_directory_with_files, NestedDirectoryDict
 from tests.storage_test_case import StorageTestCase
 from tests.helpers import TempDirectory
@@ -41,6 +41,16 @@ class TestLocalStorage(StorageTestCase):
 
         with open(temp_output.name, "rb") as temp_output_fp:
             self.assertEqual(b"FOOBAR", temp_output_fp.read())
+
+    @mock.patch("shutil.copy", autospec=True)
+    def test_local_storage_raises_when_filename_does_not_exist(self, mock_copy: mock.Mock) -> None:
+        mock_copy.side_effect = FileNotFoundError
+
+        temp_output = tempfile.NamedTemporaryFile()
+
+        storage = get_storage("file://some.file")
+        with self.assertRaises(NotFoundError):
+            storage.save_to_filename(temp_output.name)
 
     @mock.patch("os.makedirs", autospec=True)
     def test_local_storage_load_from_filename(self, mock_makedirs: mock.Mock) -> None:
@@ -144,6 +154,17 @@ class TestLocalStorage(StorageTestCase):
     def test_local_storage_delete(self, mock_remove: mock.Mock) -> None:
         storage = get_storage("file:///folder/file")
         storage.delete()
+
+        mock_remove.assert_called_with("/folder/file")
+
+    @mock.patch("os.remove", autospec=True)
+    def test_local_storage_delete_raises_when_file_does_not_exist(
+            self, mock_remove: mock.Mock) -> None:
+        mock_remove.side_effect = OSError
+
+        storage = get_storage("file:///folder/file")
+        with self.assertRaises(NotFoundError):
+            storage.delete()
 
         mock_remove.assert_called_with("/folder/file")
 
