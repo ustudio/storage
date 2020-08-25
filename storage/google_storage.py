@@ -75,11 +75,10 @@ class GoogleStorage(Storage):
 
         prefix = self._parsed_storage_uri.path[1:] + "/"
 
-        blobs = list(bucket.list_blobs(prefix=prefix))
-        if len(blobs) == 0:
-            raise NotFoundError("No Files Found")
+        count = 0
 
-        for blob in blobs:
+        for blob in bucket.list_blobs(prefix=prefix):
+            count += 1
             relative_path = blob.name.replace(prefix, "", 1)
             local_file_path = os.path.join(directory_path, relative_path)
             local_directory = os.path.dirname(local_file_path)
@@ -93,6 +92,9 @@ class GoogleStorage(Storage):
                     retry.attempt(unversioned_blob.download_to_filename, local_file_path)
                 except NotFound as original_exc:
                     raise NotFoundError("No File Found") from original_exc
+
+        if count == 0:
+            raise NotFoundError("No Files Found")
 
     def load_from_directory(self, directory_path: str) -> None:
         bucket = self._get_bucket()
@@ -109,13 +111,15 @@ class GoogleStorage(Storage):
     def delete_directory(self) -> None:
         bucket = self._get_bucket()
 
-        blobs = list(bucket.list_blobs(prefix=self._parsed_storage_uri.path[1:] + "/"))
-        if len(blobs) == 0:
-            raise NotFoundError("No Files Found")
+        count = 0
 
-        for blob in blobs:
+        for blob in bucket.list_blobs(prefix=self._parsed_storage_uri.path[1:] + "/"):
+            count += 1
             unversioned_blob = bucket.blob(blob.name)
             try:
                 unversioned_blob.delete()
             except NotFound as original_exc:
                 raise NotFoundError("No File Found") from original_exc
+
+        if count == 0:
+            raise NotFoundError("No Files Found")
