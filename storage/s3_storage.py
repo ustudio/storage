@@ -43,8 +43,10 @@ class S3Storage(Storage):
         transfer = boto3.s3.transfer.S3Transfer(client)
         try:
             transfer.download_file(self._bucket, self._keyname, file_path)
-        except ClientError:
-            raise NotFoundError("No File Found")
+        except ClientError as original_exc:
+            if original_exc.response["Error"]["Code"] == "404":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def save_to_file(self, out_file: BinaryIO) -> None:
         client = self._connect()
@@ -82,8 +84,10 @@ class S3Storage(Storage):
                 try:
                     retry.attempt(
                         client.download_file, self._bucket, obj["Key"], directory_path + file_key)
-                except ClientError:
-                    raise NotFoundError("No File Found")
+                except ClientError as original_exc:
+                    if original_exc.response["Error"]["Code"] == "404":
+                        raise NotFoundError("No File Found") from original_exc
+                    raise original_exc
 
     def load_from_filename(self, file_path: str) -> None:
         client = self._connect()
@@ -142,8 +146,10 @@ class S3Storage(Storage):
 
         try:
             client.delete_objects(Bucket=self._bucket, Delete={"Objects": object_keys})
-        except ClientError:
-            raise NotFoundError("No Files Found")
+        except ClientError as original_exc:
+            if original_exc.response["Error"]["Code"] == "404":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         client = self._connect()

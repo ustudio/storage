@@ -199,18 +199,48 @@ class TestS3Storage(StorageTestCase, TestCase):
 
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_save_to_filename_raises_when_file_does_not_exist(
+    def test_save_to_filename_raises_not_found_error_when_file_does_not_exist(
             self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
 
         mock_transfer = mock_transfer_class.return_value
-        mock_transfer.download_file.side_effect = ClientError({}, {})
+        mock_transfer.download_file.side_effect = ClientError({
+            "Error": {
+                "Code": "404",
+                "Message": "Not Found"
+            }
+        }, {})
 
         storage = get_storage(
             "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
 
         with self.assertRaises(NotFoundError):
+            storage.save_to_filename("destination/directory")
+
+        mock_transfer_class.assert_called_with(mock_s3)
+        mock_transfer.download_file.assert_called_with(
+            "bucket", "some/file", "destination/directory")
+
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_save_to_filename_raises_original_exception_when_not_404(
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock) -> None:
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_transfer = mock_transfer_class.return_value
+        mock_transfer.download_file.side_effect = ClientError({
+            "Error": {
+                "Code": "403",
+                "Message": "Forbidden"
+            }
+        }, {})
+
+        storage = get_storage(
+            "s3://access_key:access_secret@bucket/some/file?region=US_EAST")
+
+        with self.assertRaises(ClientError):
             storage.save_to_filename("destination/directory")
 
         mock_transfer_class.assert_called_with(mock_s3)
@@ -493,7 +523,7 @@ class TestS3Storage(StorageTestCase, TestCase):
     @mock.patch("os.path.exists")
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_save_to_directory_raises_when_file_does_no_exist(
+    def test_save_to_directory_raises_not_found_error_when_file_does_not_exist(
             self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock,
             mock_path_exists: mock.Mock, mock_makedirs: mock.Mock, mock_uniform: mock.Mock,
             mock_sleep: mock.Mock) -> None:
@@ -538,11 +568,36 @@ class TestS3Storage(StorageTestCase, TestCase):
         mock_path_exists.side_effect = mock_path_exists_side_effect
 
         mock_s3_client.download_file.side_effect = [
-            ClientError({}, {}),
-            ClientError({}, {}),
-            ClientError({}, {}),
-            ClientError({}, {}),
-            ClientError({}, {})
+            ClientError({
+                "Error": {
+                    "Code": "404",
+                    "Message": "Not Found"
+                }
+            }, {}),
+            ClientError({
+                "Error": {
+                    "Code": "404",
+                    "Message": "Not Found"
+                }
+            }, {}),
+            ClientError({
+                "Error": {
+                    "Code": "404",
+                    "Message": "Not Found"
+                }
+            }, {}),
+            ClientError({
+                "Error": {
+                    "Code": "404",
+                    "Message": "Not Found"
+                }
+            }, {}),
+            ClientError({
+                "Error": {
+                    "Code": "404",
+                    "Message": "Not Found"
+                }
+            }, {})
         ]
 
         storage = get_storage(
@@ -558,6 +613,95 @@ class TestS3Storage(StorageTestCase, TestCase):
             mock.call("bucket", "directory/b/c.txt", "save_to_directory/b/c.txt"),
             mock.call("bucket", "directory/b/c.txt", "save_to_directory/b/c.txt")
         ])
+
+    @mock.patch("storage.retry.time.sleep", autospec=True)
+    @mock.patch("storage.retry.random.uniform", autospec=True)
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists")
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_save_to_directory_raises_original_exception_when_not_404(
+            self, mock_session_class: mock.Mock, mock_transfer_class: mock.Mock,
+            mock_path_exists: mock.Mock, mock_makedirs: mock.Mock, mock_uniform: mock.Mock,
+            mock_sleep: mock.Mock) -> None:
+        mock_session = mock_session_class.return_value
+        mock_s3_client = mock_session.client.return_value
+        mock_s3_client.list_objects.return_value = {
+            "Contents": [
+                {
+                    "Key": "directory/"
+                },
+                {
+                    "Key": "directory/b/"
+                },
+                {
+                    "Key": "directory/b/c.txt"
+                },
+                {
+                    "Key": "directory/e.txt"
+                },
+                {
+                    "Key": "directory/e/f/d.txt"
+                },
+                {
+                    "Key": ""
+                },
+                {
+                    "Key": "directory/g.txt"
+                }
+            ]
+        }
+
+        mock_path_exists.return_value = False
+        path_mock_path_exists_calls: List[str] = []
+
+        def mock_path_exists_side_effect(path: str) -> bool:
+            if any(path in x for x in path_mock_path_exists_calls):
+                return True
+            else:
+                path_mock_path_exists_calls.append(path)
+                return False
+
+        mock_path_exists.side_effect = mock_path_exists_side_effect
+
+        mock_s3_client.download_file.side_effect = [
+            ClientError({
+                "Error": {
+                    "Code": "403",
+                    "Message": "Forbidden"
+                }
+            }, {}),
+            ClientError({
+                "Error": {
+                    "Code": "403",
+                    "Message": "Forbidden"
+                }
+            }, {}),
+            ClientError({
+                "Error": {
+                    "Code": "403",
+                    "Message": "Forbidden"
+                }
+            }, {}),
+            ClientError({
+                "Error": {
+                    "Code": "403",
+                    "Message": "Forbidden"
+                }
+            }, {}),
+            ClientError({
+                "Error": {
+                    "Code": "403",
+                    "Message": "Forbidden"
+                }
+            }, {})
+        ]
+
+        storage = get_storage(
+            "s3://access_key:access_secret@bucket/directory?region=US_EAST")
+
+        with self.assertRaises(ClientError):
+            storage.save_to_directory("save_to_directory")
 
     @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
     @mock.patch("boto3.session.Session", autospec=True)
@@ -833,7 +977,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         mock_s3.delete_objects.assert_not_called()
 
     @mock.patch("boto3.session.Session", autospec=True)
-    def test_delete_directory_raises_when_files_do_not_exist(
+    def test_delete_directory_raises_not_found_error_when_files_do_not_exist(
             self, mock_session_class: mock.Mock) -> None:
         mock_session = mock_session_class.return_value
         mock_s3 = mock_session.client.return_value
@@ -850,11 +994,56 @@ class TestS3Storage(StorageTestCase, TestCase):
             ]
         }
 
-        mock_s3.delete_objects.side_effect = ClientError({}, {})
+        mock_s3.delete_objects.side_effect = ClientError({
+            "Error": {
+                "Code": "404",
+                "Message": "Not Found"
+            }
+        }, {})
 
         storage = get_storage("s3://access_key:access_secret@bucket/some/dir")
 
         with self.assertRaises(NotFoundError):
+            storage.delete_directory()
+
+        mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            region_name=None)
+
+        mock_session.client.assert_called_with("s3")
+
+        mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
+        mock_s3.delete_objects.assert_called_once()
+
+    @mock.patch("boto3.session.Session", autospec=True)
+    def test_delete_directory_raises_original_exception_when_not_404(
+            self, mock_session_class: mock.Mock) -> None:
+        mock_session = mock_session_class.return_value
+        mock_s3 = mock_session.client.return_value
+
+        mock_s3.list_objects.return_value = {
+            "Contents": [
+                {
+                    "Key": "some/dir/",
+                    "LastModified": "DATE-TIME",
+                    "ETag": "tag",
+                    "Size": 123,
+                    "StorageClass": "STANDARD"
+                }
+            ]
+        }
+
+        mock_s3.delete_objects.side_effect = ClientError({
+            "Error": {
+                "Code": "403",
+                "Message": "Forbidden"
+            }
+        }, {})
+
+        storage = get_storage("s3://access_key:access_secret@bucket/some/dir")
+
+        with self.assertRaises(ClientError):
             storage.delete_directory()
 
         mock_session_class.assert_called_with(
