@@ -102,8 +102,10 @@ class SwiftStorage(Storage):
         try:
             resp_headers, object_contents = connection.get_object(
                 container, object_name, resp_chunk_size=_LARGE_CHUNK)
-        except ClientException:
-            raise NotFoundError("No File Found")
+        except ClientException as original_exc:
+            if original_exc.http_status == 404:
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
         for object_content in object_contents:
             out_file.write(object_content)
@@ -138,8 +140,10 @@ class SwiftStorage(Storage):
 
         try:
             connection.delete_object(container, object_name)
-        except ClientException:
-            raise NotFoundError("No File Found")
+        except ClientException as original_exc:
+            if original_exc.http_status == 404:
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         connection = self.get_connection()
@@ -181,8 +185,10 @@ class SwiftStorage(Storage):
         try:
             _, container_objects = connection.get_container(container, prefix=prefix)
             return container_objects
-        except ClientException:
-            raise NotFoundError("No Files Found")
+        except ClientException as original_exc:
+            if original_exc.http_status == 404:
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def save_to_directory(self, directory_path: str) -> None:
         container, object_name = self.get_container_and_object_names()
