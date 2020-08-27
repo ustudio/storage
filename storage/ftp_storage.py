@@ -141,8 +141,10 @@ class FTPStorage(Storage):
 
         try:
             ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
-        except error_perm:
-            raise NotFoundError("No File Found")
+        except error_perm as original_exc:
+            if original_exc.args[0][:3] == "550":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def save_to_directory(self, destination_directory: str) -> None:
         ftp_client = self._connect()
@@ -150,24 +152,23 @@ class FTPStorage(Storage):
 
         try:
             ftp_client.cwd(base_ftp_path)
-        except error_perm:
-            raise NotFoundError("No Files Found")
 
-        for root, dirs, files in self._walk(ftp_client):
-            relative_path = "/{}".format(root).replace(base_ftp_path, destination_directory, 1)
+            for root, dirs, files in self._walk(ftp_client):
+                relative_path = "/{}".format(root).replace(base_ftp_path, destination_directory, 1)
 
-            if not os.path.exists(relative_path):
-                os.makedirs(relative_path)
+                if not os.path.exists(relative_path):
+                    os.makedirs(relative_path)
 
-            os.chdir(relative_path)
+                os.chdir(relative_path)
 
-            for filename in files:
-                with open(os.path.join(relative_path, filename), "wb") as output_file:
-                    try:
+                for filename in files:
+                    with open(os.path.join(relative_path, filename), "wb") as output_file:
                         ftp_client.retrbinary(
                             "RETR {0}".format(filename), callback=output_file.write)
-                    except error_perm:
-                        raise NotFoundError("No File Found")
+        except error_perm as original_exc:
+            if original_exc.args[0][:3] == "550":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def load_from_filename(self, file_path: str) -> None:
         with open(file_path, "rb") as input_file:
@@ -205,26 +206,28 @@ class FTPStorage(Storage):
 
         try:
             ftp_client.delete(filename)
-        except error_perm:
-            raise NotFoundError("No File Found")
+        except error_perm as original_exc:
+            if original_exc.args[0][:3] == "550":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def delete_directory(self) -> None:
         ftp_client = self._connect()
         base_ftp_path = self._parsed_storage_uri.path
+
         try:
             ftp_client.cwd(base_ftp_path)
-        except error_perm:
-            raise NotFoundError("No Files Found")
 
-        directories_to_remove = []
-        for root, directories, files in self._walk(ftp_client):
-            for filename in files:
-                try:
+            directories_to_remove = []
+            for root, directories, files in self._walk(ftp_client):
+                for filename in files:
                     ftp_client.delete("/{}/{}".format(root, filename))
-                except error_perm:
-                    raise NotFoundError("No File Found")
 
-            directories_to_remove.append("/{}".format(root))
+                directories_to_remove.append("/{}".format(root))
+        except error_perm as original_exc:
+            if original_exc.args[0][:3] == "550":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
         # delete directories _after_ removing files from directories
         # directories should be removed in reverse order - leaf directories before

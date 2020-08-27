@@ -152,12 +152,13 @@ class TestFTPStorage(TestCase):
             self.assertEqual("foobar", output_fp.read())
 
     @mock.patch("ftplib.FTP", autospec=True)
-    def test_ftp_save_to_filename_raises_when_file_does_not_exist(
+    def test_ftp_save_to_filename_raises_not_found_error_when_file_does_not_exist(
             self, mock_ftp_class: mock.Mock) -> None:
         temp_output = tempfile.NamedTemporaryFile()
 
         mock_ftp = mock_ftp_class.return_value
-        mock_ftp.retrbinary.side_effect = error_perm
+        mock_ftp.retrbinary.side_effect = error_perm(
+            "550 The system cannot find the path specified.")
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
 
@@ -166,6 +167,19 @@ class TestFTPStorage(TestCase):
 
         self.assertEqual(1, mock_ftp.retrbinary.call_count)
         self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_save_to_filename_raises_original_exception_when_not_550(
+            self, mock_ftp_class: mock.Mock) -> None:
+        temp_output = tempfile.NamedTemporaryFile()
+
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.retrbinary.side_effect = error_perm("553 Could not create file.")
+
+        storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        with self.assertRaises(error_perm):
+            storage.save_to_filename(temp_output.name)
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_save_to_file(self, mock_ftp_class: mock.Mock) -> None:
@@ -222,12 +236,13 @@ class TestFTPStorage(TestCase):
         self.assertEqual(b"foobar", out_file.getvalue())
 
     @mock.patch("ftplib.FTP", autospec=True)
-    def test_ftp_save_to_file_raises_when_file_does_not_exist(
+    def test_ftp_save_to_file_raises_not_found_error_when_file_does_not_exist(
             self, mock_ftp_class: mock.Mock) -> None:
         out_file = BytesIO(b"")
 
         mock_ftp = mock_ftp_class.return_value
-        mock_ftp.retrbinary.side_effect = error_perm
+        mock_ftp.retrbinary.side_effect = error_perm(
+            "550 The system cannot find the path specified.")
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
 
@@ -236,6 +251,19 @@ class TestFTPStorage(TestCase):
 
         self.assertEqual(1, mock_ftp.retrbinary.call_count)
         self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
+
+    @mock.patch("ftplib.FTP", autospec=True)
+    def test_ftp_save_to_file_raises_original_exception_when_not_550(
+            self, mock_ftp_class: mock.Mock) -> None:
+        out_file = BytesIO(b"")
+
+        mock_ftp = mock_ftp_class.return_value
+        mock_ftp.retrbinary.side_effect = error_perm("553 Could not create file.")
+
+        storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+
+        with self.assertRaises(error_perm):
+            storage.save_to_file(out_file)
 
     @mock.patch("os.chdir")
     @mock.patch("os.makedirs")
@@ -346,19 +374,30 @@ class TestFTPStorage(TestCase):
 
         mock_ftp.storbinary.assert_not_called()
 
-    def test_ftp_save_to_directory_raises_when_directory_does_not_exist(self) -> None:
+    def test_ftp_save_to_directory_raises_not_found_error_when_directory_does_not_exist(
+            self) -> None:
         with patch_ftp_client() as mock_ftp:
-            mock_ftp.cwd.side_effect = error_perm
+            mock_ftp.cwd.side_effect = error_perm(
+                "550 The system cannot find the path specified.")
 
             storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
             with self.assertRaises(NotFoundError):
+                storage.save_to_directory("/cat/pants")
+
+    def test_ftp_save_to_directory_raises_cwd_original_exception_when_not_550(
+            self) -> None:
+        with patch_ftp_client() as mock_ftp:
+            mock_ftp.cwd.side_effect = error_perm("553 Could not create file.")
+
+            storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+            with self.assertRaises(error_perm):
                 storage.save_to_directory("/cat/pants")
 
     @mock.patch("builtins.open", autospec=True)
     @mock.patch("os.chdir")
     @mock.patch("os.makedirs")
     @mock.patch("os.path.exists", return_value=False)
-    def test_ftp_save_to_directory_raises_when_files_does_not_exist(
+    def test_ftp_save_to_directory_raises_not_found_error_when_file_does_not_exist(
             self, mock_path_exists: mock.Mock, mock_makedirs: mock.Mock,
             mock_chdir: mock.Mock, mock_open: mock.Mock) -> None:
 
@@ -387,7 +426,8 @@ class TestFTPStorage(TestCase):
 
         with patch_ftp_client(directory_listing) as mock_ftp:
             mock_ftp.pwd.return_value = "some/place/special"
-            mock_ftp.retrbinary.side_effect = error_perm
+            mock_ftp.retrbinary.side_effect = error_perm(
+                "550 The system cannot find the path specified.")
 
             storage = get_storage("ftp://user:password@ftp.foo.com/some/place/special")
             with self.assertRaises(NotFoundError):
@@ -404,6 +444,45 @@ class TestFTPStorage(TestCase):
         ])
 
         mock_ftp.storbinary.assert_not_called()
+
+    @mock.patch("builtins.open", autospec=True)
+    @mock.patch("os.chdir")
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists", return_value=False)
+    def test_ftp_save_to_directory_raises_retrbinary_original_error_when_not_550(
+            self, mock_path_exists: mock.Mock, mock_makedirs: mock.Mock,
+            mock_chdir: mock.Mock, mock_open: mock.Mock) -> None:
+
+        directory_listing = [
+            # root
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir1",
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir2",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file1",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file2",
+            ],
+            # dir1
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir with spaces",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file3",
+            ],
+            # dir with spaces
+            [
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file with spaces"
+            ],
+            # dir2
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir4",
+            ],
+        ]
+
+        with patch_ftp_client(directory_listing) as mock_ftp:
+            mock_ftp.pwd.return_value = "some/place/special"
+            mock_ftp.retrbinary.side_effect = error_perm("553 Could not create file.")
+
+            storage = get_storage("ftp://user:password@ftp.foo.com/some/place/special")
+            with self.assertRaises(error_perm):
+                storage.save_to_directory("/cat/pants")
 
     @mock.patch("builtins.open", autospec=True)
     @mock.patch("ftplib.FTP", autospec=True)
@@ -602,15 +681,25 @@ class TestFTPStorage(TestCase):
         mock_ftp.cwd.assert_called_with("some/dir")
         mock_ftp.delete.assert_called_with("file")
 
-    def test_ftp_delete_raises_when_file_does_not_exist(self) -> None:
+    def test_ftp_delete_raises_not_found_error_when_file_does_not_exist(self) -> None:
         with patch_ftp_client() as mock_ftp:
-            mock_ftp.delete.side_effect = error_perm
+            mock_ftp.delete.side_effect = error_perm(
+                "550 The system cannot find the path specified.")
+
             storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
             with self.assertRaises(NotFoundError):
                 storage.delete()
 
         mock_ftp.cwd.assert_called_with("some/dir")
         mock_ftp.delete.assert_called_with("file")
+
+    def test_ftp_delete_raises_original_exception_when_not_550(self) -> None:
+        with patch_ftp_client() as mock_ftp:
+            mock_ftp.delete.side_effect = error_perm("553 Could not create file.")
+
+            storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+            with self.assertRaises(error_perm):
+                storage.delete()
 
     def test_ftp_delete_directory(self) -> None:
         directory_listing = [
@@ -668,15 +757,24 @@ class TestFTPStorage(TestCase):
         ])
         self.assertEqual(5, mock_ftp.rmd.call_count)
 
-    def test_ftp_delete_directory_raises_when_directory_does_not_exist(self) -> None:
+    def test_ftp_delete_directory_raises_not_found_error_when_directory_does_not_exist(
+            self) -> None:
         with patch_ftp_client() as mock_ftp:
-            mock_ftp.cwd.side_effect = error_perm
+            mock_ftp.cwd.side_effect = error_perm("550 The system cannot find the path specified.")
 
             storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
             with self.assertRaises(NotFoundError):
                 storage.delete_directory()
 
-    def test_ftp_delete_directory_raises_when_file_does_not_exist(self) -> None:
+    def test_ftp_delete_directory_raises_original_exception_when_not_550(self) -> None:
+        with patch_ftp_client() as mock_ftp:
+            mock_ftp.cwd.side_effect = error_perm("553 Could not create file.")
+
+            storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+            with self.assertRaises(error_perm):
+                storage.delete_directory()
+
+    def test_ftp_delete_directory_raises_not_found_error_when_file_does_not_exist(self) -> None:
         directory_listing = [
             # root
             [
@@ -702,7 +800,8 @@ class TestFTPStorage(TestCase):
 
         with patch_ftp_client(directory_listing) as mock_ftp:
             mock_ftp.pwd.return_value = "some/dir/file"
-            mock_ftp.delete.side_effect = error_perm
+            mock_ftp.delete.side_effect = error_perm(
+                "550 The system cannot find the path specified.")
 
             storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
             with self.assertRaises(NotFoundError):
@@ -719,6 +818,38 @@ class TestFTPStorage(TestCase):
         self.assertEqual(1, mock_ftp.delete.call_count)
 
         self.assertEqual(0, mock_ftp.rmd.call_count)
+
+    def test_ftp_delete_directory_raises_original_delete_exception_when_not_550(self) -> None:
+        directory_listing = [
+            # root
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir1",
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir2",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file1",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file2",
+            ],
+            # dir1
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir with spaces",
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file3",
+            ],
+            # dir with spaces
+            [
+                "-rwxrwxr-x 3 test test 4.0K Apr  9 10:54 file with spaces"
+            ],
+            # dir2
+            [
+                "drwxrwxr-x 3 test test 4.0K Apr  9 10:54 dir4",
+            ]
+        ]
+
+        with patch_ftp_client(directory_listing) as mock_ftp:
+            mock_ftp.pwd.return_value = "some/dir/file"
+            mock_ftp.delete.side_effect = error_perm("553 Could not create file.")
+
+            storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
+            with self.assertRaises(error_perm):
+                storage.delete_directory()
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_get_download_url(self, mock_ftp_class: mock.Mock) -> None:
