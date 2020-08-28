@@ -184,6 +184,8 @@ class SwiftStorage(Storage):
         connection = self.get_connection()
         try:
             _, container_objects = connection.get_container(container, prefix=prefix)
+            if len(container_objects) == 0:
+                raise NotFoundError("No Files Found")
             return container_objects
         except ClientException as original_exc:
             if original_exc.http_status == 404:
