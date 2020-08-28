@@ -898,11 +898,9 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.assertRaises(InternalServerError):
                 storage_object.save_to_directory(self.tmp_dir.name)
 
-    def test_save_to_directory_raises_not_found_error_when_empty(self) -> None:
-        self.add_file_error("404 Not Found")
-
-        get_path = "/v2.0/1234/CONTAINER/path/to/files/file.mp4"
-        self.swift_service.add_handler("GET", get_path, self.object_handler)
+    def test_save_to_directory_raises_not_found_error_when_directory_does_not_exist(self) -> None:
+        self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
+        self.remaining_container_failures.append("404 Not Found")
 
         swift_uri = self._generate_storage_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
@@ -1090,11 +1088,9 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             "DELETE", "/v2.0/1234/CONTAINER/path/to/files/folder/file2.mp4")
         self.assertCountEqual([1, 0], [len(file1_requests), len(file2_requests)])
 
-    def test_delete_to_directory_raises_not_found_error_when_empty(self) -> None:
-        self.add_file_error("404 Not Found")
-
-        get_path = "/v2.0/1234/CONTAINER/path/to/files/file.mp4"
-        self.swift_service.add_handler("GET", get_path, self.object_handler)
+    def test_delete_to_directory_raises_not_found_error_when_directory_does_not_exist(self) -> None:
+        self.swift_service.add_handler("GET", "/v2.0/1234/CONTAINER", self.swift_container_handler)
+        self.remaining_container_failures.append("404 Not Found")
 
         swift_uri = self._generate_storage_uri("/path/to/files")
         storage_object = get_storage(swift_uri)
