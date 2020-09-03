@@ -1,4 +1,5 @@
 import distutils.dir_util
+from distutils.errors import DistutilsFileError
 import os
 import shutil
 from urllib.parse import parse_qs
@@ -6,7 +7,7 @@ from urllib.parse import parse_qs
 from typing import BinaryIO, Optional
 
 from storage.storage import get_optional_query_parameter, Storage, register_storage_protocol
-from storage.storage import _generate_download_url_from_base
+from storage.storage import _generate_download_url_from_base, NotFoundError
 from storage.url_parser import remove_user_info
 
 
@@ -27,15 +28,24 @@ class LocalStorage(Storage):
         self._download_url_base = get_optional_query_parameter(query, "download_url_base")
 
     def save_to_filename(self, file_path: str) -> None:
-        shutil.copy(self._parsed_storage_uri.path, file_path)
+        try:
+            shutil.copy(self._parsed_storage_uri.path, file_path)
+        except FileNotFoundError:
+            raise NotFoundError("No File Found")
 
     def save_to_file(self, out_file: BinaryIO) -> None:
-        with open(self._parsed_storage_uri.path, "rb") as in_file:
-            for chunk in in_file:
-                out_file.write(chunk)
+        try:
+            with open(self._parsed_storage_uri.path, "rb") as in_file:
+                for chunk in in_file:
+                    out_file.write(chunk)
+        except FileNotFoundError:
+            raise NotFoundError("No File Found")
 
     def save_to_directory(self, destination_directory: str) -> None:
-        distutils.dir_util.copy_tree(self._parsed_storage_uri.path, destination_directory)
+        try:
+            distutils.dir_util.copy_tree(self._parsed_storage_uri.path, destination_directory)
+        except DistutilsFileError:
+            raise NotFoundError("No Files Found")
 
     def _ensure_exists(self) -> None:
         dirname = os.path.dirname(self._parsed_storage_uri.path)
@@ -60,10 +70,16 @@ class LocalStorage(Storage):
         distutils.dir_util.copy_tree(source_directory, self._parsed_storage_uri.path)
 
     def delete(self) -> None:
-        os.remove(self._parsed_storage_uri.path)
+        try:
+            os.remove(self._parsed_storage_uri.path)
+        except FileNotFoundError:
+            raise NotFoundError("No File Found")
 
     def delete_directory(self) -> None:
-        shutil.rmtree(self._parsed_storage_uri.path, True)
+        try:
+            shutil.rmtree(self._parsed_storage_uri.path)
+        except FileNotFoundError:
+            raise NotFoundError("No Files Found")
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         """

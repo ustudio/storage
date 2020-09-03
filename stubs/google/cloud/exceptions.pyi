@@ -1,0 +1,3 @@
+class NotFound(BaseException):
+
+    def __init__(self, message: str) -> None: ...

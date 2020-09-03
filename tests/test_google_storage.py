@@ -3,7 +3,8 @@ import datetime
 import json
 from unittest import TestCase, mock
 
-from storage.storage import get_storage
+from google.cloud.exceptions import NotFound
+from storage.storage import get_storage, NotFoundError
 
 
 class TestGoogleStorage(TestCase):
@@ -46,6 +47,13 @@ class TestGoogleStorage(TestCase):
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.download_to_filename.assert_called_once_with("SOME-FILE")
 
+    def test_save_to_filename_raises_when_file_does_not_exist(self) -> None:
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+        self.mock_blob.download_to_filename.side_effect = NotFound("File Not Found")
+
+        with self.assertRaises(NotFoundError):
+            storage.save_to_filename("SOME-FILE")
+
     def test_save_to_file_downloads_blob_to_file_object(self) -> None:
         mock_file = mock.Mock()
 
@@ -57,6 +65,15 @@ class TestGoogleStorage(TestCase):
 
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.download_to_file.assert_called_once_with(mock_file)
+
+    def test_save_to_file_raises_when_filename_does_not_exist(self) -> None:
+        mock_file = mock.Mock()
+
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+        self.mock_blob.download_to_file.side_effect = NotFound("File Not Found")
+
+        with self.assertRaises(NotFoundError):
+            storage.save_to_file(mock_file)
 
     def test_load_from_filename_uploads_blob_from_file_location(self) -> None:
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
@@ -98,6 +115,13 @@ class TestGoogleStorage(TestCase):
 
         self.mock_bucket.blob.assert_called_once_with("path/filename")
         self.mock_blob.delete.assert_called_once_with()
+
+    def test_delete_raises_when_file_does_not_exist(self) -> None:
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+        self.mock_blob.delete.side_effect = NotFound("File Not Found")
+
+        with self.assertRaises(NotFoundError):
+            storage.delete()
 
     def test_get_download_url_returns_signed_url_with_default_expiration(self) -> None:
         mock_signed_url = self.mock_blob.generate_signed_url.return_value
@@ -334,6 +358,74 @@ class TestGoogleStorage(TestCase):
             mock.call(mock_uniform_results[3])
         ])
 
+    @mock.patch("os.path.exists")
+    @mock.patch("random.uniform")
+    @mock.patch("time.sleep")
+    def test_save_to_directory_raises_when_listed_blobs_is_empty(
+            self, mock_sleep: mock.Mock, mock_uniform: mock.Mock, mock_exists: mock.Mock) -> None:
+        mock_uniform_results = [mock.Mock() for i in range(4)]
+        mock_uniform.side_effect = mock_uniform_results
+        mock_exists.return_value = True
+
+        self.mock_bucket.list_blobs.return_value = iter([])
+
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        with self.assertRaises(NotFoundError):
+            storage.save_to_directory("directory-name")
+
+        self.assertEqual(0, self.mock_bucket.blob.call_count)
+
+    @mock.patch("os.path.exists")
+    @mock.patch("random.uniform")
+    @mock.patch("time.sleep")
+    def test_save_to_directory_raises_when_file_not_found(
+            self, mock_sleep: mock.Mock, mock_uniform: mock.Mock, mock_exists: mock.Mock) -> None:
+        mock_uniform_results = [mock.Mock() for i in range(4)]
+        mock_uniform.side_effect = mock_uniform_results
+        mock_exists.return_value = True
+
+        mock_listed_blobs = [
+            self._mock_blob("path/filename/file1"),
+            self._mock_blob("path/filename/subdir1/subdir2/file2"),
+            self._mock_blob("path/filename/subdir3/path/filename/file3")
+        ]
+        self.mock_bucket.list_blobs.return_value = iter(mock_listed_blobs)
+
+        mock_unversioned_blobs = [
+            self._mock_blob("path/filename/file1"),
+            self._mock_blob("path/filename/subdir1/subdir2/file2")
+        ]
+        self.mock_bucket.blob.side_effect = mock_unversioned_blobs
+        mock_unversioned_blobs[1].download_to_filename.side_effect = NotFound("File Not Found")
+
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        with self.assertRaises(NotFoundError):
+            storage.save_to_directory("directory-name")
+
+        self.assertEqual(2, self.mock_bucket.blob.call_count)
+
+        mock_unversioned_blobs[0].download_to_filename.assert_called_once_with(
+            "directory-name/file1")
+
+        self.assertEqual(5, mock_unversioned_blobs[1].download_to_filename.call_count)
+        mock_unversioned_blobs[1].download_to_filename.assert_called_with(
+            "directory-name/subdir1/subdir2/file2")
+
+        mock_uniform.assert_has_calls([
+            mock.call(0, 1),
+            mock.call(0, 3),
+            mock.call(0, 7),
+            mock.call(0, 15)
+        ])
+        mock_sleep.assert_has_calls([
+            mock.call(mock_uniform_results[0]),
+            mock.call(mock_uniform_results[1]),
+            mock.call(mock_uniform_results[2]),
+            mock.call(mock_uniform_results[3])
+        ])
+
     @mock.patch("os.walk")
     def test_load_from_directory_uploads_files_to_bucket_with_prefix(
             self, mock_walk: mock.Mock) -> None:
@@ -486,3 +578,47 @@ class TestGoogleStorage(TestCase):
         mock_unversioned_blobs[0].delete.assert_called_once_with()
         mock_unversioned_blobs[1].delete.assert_called_once_with()
         mock_unversioned_blobs[2].delete.assert_called_once_with()
+
+    def test_delete_directory_raises_when_file_does_not_exist(self) -> None:
+        mock_listed_blobs = [
+            self._mock_blob("path/filename/file1"),
+            self._mock_blob("path/filename/file2"),
+            self._mock_blob("path/filename/file3")
+        ]
+        self.mock_bucket.list_blobs.return_value = iter(mock_listed_blobs)
+
+        mock_unversioned_blobs = [
+            self._mock_blob("path/filename/file1"),
+            self._mock_blob("path/filename/file2"),
+            self._mock_blob("path/filename/file3")
+        ]
+        self.mock_bucket.blob.side_effect = mock_unversioned_blobs
+        mock_unversioned_blobs[1].delete.side_effect = NotFound("File Not Found")
+
+        self.mock_bucket.list_blobs.return_value = iter(mock_listed_blobs)
+
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        with self.assertRaises(NotFoundError):
+            storage.delete_directory()
+
+        self.mock_bucket.list_blobs.assert_called_once_with(prefix="path/filename/")
+
+        self.mock_bucket.blob.assert_has_calls([
+            mock.call("path/filename/file1"),
+            mock.call("path/filename/file2")
+        ])
+
+        mock_unversioned_blobs[0].delete.assert_called_once_with()
+        mock_unversioned_blobs[1].delete.assert_called_once_with()
+        mock_unversioned_blobs[2].delete.assert_not_called()
+
+    def test_delete_directory_raises_when_list_blobs_is_empty(self) -> None:
+        self.mock_bucket.list_blobs.return_value = iter([])
+
+        storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))
+
+        with self.assertRaises(NotFoundError):
+            storage.delete_directory()
+
+        self.mock_bucket.list_blobs.assert_called_once_with(prefix="path/filename/")

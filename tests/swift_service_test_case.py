@@ -8,7 +8,7 @@ from urllib.parse import parse_qsl
 from tests.helpers import NamedIO
 from tests.service_test_case import ServiceTestCase
 
-from typing import cast, Dict, Generator, List, Optional, TYPE_CHECKING
+from typing import Any, cast, Dict, Generator, List, Optional, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from tests.service_test_case import Environ
@@ -35,7 +35,7 @@ class SwiftServiceTestCase(ServiceTestCase):
         self.remaining_object_put_failures: List[str] = []
         self.remaining_file_delete_failures: List[str] = []
 
-        self.container_contents: Dict[str, bytes] = {}
+        self.container_contents: Union[Dict[str, bytes], Any] = {}
         self.directory_contents: Dict[str, bytes] = {}
         self.object_contents: Dict[str, bytes] = {}
 
@@ -210,6 +210,9 @@ class SwiftServiceTestCase(ServiceTestCase):
 
         if "json" == parsed_args.get("format"):
             start_response("200 OK", [("Content-Type", "application/json")])
+            if len(self.container_contents) == 0:
+                return [json.dumps([]).encode("utf8")]
+
             return [json.dumps([
                 {"name": v} for v in self.container_contents.keys()
             ]).encode("utf8")]

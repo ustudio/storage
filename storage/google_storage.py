@@ -4,6 +4,7 @@ import json
 import mimetypes
 import os
 
+from google.cloud.exceptions import NotFound
 import google.cloud.storage.client
 from google.cloud.storage.bucket import Bucket
 from google.cloud.storage.blob import Blob
@@ -12,7 +13,7 @@ import google.oauth2.service_account
 from typing import BinaryIO, Optional
 
 from storage import retry
-from storage.storage import Storage, register_storage_protocol
+from storage.storage import Storage, register_storage_protocol, NotFoundError
 
 
 @register_storage_protocol("gs")
@@ -34,11 +35,17 @@ class GoogleStorage(Storage):
 
     def save_to_filename(self, file_path: str) -> None:
         blob = self._get_blob()
-        blob.download_to_filename(file_path)
+        try:
+            blob.download_to_filename(file_path)
+        except NotFound as original_exc:
+            raise NotFoundError("No File Found") from original_exc
 
     def save_to_file(self, out_file: BinaryIO) -> None:
         blob = self._get_blob()
-        blob.download_to_file(out_file)
+        try:
+            blob.download_to_file(out_file)
+        except NotFound as original_exc:
+            raise NotFoundError("No File Found") from original_exc
 
     def load_from_filename(self, file_path: str) -> None:
         blob = self._get_blob()
@@ -52,7 +59,10 @@ class GoogleStorage(Storage):
 
     def delete(self) -> None:
         blob = self._get_blob()
-        blob.delete()
+        try:
+            blob.delete()
+        except NotFound as original_exc:
+            raise NotFoundError("No File Found") from original_exc
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         blob = self._get_blob()
@@ -64,7 +74,11 @@ class GoogleStorage(Storage):
         bucket = self._get_bucket()
 
         prefix = self._parsed_storage_uri.path[1:] + "/"
+
+        count = 0
+
         for blob in bucket.list_blobs(prefix=prefix):
+            count += 1
             relative_path = blob.name.replace(prefix, "", 1)
             local_file_path = os.path.join(directory_path, relative_path)
             local_directory = os.path.dirname(local_file_path)
@@ -74,7 +88,13 @@ class GoogleStorage(Storage):
 
             if not relative_path[-1] == "/":
                 unversioned_blob = bucket.blob(blob.name)
-                retry.attempt(unversioned_blob.download_to_filename, local_file_path)
+                try:
+                    retry.attempt(unversioned_blob.download_to_filename, local_file_path)
+                except NotFound as original_exc:
+                    raise NotFoundError("No File Found") from original_exc
+
+        if count == 0:
+            raise NotFoundError("No Files Found")
 
     def load_from_directory(self, directory_path: str) -> None:
         bucket = self._get_bucket()
@@ -91,6 +111,15 @@ class GoogleStorage(Storage):
     def delete_directory(self) -> None:
         bucket = self._get_bucket()
 
+        count = 0
+
         for blob in bucket.list_blobs(prefix=self._parsed_storage_uri.path[1:] + "/"):
+            count += 1
             unversioned_blob = bucket.blob(blob.name)
-            unversioned_blob.delete()
+            try:
+                unversioned_blob.delete()
+            except NotFound as original_exc:
+                raise NotFoundError("No File Found") from original_exc
+
+        if count == 0:
+            raise NotFoundError("No Files Found")

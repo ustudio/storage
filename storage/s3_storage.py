@@ -4,12 +4,13 @@ from urllib.parse import parse_qs, unquote
 
 import boto3.session
 import boto3.s3.transfer
+from botocore.exceptions import ClientError
 from botocore.session import Session
 
 from typing import BinaryIO, Dict, Optional
 
 from storage import retry
-from storage.storage import Storage, register_storage_protocol, _LARGE_CHUNK
+from storage.storage import Storage, NotFoundError, register_storage_protocol, _LARGE_CHUNK
 from storage.storage import get_optional_query_parameter
 from storage.url_parser import remove_user_info
 
@@ -40,12 +41,20 @@ class S3Storage(Storage):
         client = self._connect()
 
         transfer = boto3.s3.transfer.S3Transfer(client)
-        transfer.download_file(self._bucket, self._keyname, file_path)
+        try:
+            transfer.download_file(self._bucket, self._keyname, file_path)
+        except ClientError as original_exc:
+            if original_exc.response["Error"]["Code"] == "404":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def save_to_file(self, out_file: BinaryIO) -> None:
         client = self._connect()
 
         response = client.get_object(Bucket=self._bucket, Key=self._keyname)
+
+        if "Body" not in response:
+            raise NotFoundError("No File Found")
 
         while True:
             chunk = response["Body"].read(_LARGE_CHUNK)
@@ -57,6 +66,10 @@ class S3Storage(Storage):
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
         dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
+
+        if "Contents" not in dir_object:
+            raise NotFoundError("No Files Found")
+
         dir_contents = dir_object["Contents"]
 
         for obj in dir_contents:
@@ -68,8 +81,13 @@ class S3Storage(Storage):
                 if not os.path.exists(directory_path + file_path):
                     os.makedirs(directory_path + file_path)
 
-                retry.attempt(
-                    client.download_file, self._bucket, obj["Key"], directory_path + file_key)
+                try:
+                    retry.attempt(
+                        client.download_file, self._bucket, obj["Key"], directory_path + file_key)
+                except ClientError as original_exc:
+                    if original_exc.response["Error"]["Code"] == "404":
+                        raise NotFoundError("No File Found") from original_exc
+                    raise original_exc
 
     def load_from_filename(self, file_path: str) -> None:
         client = self._connect()
@@ -111,14 +129,27 @@ class S3Storage(Storage):
 
     def delete(self) -> None:
         client = self._connect()
-        client.delete_object(Bucket=self._bucket, Key=self._keyname)
+        response = client.delete_object(Bucket=self._bucket, Key=self._keyname)
+
+        if "DeleteMarker" not in response:
+            raise NotFoundError("No File Found")
 
     def delete_directory(self) -> None:
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
         dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
+
+        if "Contents" not in dir_object:
+            raise NotFoundError("No Files Found")
+
         object_keys = [{"Key": o.get("Key", None)} for o in dir_object["Contents"]]
-        client.delete_objects(Bucket=self._bucket, Delete={"Objects": object_keys})
+
+        try:
+            client.delete_objects(Bucket=self._bucket, Delete={"Objects": object_keys})
+        except ClientError as original_exc:
+            if original_exc.response["Error"]["Code"] == "404":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         client = self._connect()

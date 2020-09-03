@@ -1,5 +1,5 @@
 import ftplib
-from ftplib import FTP
+from ftplib import FTP, error_perm
 import os
 import re
 import socket
@@ -9,7 +9,7 @@ from typing import BinaryIO, Generator, List, Optional, Tuple
 
 from storage.storage import Storage, register_storage_protocol, _generate_download_url_from_base
 from storage.storage import DEFAULT_FTP_TIMEOUT, DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT
-from storage.storage import DEFAULT_FTP_KEEPIDLE, DEFAULT_FTP_KEEPINTVL
+from storage.storage import DEFAULT_FTP_KEEPIDLE, DEFAULT_FTP_KEEPINTVL, NotFoundError
 from storage.url_parser import remove_user_info
 
 
@@ -139,25 +139,36 @@ class FTPStorage(Storage):
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
 
-        ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
+        try:
+            ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
+        except error_perm as original_exc:
+            if original_exc.args[0][:3] == "550":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def save_to_directory(self, destination_directory: str) -> None:
         ftp_client = self._connect()
         base_ftp_path = self._parsed_storage_uri.path
 
-        ftp_client.cwd(base_ftp_path)
+        try:
+            ftp_client.cwd(base_ftp_path)
 
-        for root, dirs, files in self._walk(ftp_client):
-            relative_path = "/{}".format(root).replace(base_ftp_path, destination_directory, 1)
+            for root, dirs, files in self._walk(ftp_client):
+                relative_path = "/{}".format(root).replace(base_ftp_path, destination_directory, 1)
 
-            if not os.path.exists(relative_path):
-                os.makedirs(relative_path)
+                if not os.path.exists(relative_path):
+                    os.makedirs(relative_path)
 
-            os.chdir(relative_path)
+                os.chdir(relative_path)
 
-            for filename in files:
-                with open(os.path.join(relative_path, filename), "wb") as output_file:
-                    ftp_client.retrbinary("RETR {0}".format(filename), callback=output_file.write)
+                for filename in files:
+                    with open(os.path.join(relative_path, filename), "wb") as output_file:
+                        ftp_client.retrbinary(
+                            "RETR {0}".format(filename), callback=output_file.write)
+        except error_perm as original_exc:
+            if original_exc.args[0][:3] == "550":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def load_from_filename(self, file_path: str) -> None:
         with open(file_path, "rb") as input_file:
@@ -192,19 +203,31 @@ class FTPStorage(Storage):
     def delete(self) -> None:
         ftp_client = self._connect()
         filename = self._cd_to_file(ftp_client)
-        ftp_client.delete(filename)
+
+        try:
+            ftp_client.delete(filename)
+        except error_perm as original_exc:
+            if original_exc.args[0][:3] == "550":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
     def delete_directory(self) -> None:
         ftp_client = self._connect()
         base_ftp_path = self._parsed_storage_uri.path
-        ftp_client.cwd(base_ftp_path)
 
-        directories_to_remove = []
-        for root, directories, files in self._walk(ftp_client):
-            for filename in files:
-                ftp_client.delete("/{}/{}".format(root, filename))
+        try:
+            ftp_client.cwd(base_ftp_path)
 
-            directories_to_remove.append("/{}".format(root))
+            directories_to_remove = []
+            for root, directories, files in self._walk(ftp_client):
+                for filename in files:
+                    ftp_client.delete("/{}/{}".format(root, filename))
+
+                directories_to_remove.append("/{}".format(root))
+        except error_perm as original_exc:
+            if original_exc.args[0][:3] == "550":
+                raise NotFoundError("No File Found") from original_exc
+            raise original_exc
 
         # delete directories _after_ removing files from directories
         # directories should be removed in reverse order - leaf directories before
