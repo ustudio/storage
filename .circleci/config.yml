@@ -1,8 +1,17 @@
-version: 2
+version: 2.1
 jobs:
   test:
+    parameters:
+      python_version:
+        description: "The Python version to use for running the tests"
+        type: string
     docker:
-      - image: circleci/python:3.7
+      - image: cimg/python:<< parameters.python_version >>
+        environment:
+          TEST_STORAGE_FILE_URI: file:///tmp/integration-tests
+          TEST_STORAGE_FTP_URI: ftp://files:password@localhost/integration-tests
+          # TEST_STORAGE_GS_URI in CircleCI context
+          # TEST_STORAGE_S3_URI in CircleCI context
       - image: onjin/alpine-vsftpd:latest
         environment:
           PASSWORD: password
@@ -12,15 +21,17 @@ jobs:
           echo 'allow_writeable_chroot=YES' >> /etc/vsftpd/vsftpd.conf;
           /docker-entrypoint.sh"
 
-    working_directory: ~/repo
-
     steps:
       - checkout
 
+      - run:
+          name: Save Python Version
+          command: |
+            python --version > pythonversion
+
       - restore_cache:
           keys:
-            - v1-dependencies-{{ checksum "requirements.txt" }}
-            - v1-dependencies-
+            - v1-python-{{ checksum "pythonversion" }}-dependencies-{{ checksum "requirements.txt" }}
 
       - run:
           name: install dependencies
@@ -34,7 +45,7 @@ jobs:
       - save_cache:
           paths:
             - ~/venv
-          key: v1-dependencies-{{ checksum "requirements.txt" }}
+          key: v1-python-{{ checksum "pythonversion" }}-dependencies-{{ checksum "requirements.txt" }}
 
       - run:
           name: run tests
@@ -56,73 +67,11 @@ jobs:
 
       - store_artifacts:
           path: test-reports
-          prefix: python-3.7
+          prefix: python-<< parameters.python_version >>
 
       - store_test_results:
           path: test-reports
-          prefix: python-3.7
-
-  test-3.6:
-    docker:
-      - image: circleci/python:3.6
-      - image: onjin/alpine-vsftpd:latest
-        environment:
-          PASSWORD: password
-        command: >
-          sh -c
-          "sed -i -e 's#/home/./files#/home/files/./#' /etc/passwd;
-          echo 'allow_writeable_chroot=YES' >> /etc/vsftpd/vsftpd.conf;
-          /docker-entrypoint.sh"
-
-    working_directory: ~/repo
-
-    steps:
-      - checkout
-
-      - restore_cache:
-          keys:
-            - v1-dependencies-{{ checksum "requirements.txt" }}
-            - v1-dependencies-
-
-      - run:
-          name: install dependencies
-          command: |
-            python -m virtualenv ~/venv
-            . ~/venv/bin/activate
-            pip install -e .
-            pip install -r requirements.txt
-            mkdir -p test-reports
-
-      - save_cache:
-          paths:
-            - ~/venv
-          key: v1-dependencies-{{ checksum "requirements.txt" }}
-
-      - run:
-          name: run tests
-          command: |
-            . ~/venv/bin/activate
-            pytest --verbose --junit-xml=test-reports/pytest.xml
-
-      - run:
-          name: run linter
-          command: |
-            . ~/venv/bin/activate
-            flake8 | tee test-reports/flake8-errors
-
-      - run:
-          name: run typechecks
-          command: |
-            . ~/venv/bin/activate
-            MYPYPATH=stubs mypy --strict storage/ tests/
-
-      - store_artifacts:
-          path: test-reports
-          prefix: python-3.6
-
-      - store_test_results:
-          path: test-reports
-          prefix: python-3.6
+          prefix: python-<< parameters.python_version >>
 
   publish:
     docker:
@@ -158,20 +107,26 @@ workflows:
   test-and-build:
     jobs:
       - test:
+          name: test-3.9
+          python_version: "3.9"
           filters:
             tags:
               only: /.*/
-      - test-3.6:
+          context: storage-library-tester
+      - test:
+          name: test-3.7
+          python_version: "3.7"
           filters:
             tags:
               only: /.*/
+          context: storage-library-tester
       - publish:
           requires:
-            - test
-            - test-3.6
+            - test-3.9
+            - test-3.7
           filters:
             tags:
               only: /^v[0-9]+(\.[0-9]+)*.*/
             branches:
               ignore: /.*/
-          context: org-global
+          context: storage-library-publisher
