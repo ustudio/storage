@@ -107,8 +107,8 @@ workflows:
   test-and-build:
     jobs:
       - test:
-          name: test-3.9
-          python_version: "3.9"
+          name: test-3.5
+          python_version: "3.5"
           filters:
             tags:
               only: /.*/
@@ -122,7 +122,7 @@ workflows:
           context: storage-library-tester
       - publish:
           requires:
-            - test-3.9
+            - test-3.5
             - test-3.7
           filters:
             tags:
