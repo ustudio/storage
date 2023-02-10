@@ -710,7 +710,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         mock_session = mock_session_class.return_value
         mock_s3_client = mock_session.client.return_value
 
-        self.temp_directory = create_temp_nested_directory_with_files([".js", ".unknown", ""])
+        self.temp_directory = create_temp_nested_directory_with_files([".png", ".unknown", ""])
 
         storage = get_storage(
             "s3://access_key:access_secret@bucket/dir?region=US_EAST")
@@ -725,7 +725,7 @@ class TestS3Storage(StorageTestCase, TestCase):
             mock.call(
                 self.temp_directory["temp_input_one"]["path"], "bucket",
                 os.path.join("dir", self.temp_directory["temp_input_one"]["name"]),
-                ExtraArgs={"ContentType": "application/javascript"}),
+                ExtraArgs={"ContentType": "image/png"}),
             mock.call(
                 self.temp_directory["nested_temp_input"]["path"], "bucket",
                 os.path.join(
