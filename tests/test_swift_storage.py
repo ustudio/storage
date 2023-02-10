@@ -1,6 +1,6 @@
 import contextlib
 from io import BytesIO
-from hashlib import sha1
+from hashlib import sha256
 import hmac
 import json
 import os
@@ -733,7 +733,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def generate_signature(self, path: str, key: bytes, expires: int = 60) -> str:
         timestamp = time.time()
         raw_string = f"GET\n{timestamp + expires}\n/v2.0/1234/CONTAINER{path}"
-        return hmac.new(key, raw_string.encode("utf8"), sha1).hexdigest()
+        return hmac.new(key, raw_string.encode("utf8"), sha256).hexdigest()
 
     @mock.patch("time.time")
     def test_get_download_url_uses_download_url_key_by_default(self, mock_time: mock.Mock) -> None:
