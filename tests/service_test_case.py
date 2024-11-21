@@ -13,7 +13,7 @@ from typing import Any, Callable, cast, Dict, Generator, Iterable, List
 from typing import Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from wsgiref.types import StartResponse
+    from wsgiref.types import StartResponse  # type: ignore[import-not-found]
 
     Environ = Dict[str, Any]
 
@@ -58,7 +58,7 @@ class ServiceRequest(object):
             f"`{actual_value}` instead of `{header_value}`."
 
     def assert_body_equals(self, body: bytes) -> None:
-        assert body == self.body, f"Body unexpectedly equals {self.body} instead of {body}"
+        assert body == self.body, f"Body unexpectedly equals {self.body!r} instead of {body!r}"
 
 
 class Service(object):

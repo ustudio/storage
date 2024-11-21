@@ -71,7 +71,7 @@ jobs:
 
   publish:
     docker:
-      - image: circleci/python:3.7
+      - image: cimg/python:3.9
     working_directory: ~/repo
     steps:
       - checkout
@@ -89,23 +89,15 @@ workflows:
   test-and-build:
     jobs:
       - test:
-          name: test-3.6
-          python_version: "3.6"
-          filters:
-            tags:
-              only: /.*/
-          context: storage-library-tester
-      - test:
-          name: test-3.7
-          python_version: "3.7"
+          name: test-3.9
+          python_version: "3.9"
           filters:
             tags:
               only: /.*/
           context: storage-library-tester
       - publish:
           requires:
-            - test-3.6
-            - test-3.7
+            - test-3.9
           filters:
             tags:
               only: /^v[0-9]+(\.[0-9]+)*.*/

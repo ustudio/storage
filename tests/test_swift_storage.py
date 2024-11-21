@@ -21,7 +21,7 @@ from tests.helpers import FileSpy
 
 if TYPE_CHECKING:
     from tests.service_test_case import Environ
-    from wsgiref.types import StartResponse
+    from wsgiref.types import StartResponse  # type: ignore[import-not-found]
 
 
 _LARGE_CHUNK = 32 * 1024 * 1024

@@ -17,9 +17,14 @@ from storage.url_parser import remove_user_info
 
 @register_storage_protocol("s3")
 class S3Storage(Storage):
+    _bucket: str
 
     def __init__(self, storage_uri: str) -> None:
         super(S3Storage, self).__init__(storage_uri)
+        assert self._parsed_storage_uri.username is not None
+        assert self._parsed_storage_uri.password is not None
+        assert self._parsed_storage_uri.hostname is not None
+
         self._access_key = unquote(self._parsed_storage_uri.username)
         self._access_secret = unquote(self._parsed_storage_uri.password)
         self._bucket = self._parsed_storage_uri.hostname

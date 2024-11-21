@@ -20,6 +20,8 @@ from storage.storage import Storage, register_storage_protocol, NotFoundError
 class GoogleStorage(Storage):
 
     def _get_bucket(self) -> Bucket:
+        assert self._parsed_storage_uri.username is not None
+        assert self._parsed_storage_uri.hostname is not None
         username = self._parsed_storage_uri.username
         credentials_data = json.loads(base64.urlsafe_b64decode(username))
         credentials = google.oauth2.service_account.Credentials.from_service_account_info(

@@ -73,6 +73,8 @@ class SwiftStorage(Storage):
             user = self._parsed_storage_uri.username
             key = self._parsed_storage_uri.password
 
+            assert user is not None
+
             auth = v2.Password(
                 auth_url=self.auth_endpoint, username=user, password=key,
                 tenant_name=self.tenant_id)
@@ -172,6 +174,8 @@ class SwiftStorage(Storage):
 
         if "download_url_key" in new_query:
             del new_query["download_url_key"]
+
+        assert parsed_uri.hostname is not None
 
         new_uri = ParseResult(
             parsed_uri.scheme, parsed_uri.hostname, parsed_uri.path, parsed_uri.params,

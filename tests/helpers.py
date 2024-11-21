@@ -3,6 +3,7 @@ import os
 import tempfile
 
 from typing import Any, cast, List, Optional, Union
+from typing_extensions import Buffer
 from mypy_extensions import TypedDict
 
 
@@ -140,10 +141,12 @@ class FileSpy(io.BytesIO):
         self.index = 0
         self.name = ""
 
-    def write(self, chunk: bytes) -> int:
-        self.chunks.append(chunk)
-        self.index += len(chunk)
-        return len(chunk)
+    def write(self, chunk: Buffer) -> int:
+        raw = bytes(chunk)
+        rawlen = len(raw)
+        self.chunks.append(raw)
+        self.index += rawlen
+        return rawlen
 
     def seek(self, index: int, whence: int = 0) -> int:
         if whence != 0:

@@ -49,6 +49,8 @@ class CloudFilesStorage(SwiftStorage):
             user = self._parsed_storage_uri.username
             key = self._parsed_storage_uri.password
 
+            assert user is not None
+
             auth = RackspaceAuth(auth_url=self.auth_endpoint, username=user, password=key)
 
             keystone_session = session.Session(auth=auth)

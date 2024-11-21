@@ -25,6 +25,12 @@ class TestUrlParser(TestCase):
 
         self.assertEqual("ftp://ftp.foo.com:8080/path/filename", sanitized_uri)
 
+    def test_remove_user_info_accepts_urls_without_hostnames(self) -> None:
+        storage_uri = urlparse("file:///path/filename")
+        sanitized_uri = url_parser.remove_user_info(storage_uri)
+
+        self.assertEqual("file:///path/filename", sanitized_uri)
+
     def test_sanitize_resource_uri_removes_username_and_password(self) -> None:
         storage_uri = urlparse("https://username:password@bucket/path/filename")
         sanitized_uri = url_parser.sanitize_resource_uri(storage_uri)
@@ -42,3 +48,9 @@ class TestUrlParser(TestCase):
         sanitized_uri = url_parser.sanitize_resource_uri(storage_uri)
 
         self.assertEqual("ftp://ftp.foo.com:8080/path/filename", sanitized_uri)
+
+    def test_sanitize_resource_uri_accepts_urls_without_hostnames(self) -> None:
+        storage_uri = urlparse("file:///path/filename")
+        sanitized_uri = url_parser.sanitize_resource_uri(storage_uri)
+
+        self.assertEqual("file:///path/filename", sanitized_uri)

@@ -12,7 +12,7 @@ from typing import Any, cast, Dict, Generator, List, Optional, TYPE_CHECKING, Un
 
 if TYPE_CHECKING:
     from tests.service_test_case import Environ
-    from wsgiref.types import StartResponse
+    from wsgiref.types import StartResponse  # type: ignore[import-not-found]
 
 
 def strip_slashes(path: str) -> str:

@@ -31,10 +31,17 @@ class FTPStorage(Storage):
     that will allow get_download_url() to return access to that object via HTTP.
     """
 
+    _username: str
+    _password: str
+    _hostname: str
     _download_url_base: Optional[str]
 
     def __init__(self, storage_uri: str) -> None:
         super(FTPStorage, self).__init__(storage_uri)
+        assert self._parsed_storage_uri.hostname is not None
+        assert self._parsed_storage_uri.username is not None
+        assert self._parsed_storage_uri.password is not None
+
         self._username = self._parsed_storage_uri.username
         self._password = self._parsed_storage_uri.password
         self._hostname = self._parsed_storage_uri.hostname
