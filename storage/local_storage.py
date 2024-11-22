@@ -41,7 +41,8 @@ class LocalStorage(Storage):
 
     def save_to_directory(self, destination_directory: str) -> None:
         try:
-            shutil.copytree(self._parsed_storage_uri.path, destination_directory)
+            shutil.copytree(
+                self._parsed_storage_uri.path, destination_directory, dirs_exist_ok=True)
         except FileNotFoundError:
             raise NotFoundError("No Files Found")
 
@@ -65,7 +66,7 @@ class LocalStorage(Storage):
 
     def load_from_directory(self, source_directory: str) -> None:
         self._ensure_exists()
-        shutil.copytree(source_directory, self._parsed_storage_uri.path)
+        shutil.copytree(source_directory, self._parsed_storage_uri.path, dirs_exist_ok=True)
 
     def delete(self) -> None:
         try:

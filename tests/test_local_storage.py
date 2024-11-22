@@ -102,6 +102,27 @@ class TestLocalStorage(StorageTestCase):
             with open(nested_temp_input_path, "rb") as temp_output_fp:
                 self.assertEqual(b"FOOBAR", temp_output_fp.read())
 
+    def test_local_storage_save_to_directory_overwrites_existing_files(self) -> None:
+        self.temp_directory = create_temp_nested_directory_with_files()
+
+        storage = get_storage("file://{0}".format(self.temp_directory["temp_directory"]["path"]))
+
+        with TempDirectory() as temp_output:
+            temp_output_dir = temp_output.name
+            destination_directory_path = os.path.join(temp_output_dir, "tmp")
+            destination_input_one_path = os.path.join(
+                destination_directory_path,
+                self.temp_directory["temp_input_one"]["name"])
+
+            os.makedirs(destination_directory_path)
+            with open(destination_input_one_path, "wb") as to_be_overwritten:
+                to_be_overwritten.write(b"TO-BE-OVERWRITTEN")
+
+            storage.save_to_directory(destination_directory_path)
+
+            with open(destination_input_one_path, "rb") as temp_output_fp:
+                self.assertEqual(b"FOO", temp_output_fp.read())
+
     def test_local_storage_save_to_directory_raises_when_source_directory_does_not_exist(
             self) -> None:
         self.temp_directory = create_temp_nested_directory_with_files()
@@ -151,6 +172,28 @@ class TestLocalStorage(StorageTestCase):
 
             with open(nested_temp_input_path, "rb") as temp_output_fp:
                 self.assertEqual(b"FOOBAR", temp_output_fp.read())
+
+    def test_local_storage_load_from_directory_overwrites_existing_files(self) -> None:
+        self.temp_directory = create_temp_nested_directory_with_files()
+
+        with TempDirectory() as temp_output:
+            temp_output_dir = temp_output.name
+            destination_directory_path = os.path.join(
+                temp_output_dir, "tmp")
+            destination_input_one_path = os.path.join(
+                temp_output_dir, destination_directory_path,
+                self.temp_directory["temp_input_one"]["name"])
+
+            os.makedirs(destination_directory_path)
+            with open(destination_input_one_path, "wb") as to_be_overwritten:
+                to_be_overwritten.write(b"TO-BE-OVERWRITTEN")
+
+            storage = get_storage("file://{0}/{1}".format(temp_output_dir, "tmp"))
+
+            storage.load_from_directory(self.temp_directory["temp_directory"]["path"])
+
+            with open(destination_input_one_path, "rb") as temp_output_fp:
+                self.assertEqual(b"FOO", temp_output_fp.read())
 
     @mock.patch("shutil.copy", autospec=True)
     @mock.patch("os.makedirs", autospec=True)
