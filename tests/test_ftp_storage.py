@@ -125,8 +125,6 @@ class TestFTPStorage(TestCase):
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_save_to_filename(self, mock_ftp_class: mock.Mock) -> None:
-        temp_output = tempfile.NamedTemporaryFile()
-
         mock_results = [b"foo", b"bar"]
 
         def mock_retrbinary(command: str, callback: Callable[[bytes], None]) -> str:
@@ -140,29 +138,28 @@ class TestFTPStorage(TestCase):
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
 
-        storage.save_to_filename(temp_output.name)
+        with tempfile.NamedTemporaryFile() as temp_output:
+            storage.save_to_filename(temp_output.name)
 
-        assert_connected(mock_ftp_class, mock_ftp)
+            assert_connected(mock_ftp_class, mock_ftp)
 
-        mock_ftp.cwd.assert_called_with("some/dir")
-        self.assertEqual(1, mock_ftp.retrbinary.call_count)
-        self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
+            mock_ftp.cwd.assert_called_with("some/dir")
+            self.assertEqual(1, mock_ftp.retrbinary.call_count)
+            self.assertEqual("RETR file", mock_ftp.retrbinary.call_args[0][0])
 
-        with open(temp_output.name) as output_fp:
-            self.assertEqual("foobar", output_fp.read())
+            with open(temp_output.name) as output_fp:
+                self.assertEqual("foobar", output_fp.read())
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_save_to_filename_raises_not_found_error_when_file_does_not_exist(
             self, mock_ftp_class: mock.Mock) -> None:
-        temp_output = tempfile.NamedTemporaryFile()
-
         mock_ftp = mock_ftp_class.return_value
         mock_ftp.retrbinary.side_effect = error_perm(
             "550 The system cannot find the path specified.")
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
 
-        with self.assertRaises(NotFoundError):
+        with self.assertRaises(NotFoundError), tempfile.NamedTemporaryFile() as temp_output:
             storage.save_to_filename(temp_output.name)
 
         self.assertEqual(1, mock_ftp.retrbinary.call_count)
@@ -171,14 +168,12 @@ class TestFTPStorage(TestCase):
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_save_to_filename_raises_original_exception_when_not_550(
             self, mock_ftp_class: mock.Mock) -> None:
-        temp_output = tempfile.NamedTemporaryFile()
-
         mock_ftp = mock_ftp_class.return_value
         mock_ftp.retrbinary.side_effect = error_perm("553 Could not create file.")
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
 
-        with self.assertRaises(error_perm):
+        with self.assertRaises(error_perm), tempfile.NamedTemporaryFile() as temp_output:
             storage.save_to_filename(temp_output.name)
 
     @mock.patch("ftplib.FTP", autospec=True)
@@ -896,8 +891,6 @@ class TestFTPStorage(TestCase):
 class TestFTPSStorage(TestCase):
     @mock.patch("ftplib.FTP_TLS", autospec=True)
     def test_ftps_scheme_connects_using_ftp_tls_class(self, mock_ftp_tls_class: mock.Mock) -> None:
-        temp_output = tempfile.NamedTemporaryFile()
-
         mock_results = [b"foo", b"bar"]
 
         def mock_retrbinary(command: str, callback: Callable[[bytes], None]) -> str:
@@ -921,7 +914,8 @@ class TestFTPSStorage(TestCase):
 
         storage = get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
 
-        storage.save_to_filename(temp_output.name)
+        with tempfile.NamedTemporaryFile() as temp_output:
+            storage.save_to_filename(temp_output.name)
 
         mock_ftp_tls_class.assert_called_with(timeout=DEFAULT_FTP_TIMEOUT)
         mock_ftp.connect.assert_called_with("ftp.foo.com", port=21)
