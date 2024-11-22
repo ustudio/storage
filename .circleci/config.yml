@@ -109,11 +109,19 @@ workflows:
             tags:
               only: /.*/
           context: storage-library-tester
+      - test:
+          name: test-3.12
+          python_version: "3.12"
+          filters:
+            tags:
+              only: /.*/
+          context: storage-library-tester
       - publish:
           requires:
             - test-3.9
             - test-3.10
             - test-3.11
+            - test-3.12
           filters:
             tags:
               only: /^v[0-9]+(\.[0-9]+)*.*/
