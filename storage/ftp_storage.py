@@ -91,7 +91,7 @@ class FTPStorage(Storage):
         files = []
 
         for line in directory_listing:
-            name = re.split(r"\s+", line, 8)[-1]
+            name = re.split(r"\s+", line, maxsplit=8)[-1]
 
             if line.lower().startswith("d"):
                 directories.append(name)
