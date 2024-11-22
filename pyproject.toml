@@ -9,7 +9,7 @@ packages = [{include = "storage"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
-boto3 = ">=1.0.1"
+boto3 = "^1.35.67"
 google-cloud-storage = "^2.18.2"
 python-swiftclient = "^4.6.0"
 keystoneauth1 = "^5.1.3"
