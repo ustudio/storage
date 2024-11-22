@@ -13,7 +13,7 @@ from typing import Any, Callable, cast, Dict, Generator, Iterable, List
 from typing import Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from wsgiref.types import StartResponse  # type: ignore[import-not-found]
+    from wsgiref.types import StartResponse  # type: ignore[import-not-found, unused-ignore]
 
     Environ = Dict[str, Any]
 
