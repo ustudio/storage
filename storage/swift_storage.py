@@ -57,10 +57,16 @@ class SwiftStorage(Storage):
 
         self.download_url_key = get_optional_query_parameter(query, "download_url_key")
 
-        if self._parsed_storage_uri.username == "":
+        if self._parsed_storage_uri.username is None or self._parsed_storage_uri.username == "":
             raise InvalidStorageUri("Missing username")
-        if self._parsed_storage_uri.password == "":
+        if self._parsed_storage_uri.password is None or self._parsed_storage_uri.password == "":
             raise InvalidStorageUri("Missing API key")
+        if self._parsed_storage_uri.hostname is None:
+            raise InvalidStorageUri("Missing hostname")
+
+        self._username = self._parsed_storage_uri.username
+        self._password = self._parsed_storage_uri.password
+        self._hostname = self._parsed_storage_uri.hostname
 
     # cache get connections
     def get_connection(self) -> swiftclient.client.Connection:
@@ -70,13 +76,8 @@ class SwiftStorage(Storage):
                 "region_name": self.region_name
             }
 
-            user = self._parsed_storage_uri.username
-            key = self._parsed_storage_uri.password
-
-            assert user is not None
-
             auth = v2.Password(
-                auth_url=self.auth_endpoint, username=user, password=key,
+                auth_url=self.auth_endpoint, username=self._username, password=self._password,
                 tenant_name=self.tenant_id)
 
             keystone_session = session.Session(auth=auth)
@@ -175,10 +176,8 @@ class SwiftStorage(Storage):
         if "download_url_key" in new_query:
             del new_query["download_url_key"]
 
-        assert parsed_uri.hostname is not None
-
         new_uri = ParseResult(
-            parsed_uri.scheme, parsed_uri.hostname, parsed_uri.path, parsed_uri.params,
+            parsed_uri.scheme, self._hostname, parsed_uri.path, parsed_uri.params,
             urlencode(new_query), parsed_uri.fragment)
 
         return new_uri.geturl()

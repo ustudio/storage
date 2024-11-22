@@ -183,11 +183,14 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.assertRaises(SwiftStorageError):
                 get_storage(uri)
 
-        for auth_string in ["USER:@", ":KEY@"]:
+        for auth_string in ["USER:@", ":KEY@", ""]:
             uri = f"swift://{auth_string}CONTAINER{path}?{urlencode(all_params)}"
 
             with self.assertRaises(InvalidStorageUri):
                 get_storage(uri)
+
+        with self.assertRaises(InvalidStorageUri):
+            get_storage(f"swift://{path}?{urlencode(all_params)}")
 
     def test_save_to_file_raises_exception_when_missing_required_parameters(self) -> None:
         self.assert_requires_all_parameters("/path/to/file.mp4")

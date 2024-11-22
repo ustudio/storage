@@ -4,7 +4,7 @@ import json
 from unittest import TestCase, mock
 
 from google.cloud.exceptions import NotFound
-from storage.storage import get_storage, NotFoundError
+from storage.storage import get_storage, NotFoundError, InvalidStorageUri
 
 
 class TestGoogleStorage(TestCase):
@@ -36,6 +36,14 @@ class TestGoogleStorage(TestCase):
         self.mock_client_class.assert_called_once_with(
             project="PROJECT-ID", credentials=self.mock_credentials)
         self.mock_client.get_bucket.assert_called_once_with("bucketname")
+
+    def test_requires_username_in_uri(self) -> None:
+        with self.assertRaises(InvalidStorageUri):
+            get_storage("gs://bucket/path")
+
+    def test_requires_hostname_in_uri(self) -> None:
+        with self.assertRaises(InvalidStorageUri):
+            get_storage("gs://username@/path")
 
     def test_save_to_filename_downloads_blob_to_file_location(self) -> None:
         storage = get_storage("gs://{}@bucketname/path/filename".format(self.credentials))

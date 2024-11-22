@@ -57,11 +57,14 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
             return False
 
     def assert_requires_all_parameters(self, object_path: str) -> None:
-        for auth_string in ["USER:@", ":TOKEN@"]:
+        for auth_string in ["USER:@", ":TOKEN@", ""]:
             cloudfiles_uri = f"cloudfiles://{auth_string}CONTAINER{object_path}"
 
             with self.assertRaises(InvalidStorageUri):
                 get_storage(cloudfiles_uri)
+
+        with self.assertRaises(InvalidStorageUri):
+            get_storage(f"cloudfiles://{object_path}")
 
     @contextlib.contextmanager
     def assert_raises_on_forbidden_access(self) -> Generator[None, None, None]:

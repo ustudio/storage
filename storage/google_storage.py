@@ -13,22 +13,28 @@ import google.oauth2.service_account
 from typing import BinaryIO, Optional
 
 from storage import retry
-from storage.storage import Storage, register_storage_protocol, NotFoundError
+from storage.storage import Storage, register_storage_protocol, NotFoundError, InvalidStorageUri
 
 
 @register_storage_protocol("gs")
 class GoogleStorage(Storage):
 
+    def _validate_parsed_uri(self) -> None:
+        if self._parsed_storage_uri.username is None:
+            raise InvalidStorageUri("Missing username")
+        if self._parsed_storage_uri.hostname is None:
+            raise InvalidStorageUri("Missing hostname")
+
+        self._username = self._parsed_storage_uri.username
+        self._hostname = self._parsed_storage_uri.hostname
+
     def _get_bucket(self) -> Bucket:
-        assert self._parsed_storage_uri.username is not None
-        assert self._parsed_storage_uri.hostname is not None
-        username = self._parsed_storage_uri.username
-        credentials_data = json.loads(base64.urlsafe_b64decode(username))
+        credentials_data = json.loads(base64.urlsafe_b64decode(self._username))
         credentials = google.oauth2.service_account.Credentials.from_service_account_info(
             credentials_data)
         client = google.cloud.storage.client.Client(
             project=credentials_data["project_id"], credentials=credentials)
-        return client.get_bucket(self._parsed_storage_uri.hostname)
+        return client.get_bucket(self._hostname)
 
     def _get_blob(self) -> Blob:
         bucket = self._get_bucket()

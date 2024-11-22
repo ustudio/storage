@@ -34,10 +34,16 @@ class CloudFilesStorage(SwiftStorage):
         self.region = region if region is not None else "DFW"
         self.download_url_key = get_optional_query_parameter(query, "download_url_key")
 
-        if self._parsed_storage_uri.username == "":
+        if self._parsed_storage_uri.username is None or self._parsed_storage_uri.username == "":
             raise InvalidStorageUri("Missing username")
-        if self._parsed_storage_uri.password == "":
+        if self._parsed_storage_uri.password is None or self._parsed_storage_uri.password == "":
             raise InvalidStorageUri("Missing API key")
+        if self._parsed_storage_uri.hostname is None:
+            raise InvalidStorageUri("Missing hostname")
+
+        self._username = self._parsed_storage_uri.username
+        self._password = self._parsed_storage_uri.password
+        self._hostname = self._parsed_storage_uri.hostname
 
     def get_connection(self) -> swiftclient.client.Connection:
         if not hasattr(self, "_connection"):
@@ -46,12 +52,8 @@ class CloudFilesStorage(SwiftStorage):
                 "endpoint_type": self.public_endpoint
             }
 
-            user = self._parsed_storage_uri.username
-            key = self._parsed_storage_uri.password
-
-            assert user is not None
-
-            auth = RackspaceAuth(auth_url=self.auth_endpoint, username=user, password=key)
+            auth = RackspaceAuth(
+                auth_url=self.auth_endpoint, username=self._username, password=self._password)
 
             keystone_session = session.Session(auth=auth)
 

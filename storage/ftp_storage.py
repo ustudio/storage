@@ -9,6 +9,7 @@ from urllib.parse import parse_qsl
 from typing import BinaryIO, Generator, List, Optional, Tuple
 
 from storage.storage import Storage, register_storage_protocol, _generate_download_url_from_base
+from storage.storage import InvalidStorageUri
 from storage.storage import DEFAULT_FTP_TIMEOUT, DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT
 from storage.storage import DEFAULT_FTP_KEEPIDLE, DEFAULT_FTP_KEEPINTVL, NotFoundError
 from storage.url_parser import remove_user_info
@@ -32,16 +33,16 @@ class FTPStorage(Storage):
     that will allow get_download_url() to return access to that object via HTTP.
     """
 
-    _username: str
-    _password: str
-    _hostname: str
     _download_url_base: Optional[str]
 
     def __init__(self, storage_uri: str) -> None:
         super(FTPStorage, self).__init__(storage_uri)
-        assert self._parsed_storage_uri.hostname is not None
-        assert self._parsed_storage_uri.username is not None
-        assert self._parsed_storage_uri.password is not None
+        if self._parsed_storage_uri.username is None:
+            raise InvalidStorageUri("Missing username")
+        if self._parsed_storage_uri.password is None:
+            raise InvalidStorageUri("Missing password")
+        if self._parsed_storage_uri.hostname is None:
+            raise InvalidStorageUri("Missing hostname")
 
         self._username = self._parsed_storage_uri.username
         self._password = self._parsed_storage_uri.password

@@ -8,7 +8,8 @@ from typing import Any, Callable, Collection, cast, Generator, List, Optional, U
 from unittest import mock, TestCase
 from urllib.parse import quote_plus
 
-from storage.storage import get_storage, DownloadUrlBaseUndefinedError, NotFoundError
+from storage.storage import get_storage
+from storage.storage import DownloadUrlBaseUndefinedError, InvalidStorageUri, NotFoundError
 from storage.storage import DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT, DEFAULT_FTP_KEEPIDLE
 from storage.storage import DEFAULT_FTP_KEEPINTVL, DEFAULT_FTP_TIMEOUT
 
@@ -74,6 +75,18 @@ class TestFTPStorage(TestCase):
         super().tearDown()
         if self.temp_directory is not None:
             cleanup_nested_directory(self.temp_directory)
+
+    def test_requires_username_in_uri(self) -> None:
+        with self.assertRaises(InvalidStorageUri):
+            get_storage("ftp://hostname/path")
+
+    def test_requires_password_in_uri(self) -> None:
+        with self.assertRaises(InvalidStorageUri):
+            get_storage("ftp://username@hostname/path")
+
+    def test_requires_hostname_in_uri(self) -> None:
+        with self.assertRaises(InvalidStorageUri):
+            get_storage("ftp://username:password@/path")
 
     @mock.patch("storage.ftp_storage.socket")
     @mock.patch("ftplib.FTP", autospec=True)

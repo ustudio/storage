@@ -5,7 +5,7 @@ from urllib.parse import quote
 from typing import cast, Dict, List, Optional
 from botocore.exceptions import ClientError
 
-from storage.storage import get_storage, NotFoundError
+from storage.storage import get_storage, InvalidStorageUri, NotFoundError
 from storage.s3_storage import S3Storage
 from tests.helpers import create_temp_nested_directory_with_files, NestedDirectoryDict
 from tests.helpers import cleanup_nested_directory
@@ -28,6 +28,18 @@ class TestS3Storage(StorageTestCase, TestCase):
     def _generate_storage_uri(
             self, object_path: str, parameters: Optional[Dict[str, str]] = None) -> str:
         return "s3://access_key:access_secret@bucket/some/file"
+
+    def test_requires_username_in_uri(self) -> None:
+        with self.assertRaises(InvalidStorageUri):
+            get_storage("s3://hostname/path")
+
+    def test_requires_password_in_uri(self) -> None:
+        with self.assertRaises(InvalidStorageUri):
+            get_storage("s3://username@hostname/path")
+
+    def test_requires_hostname_in_uri(self) -> None:
+        with self.assertRaises(InvalidStorageUri):
+            get_storage("s3://username:password@/path")
 
     def test_s3storage_init_sets_correct_keyname(self) -> None:
         storage = get_storage(
