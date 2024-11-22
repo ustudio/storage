@@ -167,7 +167,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
                 yield
 
     def assert_requires_all_parameters(self, path: str) -> None:
-        base_uri = f"swift://USER:KEY@CONTAINER"
+        base_uri = "swift://USER:KEY@CONTAINER"
         all_params = {
             "tenant_id": "1234",
             "region": "DFW",

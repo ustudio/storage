@@ -240,7 +240,7 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def test_save_to_file_uses_provided_region_parameter(self) -> None:
         self.object_contents["/path/to/file.mp4"] = b"FOOBAR"
 
-        get_path = f"/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
+        get_path = "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
         self.alt_cloudfiles_service.add_handler("GET", get_path, self.object_handler)
 
         temp = io.BytesIO()
@@ -280,7 +280,7 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def test_save_to_file_uses_provided_public_parameter(self) -> None:
         self.object_contents["/path/to/file.mp4"] = b"FOOBAR"
 
-        get_path = f"/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
+        get_path = "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
         self.internal_cloudfiles_service.add_handler("GET", get_path, self.object_handler)
 
         temp = io.BytesIO()
@@ -303,7 +303,7 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def test_save_to_file_uses_provided_public_parameter_case_insensitive(self) -> None:
         self.object_contents["/path/to/file.mp4"] = b"FOOBAR"
 
-        get_path = f"/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
+        get_path = "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
         self.internal_cloudfiles_service.add_handler("GET", get_path, self.object_handler)
 
         temp = io.BytesIO()
