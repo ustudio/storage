@@ -71,17 +71,17 @@ class FTPStorage(Storage):
 
     @contextlib.contextmanager
     def _connect(self) -> Generator[FTP, None, None]:
-        with ftplib.FTP(timeout=DEFAULT_FTP_TIMEOUT) as ftp_client:
-            try:
-                ftp_client.connect(self._hostname, port=self._port)
+        ftp_client = ftplib.FTP(timeout=DEFAULT_FTP_TIMEOUT)
+        try:
+            ftp_client.connect(self._hostname, port=self._port)
 
-                self._configure_keepalive(ftp_client)
+            self._configure_keepalive(ftp_client)
 
-                ftp_client.login(self._username, self._password)
+            ftp_client.login(self._username, self._password)
 
-                yield ftp_client
-            finally:
-                ftp_client.close()
+            yield ftp_client
+        finally:
+            ftp_client.close()
 
     def _cd_to_file(self, ftp_client: FTP) -> str:
         directory, filename = os.path.split(self._parsed_storage_uri.path.lstrip("/"))
@@ -285,13 +285,13 @@ class FTPStorage(Storage):
 class FTPSStorage(FTPStorage):
     @contextlib.contextmanager
     def _connect(self) -> Generator[FTP, None, None]:
-        with ftplib.FTP_TLS(timeout=DEFAULT_FTP_TIMEOUT) as ftp_client:
-            try:
-                ftp_client.connect(self._hostname, port=self._port)
-                self._configure_keepalive(ftp_client)
-                ftp_client.login(self._username, self._password)
-                ftp_client.prot_p()
+        ftp_client = ftplib.FTP_TLS(timeout=DEFAULT_FTP_TIMEOUT)
+        try:
+            ftp_client.connect(self._hostname, port=self._port)
+            self._configure_keepalive(ftp_client)
+            ftp_client.login(self._username, self._password)
+            ftp_client.prot_p()
 
-                yield ftp_client
-            finally:
-                ftp_client.close()
+            yield ftp_client
+        finally:
+            ftp_client.close()

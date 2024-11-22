@@ -47,7 +47,7 @@ def patch_ftp_client(
         list(map(fn, listing))
 
     with mock.patch("ftplib.FTP", autospec=True) as mock_ftp_class:
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         mock_ftp.retrlines.side_effect = side_effect
         yield mock_ftp
         assert_connected(mock_ftp_class, mock_ftp, expected_port)
@@ -100,7 +100,7 @@ class TestFTPStorage(TestCase):
         mock_socket.TCP_KEEPIDLE = 2
         mock_socket.TCP_KEEPINTVL = 3
 
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         in_file = BytesIO(b"foobar")
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -126,7 +126,7 @@ class TestFTPStorage(TestCase):
         del mock_socket.TCP_KEEPIDLE
         del mock_socket.TCP_KEEPINTVL
 
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         in_file = BytesIO(b"foobar")
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -140,7 +140,7 @@ class TestFTPStorage(TestCase):
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_closes_client_on_error(self, mock_ftp_class: mock.Mock) -> None:
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         mock_ftp.connect.side_effect = Exception("connect failure")
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -160,7 +160,7 @@ class TestFTPStorage(TestCase):
 
             return "226"
 
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         mock_ftp.retrbinary.side_effect = mock_retrbinary
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -180,7 +180,7 @@ class TestFTPStorage(TestCase):
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_save_to_filename_raises_not_found_error_when_file_does_not_exist(
             self, mock_ftp_class: mock.Mock) -> None:
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         mock_ftp.retrbinary.side_effect = error_perm(
             "550 The system cannot find the path specified.")
 
@@ -195,7 +195,7 @@ class TestFTPStorage(TestCase):
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_save_to_filename_raises_original_exception_when_not_550(
             self, mock_ftp_class: mock.Mock) -> None:
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         mock_ftp.retrbinary.side_effect = error_perm("553 Could not create file.")
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -215,7 +215,7 @@ class TestFTPStorage(TestCase):
 
             return "226"
 
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         mock_ftp.retrbinary.side_effect = mock_retrbinary
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -242,7 +242,7 @@ class TestFTPStorage(TestCase):
 
             return "226"
 
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         mock_ftp.retrbinary.side_effect = mock_retrbinary
 
         storage = get_storage("ftp://user:password@ftp.foo.com:12345/some/dir/file")
@@ -262,7 +262,7 @@ class TestFTPStorage(TestCase):
             self, mock_ftp_class: mock.Mock) -> None:
         out_file = BytesIO(b"")
 
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         mock_ftp.retrbinary.side_effect = error_perm(
             "550 The system cannot find the path specified.")
 
@@ -279,7 +279,7 @@ class TestFTPStorage(TestCase):
             self, mock_ftp_class: mock.Mock) -> None:
         out_file = BytesIO(b"")
 
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         mock_ftp.retrbinary.side_effect = error_perm("553 Could not create file.")
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -509,7 +509,7 @@ class TestFTPStorage(TestCase):
     @mock.patch("builtins.open", autospec=True)
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_load_from_filename(self, mock_ftp_class: mock.Mock, mock_open: mock.Mock) -> None:
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
 
@@ -527,7 +527,7 @@ class TestFTPStorage(TestCase):
     @mock.patch("ftplib.FTP", autospec=True)
     def test_load_from_filename_with_specific_port(
             self, mock_ftp_class: mock.Mock, mock_open: mock.Mock) -> None:
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
 
         storage = get_storage("ftp://user:password@ftp.foo.com:12345/some/dir/file")
 
@@ -543,7 +543,7 @@ class TestFTPStorage(TestCase):
 
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_load_from_file(self, mock_ftp_class: mock.Mock) -> None:
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
         in_file = BytesIO(b"foobar")
 
         storage = get_storage("ftp://user:password@ftp.foo.com/some/dir/file")
@@ -559,7 +559,7 @@ class TestFTPStorage(TestCase):
     @mock.patch("ftplib.FTP", autospec=True)
     def test_ftp_load_from_directory_creates_directories_from_storage_URI_if_not_present(
             self, mock_ftp_class: mock.Mock) -> None:
-        mock_ftp = mock_ftp_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_class.return_value
 
         mock_ftp.retrlines.return_value = []
 
@@ -926,7 +926,7 @@ class TestFTPSStorage(TestCase):
 
             return "226"
 
-        mock_ftp = mock_ftp_tls_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_tls_class.return_value
         mock_ftp.retrbinary.side_effect = mock_retrbinary
 
         def assert_tcp_keepalive_already_enabled(username: str, password: str) -> None:
@@ -952,7 +952,7 @@ class TestFTPSStorage(TestCase):
 
     @mock.patch("ftplib.FTP_TLS", autospec=True)
     def test_closes_client_on_error(self, mock_ftp_tls_class: mock.Mock) -> None:
-        mock_ftp = mock_ftp_tls_class.return_value.__enter__.return_value
+        mock_ftp = mock_ftp_tls_class.return_value
         mock_ftp.connect.side_effect = Exception("connect failure")
 
         storage = get_storage("ftps://user:password@ftp.foo.com/some/dir/file")
