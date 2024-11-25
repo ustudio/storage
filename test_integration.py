@@ -6,7 +6,6 @@ import string
 import tempfile
 import time
 import unittest
-from urllib.parse import urlparse
 
 from storage import get_storage
 
@@ -56,11 +55,8 @@ class IntegrationTests(unittest.TestCase):
             raise unittest.SkipTest("Skipping {} - define {} to test".format(transport, variable))
 
         uri += "/{}".format(self.dest_prefix)
-        parsed_url = urlparse(uri)
-        print(
-            "Testing using:", parsed_url.scheme, parsed_url.hostname, parsed_url.port,
-            parsed_url.path)
         storage = get_storage(uri)
+        print(f"Testing using: {storage.get_sanitized_uri()}")
 
         print("Transport:", transport)
         print("\t* Uploading")
