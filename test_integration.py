@@ -88,6 +88,9 @@ class IntegrationTests(unittest.TestCase):
     def test_s3_transport_can_upload_and_download_directories(self) -> None:
         self.assert_transport_handles_directories("S3")
 
+    def test_s3_transport_with_json_credentials_can_upload_and_download_directories(self) -> None:
+        self.assert_transport_handles_directories("S3_JSON")
+
     def test_swift_transport_can_upload_and_download_directories(self) -> None:
         self.assert_transport_handles_directories("SWIFT")
 
