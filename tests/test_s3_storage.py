@@ -3,7 +3,7 @@ import os
 from unittest import mock, TestCase
 from urllib.parse import quote
 
-from typing import cast, Dict, List, Optional
+from typing import cast, Optional
 from botocore.exceptions import ClientError
 
 from storage.storage import get_storage, InvalidStorageUri, NotFoundError
@@ -32,7 +32,7 @@ class TestS3Storage(StorageTestCase, TestCase):
             cleanup_nested_directory(self.temp_directory)
 
     def _generate_storage_uri(
-            self, object_path: str, parameters: Optional[Dict[str, str]] = None) -> str:
+            self, object_path: str, parameters: Optional[dict[str, str]] = None) -> str:
         return "s3://access_key:access_secret@bucket/some/file"
 
     def create_json_credentials(
@@ -444,7 +444,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         }
 
         mock_path_exists.return_value = False
-        path_mock_path_exists_calls: List[str] = []
+        path_mock_path_exists_calls: list[str] = []
 
         def mock_path_exists_side_effect(path: str) -> bool:
             if any(path in x for x in path_mock_path_exists_calls):
@@ -518,7 +518,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         }
 
         mock_path_exists.return_value = False
-        path_mock_path_exists_calls: List[str] = []
+        path_mock_path_exists_calls: list[str] = []
 
         def mock_path_exists_side_effect(path: str) -> bool:
             if any(path in x for x in path_mock_path_exists_calls):
@@ -606,7 +606,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         }
 
         mock_path_exists.return_value = False
-        path_mock_path_exists_calls: List[str] = []
+        path_mock_path_exists_calls: list[str] = []
 
         def mock_path_exists_side_effect(path: str) -> bool:
             if any(path in x for x in path_mock_path_exists_calls):
@@ -728,7 +728,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         }
 
         mock_path_exists.return_value = False
-        path_mock_path_exists_calls: List[str] = []
+        path_mock_path_exists_calls: list[str] = []
 
         def mock_path_exists_side_effect(path: str) -> bool:
             if any(path in x for x in path_mock_path_exists_calls):
@@ -827,7 +827,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         }
 
         mock_path_exists.return_value = False
-        path_mock_path_exists_calls: List[str] = []
+        path_mock_path_exists_calls: list[str] = []
 
         def mock_path_exists_side_effect(path: str) -> bool:
             if any(path in x for x in path_mock_path_exists_calls):

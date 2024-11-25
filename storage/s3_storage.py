@@ -8,7 +8,7 @@ import boto3.s3.transfer
 from botocore.exceptions import ClientError
 from botocore.session import Session
 
-from typing import BinaryIO, Dict, Optional
+from typing import BinaryIO, Optional
 
 from storage import retry
 from storage.storage import Storage, NotFoundError, register_storage_protocol, _LARGE_CHUNK
@@ -148,7 +148,7 @@ class S3Storage(Storage):
     def load_from_file(self, in_file: BinaryIO) -> None:
         client = self._connect()
 
-        extra_args: Dict[str, str] = {}
+        extra_args: dict[str, str] = {}
 
         content_type = mimetypes.guess_type(self._storage_uri)[0]
         if content_type is not None:
