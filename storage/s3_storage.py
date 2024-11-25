@@ -1,3 +1,4 @@
+import json
 import mimetypes
 import os
 from urllib.parse import parse_qs, unquote
@@ -22,13 +23,11 @@ class S3Storage(Storage):
         super(S3Storage, self).__init__(storage_uri)
         if self._parsed_storage_uri.username is None:
             raise InvalidStorageUri("Missing username")
-        if self._parsed_storage_uri.password is None:
-            raise InvalidStorageUri("Missing password")
         if self._parsed_storage_uri.hostname is None:
             raise InvalidStorageUri("Missing hostname")
 
-        self._access_key = unquote(self._parsed_storage_uri.username)
-        self._access_secret = unquote(self._parsed_storage_uri.password)
+        self._username = self._parsed_storage_uri.username
+        self._password = self._parsed_storage_uri.password
         self._bucket = self._parsed_storage_uri.hostname
         self._keyname = self._parsed_storage_uri.path.replace("/", "", 1)
 
@@ -37,9 +36,48 @@ class S3Storage(Storage):
         self._region = get_optional_query_parameter(query, "region")
 
     def _connect(self) -> Session:
+        session_token = None
+        role = None
+        role_session_name = None
+        external_id = None
+
+        if self._password is None:
+            credentials = json.loads(unquote(self._username))
+
+            if credentials.get("version") != 1:
+                raise InvalidStorageUri("Invalid credentials version")
+            if "key_id" not in credentials:
+                raise InvalidStorageUri("Missing credentials key_id")
+            if "access_secret" not in credentials:
+                raise InvalidStorageUri("Missing credentials access_secret")
+
+            access_key = credentials["key_id"]
+            access_secret = credentials["access_secret"]
+            role = credentials.get("role")
+            role_session_name = credentials.get("role_session_name")
+            external_id = credentials.get("external_id")
+        else:
+            access_key = unquote(self._username)
+            access_secret = unquote(self._password)
+
+        if role is not None:
+            if role_session_name is None:
+                raise InvalidStorageUri("Missing credentials role_session_name")
+
+            sts_client = boto3.client(
+                "sts", aws_access_key_id=access_key, aws_secret_access_key=access_secret)
+
+            response = sts_client.assume_role(
+                RoleArn=role, RoleSessionName=role_session_name, ExternalId=external_id)
+
+            access_key = response["Credentials"]["AccessKeyId"]
+            access_secret = response["Credentials"]["SecretAccessKey"]
+            session_token = response["Credentials"]["SessionToken"]
+
         aws_session = boto3.session.Session(
-            aws_access_key_id=self._access_key,
-            aws_secret_access_key=self._access_secret,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=access_secret,
+            aws_session_token=session_token,
             region_name=self._region)
 
         return aws_session.client("s3")

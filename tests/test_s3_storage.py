@@ -1,3 +1,4 @@
+import json
 import os
 from unittest import mock, TestCase
 from urllib.parse import quote
@@ -34,13 +35,41 @@ class TestS3Storage(StorageTestCase, TestCase):
             self, object_path: str, parameters: Optional[Dict[str, str]] = None) -> str:
         return "s3://access_key:access_secret@bucket/some/file"
 
+    def create_json_credentials(
+        self,
+        key_id: Optional[str],
+        access_secret: Optional[str],
+        *,
+        version: Optional[int] = 1,
+        role: Optional[str] = None,
+        role_session_name: Optional[str] = None,
+        external_id: Optional[str] = None
+    ) -> str:
+        credentials: dict[str, object] = {}
+
+        if version is not None:
+            credentials["version"] = version
+
+        if key_id is not None:
+            credentials["key_id"] = key_id
+
+        if access_secret is not None:
+            credentials["access_secret"] = access_secret
+
+        if role is not None:
+            credentials["role"] = role
+
+        if role_session_name is not None:
+            credentials["role_session_name"] = role_session_name
+
+        if external_id is not None:
+            credentials["external_id"] = external_id
+
+        return quote(json.dumps(credentials, separators=(",", ":")))
+
     def test_requires_username_in_uri(self) -> None:
         with self.assertRaises(InvalidStorageUri):
             get_storage("s3://hostname/path")
-
-    def test_requires_password_in_uri(self) -> None:
-        with self.assertRaises(InvalidStorageUri):
-            get_storage("s3://username@hostname/path")
 
     def test_requires_hostname_in_uri(self) -> None:
         with self.assertRaises(InvalidStorageUri):
@@ -64,7 +93,133 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access/key",
             aws_secret_access_key="access/secret",
+            aws_session_token=None,
             region_name="US_EAST")
+
+    def test_accepts_json_encoded_credentials_in_username(self) -> None:
+        credentials = self.create_json_credentials("ACCESS-KEY", "ACCESS-SECRET")
+
+        storage = get_storage(f"s3://{credentials}@bucket/some/file")
+
+        cast(S3Storage, storage)._connect()
+
+        self.mock_session_class.assert_called_with(
+            aws_access_key_id="ACCESS-KEY",
+            aws_secret_access_key="ACCESS-SECRET",
+            aws_session_token=None,
+            region_name=None)
+
+    def test_requires_json_encoded_credentials_to_have_version(self) -> None:
+        credentials = self.create_json_credentials("ACCESS-KEY", "ACCESS-SECRET", version=None)
+
+        storage = get_storage(f"s3://{credentials}@bucket/some/file")
+
+        with self.assertRaises(InvalidStorageUri):
+            cast(S3Storage, storage)._connect()
+
+    def test_requires_json_encoded_credentials_version_to_be_1(self) -> None:
+        credentials = self.create_json_credentials("ACCESS-KEY", "ACCESS-SECRET", version=42)
+
+        storage = get_storage(f"s3://{credentials}@bucket/some/file")
+
+        with self.assertRaises(InvalidStorageUri):
+            cast(S3Storage, storage)._connect()
+
+    def test_requires_json_encoded_credentials_to_have_key_id(self) -> None:
+        credentials = self.create_json_credentials(None, "ACCESS-SECRET")
+
+        storage = get_storage(f"s3://{credentials}@bucket/some/file")
+
+        with self.assertRaises(InvalidStorageUri):
+            cast(S3Storage, storage)._connect()
+
+    def test_requires_json_encoded_credentials_to_have_access_secret(self) -> None:
+        credentials = self.create_json_credentials("ACCESS-KEY", None)
+
+        storage = get_storage(f"s3://{credentials}@bucket/some/file")
+
+        with self.assertRaises(InvalidStorageUri):
+            cast(S3Storage, storage)._connect()
+
+    @mock.patch("boto3.client", autospec=True)
+    def test_assumes_role_when_json_encoded_credentials_contains_role(
+        self,
+        mock_boto3_client: mock.Mock
+    ) -> None:
+        mock_sts_client = mock_boto3_client.return_value
+        mock_sts_client.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "ASSUMED-KEY-ID",
+                "SecretAccessKey": "ASSUMED-SECRET-KEY",
+                "SessionToken": "ASSUMED-SESSION-TOKEN"
+            }
+        }
+
+        credentials = self.create_json_credentials(
+            "ACCESS-KEY", "ACCESS-SECRET", role="ROLE", role_session_name="ROLE-SESSION-NAME")
+
+        storage = get_storage(f"s3://{credentials}@bucket/some/file")
+
+        cast(S3Storage, storage)._connect()
+
+        mock_boto3_client.assert_called_once_with(
+            "sts", aws_access_key_id="ACCESS-KEY", aws_secret_access_key="ACCESS-SECRET")
+
+        mock_sts_client.assume_role.assert_called_once_with(
+            RoleArn="ROLE", RoleSessionName="ROLE-SESSION-NAME", ExternalId=None)
+
+        self.mock_session_class.assert_called_with(
+            aws_access_key_id="ASSUMED-KEY-ID",
+            aws_secret_access_key="ASSUMED-SECRET-KEY",
+            aws_session_token="ASSUMED-SESSION-TOKEN",
+            region_name=None)
+
+    @mock.patch("boto3.client", autospec=True)
+    def test_requires_role_session_name_when_json_encoded_credentials_contains_role(
+        self,
+        mock_boto3_client: mock.Mock
+    ) -> None:
+        mock_sts_client = mock_boto3_client.return_value
+        mock_sts_client.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "ASSUMED-KEY-ID",
+                "SecretAccessKey": "ASSUMED-SECRET-KEY",
+                "SessionToken": "ASSUMED-SESSION-TOKEN"
+            }
+        }
+
+        credentials = self.create_json_credentials(
+            "ACCESS-KEY", "ACCESS-SECRET", role="ROLE", role_session_name=None)
+
+        storage = get_storage(f"s3://{credentials}@bucket/some/file")
+
+        with self.assertRaises(InvalidStorageUri):
+            cast(S3Storage, storage)._connect()
+
+    @mock.patch("boto3.client", autospec=True)
+    def test_includes_external_id_when_assuming_role_if_provided_in_credentials(
+        self,
+        mock_boto3_client: mock.Mock
+    ) -> None:
+        mock_sts_client = mock_boto3_client.return_value
+        mock_sts_client.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "ASSUMED-KEY-ID",
+                "SecretAccessKey": "ASSUMED-SECRET-KEY",
+                "SessionToken": "ASSUMED-SESSION-TOKEN"
+            }
+        }
+
+        credentials = self.create_json_credentials(
+            "ACCESS-KEY", "ACCESS-SECRET", role="ROLE", role_session_name="ROLE-SESSION-NAME",
+            external_id="EXTERNAL-ID")
+
+        storage = get_storage(f"s3://{credentials}@bucket/some/file")
+
+        cast(S3Storage, storage)._connect()
+
+        mock_sts_client.assume_role.assert_called_once_with(
+            RoleArn="ROLE", RoleSessionName="ROLE-SESSION-NAME", ExternalId="EXTERNAL-ID")
 
     def test_load_from_file(self) -> None:
         mock_s3 = self.mock_session.client.return_value
@@ -79,6 +234,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST")
 
         self.mock_session.client.assert_called_with("s3")
@@ -111,6 +267,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST")
 
         self.mock_session.client.assert_called_with("s3")
@@ -152,6 +309,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST")
 
         self.mock_session.client.assert_called_with("s3")
@@ -191,6 +349,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST")
 
         self.mock_session.client.assert_called_with("s3")
@@ -304,6 +463,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST")
 
         mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
@@ -385,6 +545,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST")
 
         mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
@@ -473,6 +634,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST")
 
         mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
@@ -518,6 +680,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST")
 
         self.mock_session.client.assert_called_with("s3")
@@ -853,6 +1016,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST")
 
         self.mock_session.client.assert_called_with("s3")
@@ -928,6 +1092,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name=None)
 
         self.mock_session.client.assert_called_with("s3")
@@ -971,6 +1136,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name=None)
 
         self.mock_session.client.assert_called_with("s3")
@@ -1008,6 +1174,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name=None)
 
         self.mock_session.client.assert_called_with("s3")
@@ -1045,6 +1212,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name=None)
 
         self.mock_session.client.assert_called_with("s3")
@@ -1064,6 +1232,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST"
         )
 
@@ -1085,6 +1254,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_session_class.assert_called_with(
             aws_access_key_id="access_key",
             aws_secret_access_key="access_secret",
+            aws_session_token=None,
             region_name="US_EAST"
         )
 
