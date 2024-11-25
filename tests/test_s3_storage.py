@@ -65,7 +65,7 @@ class TestS3Storage(StorageTestCase, TestCase):
         if external_id is not None:
             credentials["external_id"] = external_id
 
-        return quote(json.dumps(credentials, separators=(",", ":")))
+        return quote(json.dumps(credentials, separators=(",", ":")), safe="")
 
     def test_requires_username_in_uri(self) -> None:
         with self.assertRaises(InvalidStorageUri):
@@ -97,15 +97,15 @@ class TestS3Storage(StorageTestCase, TestCase):
             region_name="US_EAST")
 
     def test_accepts_json_encoded_credentials_in_username(self) -> None:
-        credentials = self.create_json_credentials("ACCESS-KEY", "ACCESS-SECRET")
+        credentials = self.create_json_credentials("ACCESS/KEY", "ACCESS/SECRET")
 
         storage = get_storage(f"s3://{credentials}@bucket/some/file")
 
         cast(S3Storage, storage)._connect()
 
         self.mock_session_class.assert_called_with(
-            aws_access_key_id="ACCESS-KEY",
-            aws_secret_access_key="ACCESS-SECRET",
+            aws_access_key_id="ACCESS/KEY",
+            aws_secret_access_key="ACCESS/SECRET",
             aws_session_token=None,
             region_name=None)
 
