@@ -12,8 +12,11 @@ from storage import get_storage
 
 
 class IntegrationTests(unittest.TestCase):
+    dest_prefix: str
+    directory: str
+
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         cls.dest_prefix = "".join([random.choice(string.ascii_letters) for i in range(16)])
         cls.directory = tempfile.mkdtemp(prefix="source-root")
         contents = "storage-test-{}".format(time.time()).encode("utf8")
@@ -42,10 +45,10 @@ class IntegrationTests(unittest.TestCase):
             os.close(handle)
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         shutil.rmtree(cls.directory)
 
-    def assert_transport_handles_directories(self, transport):
+    def assert_transport_handles_directories(self, transport: str) -> None:
         variable = "TEST_STORAGE_{}_URI".format(transport)
         uri = os.getenv(variable, None)
 
@@ -76,17 +79,17 @@ class IntegrationTests(unittest.TestCase):
             print("Diff output:\n{}".format(error.output))
             raise
 
-    def test_file_transport_can_upload_and_download_directories(self):
+    def test_file_transport_can_upload_and_download_directories(self) -> None:
         self.assert_transport_handles_directories("FILE")
 
-    def test_ftp_transport_can_upload_and_download_directories(self):
+    def test_ftp_transport_can_upload_and_download_directories(self) -> None:
         self.assert_transport_handles_directories("FTP")
 
-    def test_s3_transport_can_upload_and_download_directories(self):
+    def test_s3_transport_can_upload_and_download_directories(self) -> None:
         self.assert_transport_handles_directories("S3")
 
-    def test_swift_transport_can_upload_and_download_directories(self):
+    def test_swift_transport_can_upload_and_download_directories(self) -> None:
         self.assert_transport_handles_directories("SWIFT")
 
-    def test_gs_transport_can_upload_and_download_directories(self):
+    def test_gs_transport_can_upload_and_download_directories(self) -> None:
         self.assert_transport_handles_directories("GS")

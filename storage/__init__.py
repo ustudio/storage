@@ -6,3 +6,8 @@ from storage import ftp_storage  # noqa: F401
 from storage import s3_storage  # noqa: F401
 from storage import google_storage  # noqa: F401
 from storage.swift_storage import register_swift_protocol  # noqa: F401
+
+__all__ = [
+    "get_storage",
+    "NotFoundError"
+]
