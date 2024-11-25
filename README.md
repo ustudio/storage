@@ -248,8 +248,8 @@ such as a `/`.
 
 #### JSON Credentials
 
-Credentials can also be provided as JSON in the URI's username field. Do not provide a
-password field when providing credentials as JSON. The JSON must be URL encoded to quote
+Credentials can also be provided as JSON in the URI's username field. Do not specify a
+password when providing credentials as JSON. The JSON must be URL encoded to quote
 special characters. For example:
 
 ```
@@ -266,7 +266,7 @@ The JSON credentials must contain the following required attributes:
 }
 ```
 
-The `version` must be `1`. Other version number support may be added in the future.
+The `version` must be `1`. Support for other version numbers may be added in the future.
 
 If the client needs to assume a role before accessing the bucket (for example, to
 access a bucket owned by a third party), include the `role`, `role_session_name`, and
