@@ -13,7 +13,8 @@ from tests.swift_service_test_case import SwiftServiceTestCase
 
 if TYPE_CHECKING:
     from tests.service_test_case import Environ
-    from wsgiref.types import StartResponse
+    # The "type: ignore" on the next line is needed for Python 3.9 and 3.10 support
+    from wsgiref.types import StartResponse  # type: ignore[import-not-found, unused-ignore]
 
 
 class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
@@ -56,11 +57,14 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
             return False
 
     def assert_requires_all_parameters(self, object_path: str) -> None:
-        for auth_string in ["USER:@", ":TOKEN@"]:
+        for auth_string in ["USER:@", ":TOKEN@", ""]:
             cloudfiles_uri = f"cloudfiles://{auth_string}CONTAINER{object_path}"
 
             with self.assertRaises(InvalidStorageUri):
                 get_storage(cloudfiles_uri)
+
+        with self.assertRaises(InvalidStorageUri):
+            get_storage(f"cloudfiles://{object_path}")
 
     @contextlib.contextmanager
     def assert_raises_on_forbidden_access(self) -> Generator[None, None, None]:
@@ -240,7 +244,7 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def test_save_to_file_uses_provided_region_parameter(self) -> None:
         self.object_contents["/path/to/file.mp4"] = b"FOOBAR"
 
-        get_path = f"/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
+        get_path = "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
         self.alt_cloudfiles_service.add_handler("GET", get_path, self.object_handler)
 
         temp = io.BytesIO()
@@ -280,7 +284,7 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def test_save_to_file_uses_provided_public_parameter(self) -> None:
         self.object_contents["/path/to/file.mp4"] = b"FOOBAR"
 
-        get_path = f"/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
+        get_path = "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
         self.internal_cloudfiles_service.add_handler("GET", get_path, self.object_handler)
 
         temp = io.BytesIO()
@@ -303,7 +307,7 @@ class TestCloudFilesStorageProvider(StorageTestCase, SwiftServiceTestCase):
     def test_save_to_file_uses_provided_public_parameter_case_insensitive(self) -> None:
         self.object_contents["/path/to/file.mp4"] = b"FOOBAR"
 
-        get_path = f"/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
+        get_path = "/v2.0/MOSSO-TENANT/CONTAINER/path/to/file.mp4"
         self.internal_cloudfiles_service.add_handler("GET", get_path, self.object_handler)
 
         temp = io.BytesIO()

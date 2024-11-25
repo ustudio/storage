@@ -11,7 +11,7 @@ from typing import BinaryIO, Dict, Optional
 
 from storage import retry
 from storage.storage import Storage, NotFoundError, register_storage_protocol, _LARGE_CHUNK
-from storage.storage import get_optional_query_parameter
+from storage.storage import get_optional_query_parameter, InvalidStorageUri
 from storage.url_parser import remove_user_info
 
 
@@ -20,6 +20,13 @@ class S3Storage(Storage):
 
     def __init__(self, storage_uri: str) -> None:
         super(S3Storage, self).__init__(storage_uri)
+        if self._parsed_storage_uri.username is None:
+            raise InvalidStorageUri("Missing username")
+        if self._parsed_storage_uri.password is None:
+            raise InvalidStorageUri("Missing password")
+        if self._parsed_storage_uri.hostname is None:
+            raise InvalidStorageUri("Missing hostname")
+
         self._access_key = unquote(self._parsed_storage_uri.username)
         self._access_secret = unquote(self._parsed_storage_uri.password)
         self._bucket = self._parsed_storage_uri.hostname

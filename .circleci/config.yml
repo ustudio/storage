@@ -31,39 +31,35 @@ jobs:
 
       - restore_cache:
           keys:
-            - v1-python-{{ checksum "pythonversion" }}-dependencies-{{ checksum "requirements.txt" }}
+            - v1-python-{{ checksum "pythonversion" }}-dependencies-{{ checksum "poetry.lock" }}
 
       - run:
           name: install dependencies
           command: |
-            python -m virtualenv ~/venv
-            . ~/venv/bin/activate
-            pip install -e .
-            pip install -r requirements.txt
+            poetry self update --no-ansi -- 1.8.4
+            poetry install --no-ansi
+
             mkdir -p test-reports
 
       - save_cache:
           paths:
-            - ~/venv
-          key: v1-python-{{ checksum "pythonversion" }}-dependencies-{{ checksum "requirements.txt" }}
+            - ~/.cache/pypoetry/virtualenvs
+          key: v1-python-{{ checksum "pythonversion" }}-dependencies-{{ checksum "poetry.lock" }}
 
       - run:
           name: run tests
           command: |
-            . ~/venv/bin/activate
-            pytest --verbose --junit-xml=test-reports/pytest.xml
+            poetry run pytest --verbose --junit-xml=test-reports/pytest.xml
 
       - run:
           name: run linter
           command: |
-            . ~/venv/bin/activate
-            flake8 | tee test-reports/flake8-errors
+            poetry run flake8 | tee test-reports/flake8-errors
 
       - run:
           name: run typechecks
           command: |
-            . ~/venv/bin/activate
-            mypy
+            poetry run mypy --junit-xml=test-reports/mypy.xml
 
       - store_artifacts:
           path: test-reports
@@ -75,55 +71,65 @@ jobs:
 
   publish:
     docker:
-      - image: circleci/python:3.7
+      - image: cimg/python:3.13
     working_directory: ~/repo
     steps:
       - checkout
 
-      - restore_cache:
-          keys:
-          - v1-publish-dependencies-
-
-      - run:
-          name: install dependencies
-          command: |
-            python -m virtualenv ~/venv
-            . ~/venv/bin/activate
-            pip install twine
-
-      - save_cache:
-          paths:
-            - ~/venv
-          key: v1-publish-dependencies-
-
       - run:
           name: Publish to PyPI
           command: |
-            . ~/venv/bin/activate
-            ./publish_to_pypi.sh
+            export POETRY_HTTP_BASIC_PYPI_USERNAME=$PYPI_USERNAME
+            export POETRY_HTTP_BASIC_PYPI_PASSWORD=$PYPI_PASSWORD
+
+            poetry publish --build
 
 workflows:
   version: 2
   test-and-build:
     jobs:
       - test:
-          name: test-3.6
-          python_version: "3.6"
+          name: test-3.9
+          python_version: "3.9"
           filters:
             tags:
               only: /.*/
           context: storage-library-tester
       - test:
-          name: test-3.7
-          python_version: "3.7"
+          name: test-3.10
+          python_version: "3.10"
+          filters:
+            tags:
+              only: /.*/
+          context: storage-library-tester
+      - test:
+          name: test-3.11
+          python_version: "3.11"
+          filters:
+            tags:
+              only: /.*/
+          context: storage-library-tester
+      - test:
+          name: test-3.12
+          python_version: "3.12"
+          filters:
+            tags:
+              only: /.*/
+          context: storage-library-tester
+      - test:
+          name: test-3.13
+          python_version: "3.13"
           filters:
             tags:
               only: /.*/
           context: storage-library-tester
       - publish:
           requires:
-            - test-3.6
-            - test-3.7
+            - test-3.9
+            - test-3.10
+            - test-3.11
+            - test-3.12
+            - test-3.13
           filters:
             tags:
               only: /^v[0-9]+(\.[0-9]+)*.*/

@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "object-storage"
+version = "0.14.4"
+description = "Python library for accessing files over various file transfer protocols."
+authors = ["uStudio Developers <dev@ustudio.com>"]
+license = "Apache 2.0"
+readme = "README.md"
+packages = [{include = "storage"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+boto3 = "^1.35.68"
+google-cloud-storage = "^2.18.2"
+python-swiftclient = "^4.6.0"
+keystoneauth1 = "^5.9.0"
+
+
+[tool.poetry.group.dev.dependencies]
+flake8 = "^7.1.1"
+mypy = "^1.13.0"
+pytest = "^8.3.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

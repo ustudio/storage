@@ -10,7 +10,7 @@ def _new_uri(parsed_uri: ParseResult, new_netloc: str, new_query: Dict[str, str]
 
 
 def remove_user_info(parsed_uri: ParseResult) -> str:
-    new_netloc = parsed_uri.hostname
+    new_netloc = "" if parsed_uri.hostname is None else parsed_uri.hostname
 
     if parsed_uri.port is not None:
         new_netloc = ":".join((new_netloc, str(parsed_uri.port)))
@@ -21,7 +21,7 @@ def remove_user_info(parsed_uri: ParseResult) -> str:
 
 
 def sanitize_resource_uri(parsed_uri: ParseResult) -> str:
-    new_netloc = parsed_uri.hostname
+    new_netloc = "" if parsed_uri.hostname is None else parsed_uri.hostname
 
     if parsed_uri.port is not None:
         new_netloc = ":".join((new_netloc, str(parsed_uri.port)))

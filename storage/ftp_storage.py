@@ -1,3 +1,4 @@
+import contextlib
 import ftplib
 from ftplib import FTP, error_perm
 import os
@@ -8,6 +9,7 @@ from urllib.parse import parse_qsl
 from typing import BinaryIO, Generator, List, Optional, Tuple
 
 from storage.storage import Storage, register_storage_protocol, _generate_download_url_from_base
+from storage.storage import InvalidStorageUri
 from storage.storage import DEFAULT_FTP_TIMEOUT, DEFAULT_FTP_KEEPALIVE_ENABLE, DEFAULT_FTP_KEEPCNT
 from storage.storage import DEFAULT_FTP_KEEPIDLE, DEFAULT_FTP_KEEPINTVL, NotFoundError
 from storage.url_parser import remove_user_info
@@ -35,6 +37,13 @@ class FTPStorage(Storage):
 
     def __init__(self, storage_uri: str) -> None:
         super(FTPStorage, self).__init__(storage_uri)
+        if self._parsed_storage_uri.username is None:
+            raise InvalidStorageUri("Missing username")
+        if self._parsed_storage_uri.password is None:
+            raise InvalidStorageUri("Missing password")
+        if self._parsed_storage_uri.hostname is None:
+            raise InvalidStorageUri("Missing hostname")
+
         self._username = self._parsed_storage_uri.username
         self._password = self._parsed_storage_uri.password
         self._hostname = self._parsed_storage_uri.hostname
@@ -60,15 +69,19 @@ class FTPStorage(Storage):
         if hasattr(socket, "TCP_KEEPINTVL"):
             sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, DEFAULT_FTP_KEEPINTVL)
 
-    def _connect(self) -> FTP:
+    @contextlib.contextmanager
+    def _connect(self) -> Generator[FTP, None, None]:
         ftp_client = ftplib.FTP(timeout=DEFAULT_FTP_TIMEOUT)
-        ftp_client.connect(self._hostname, port=self._port)
+        try:
+            ftp_client.connect(self._hostname, port=self._port)
 
-        self._configure_keepalive(ftp_client)
+            self._configure_keepalive(ftp_client)
 
-        ftp_client.login(self._username, self._password)
+            ftp_client.login(self._username, self._password)
 
-        return ftp_client
+            yield ftp_client
+        finally:
+            ftp_client.close()
 
     def _cd_to_file(self, ftp_client: FTP) -> str:
         directory, filename = os.path.split(self._parsed_storage_uri.path.lstrip("/"))
@@ -84,7 +97,7 @@ class FTPStorage(Storage):
         files = []
 
         for line in directory_listing:
-            name = re.split(r"\s+", line, 8)[-1]
+            name = re.split(r"\s+", line, maxsplit=8)[-1]
 
             if line.lower().startswith("d"):
                 directories.append(name)
@@ -136,105 +149,106 @@ class FTPStorage(Storage):
             self.save_to_file(output_file)
 
     def save_to_file(self, out_file: BinaryIO) -> None:
-        ftp_client = self._connect()
-        filename = self._cd_to_file(ftp_client)
+        with self._connect() as ftp_client:
+            filename = self._cd_to_file(ftp_client)
 
-        try:
-            ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
-        except error_perm as original_exc:
-            if original_exc.args[0][:3] == "550":
-                raise NotFoundError("No File Found") from original_exc
-            raise original_exc
+            try:
+                ftp_client.retrbinary("RETR {0}".format(filename), callback=out_file.write)
+            except error_perm as original_exc:
+                if original_exc.args[0][:3] == "550":
+                    raise NotFoundError("No File Found") from original_exc
+                raise original_exc
 
     def save_to_directory(self, destination_directory: str) -> None:
-        ftp_client = self._connect()
-        base_ftp_path = self._parsed_storage_uri.path
+        with self._connect() as ftp_client:
+            base_ftp_path = self._parsed_storage_uri.path
 
-        try:
-            ftp_client.cwd(base_ftp_path)
+            try:
+                ftp_client.cwd(base_ftp_path)
 
-            for root, dirs, files in self._walk(ftp_client):
-                relative_path = "/{}".format(root).replace(base_ftp_path, destination_directory, 1)
+                for root, dirs, files in self._walk(ftp_client):
+                    relative_path = "/{}".format(root).replace(
+                        base_ftp_path, destination_directory, 1)
 
-                if not os.path.exists(relative_path):
-                    os.makedirs(relative_path)
+                    if not os.path.exists(relative_path):
+                        os.makedirs(relative_path)
 
-                os.chdir(relative_path)
+                    os.chdir(relative_path)
 
-                for filename in files:
-                    with open(os.path.join(relative_path, filename), "wb") as output_file:
-                        ftp_client.retrbinary(
-                            "RETR {0}".format(filename), callback=output_file.write)
-        except error_perm as original_exc:
-            if original_exc.args[0][:3] == "550":
-                raise NotFoundError("No File Found") from original_exc
-            raise original_exc
+                    for filename in files:
+                        with open(os.path.join(relative_path, filename), "wb") as output_file:
+                            ftp_client.retrbinary(
+                                "RETR {0}".format(filename), callback=output_file.write)
+            except error_perm as original_exc:
+                if original_exc.args[0][:3] == "550":
+                    raise NotFoundError("No File Found") from original_exc
+                raise original_exc
 
     def load_from_filename(self, file_path: str) -> None:
         with open(file_path, "rb") as input_file:
             self.load_from_file(input_file)
 
     def load_from_file(self, in_file: BinaryIO) -> None:
-        ftp_client = self._connect()
-        filename = self._cd_to_file(ftp_client)
+        with self._connect() as ftp_client:
+            filename = self._cd_to_file(ftp_client)
 
-        ftp_client.storbinary("STOR {0}".format(filename), in_file)
+            ftp_client.storbinary("STOR {0}".format(filename), in_file)
 
     def load_from_directory(self, source_directory: str) -> None:
-        ftp_client = self._connect()
-        base_ftp_path = self._parsed_storage_uri.path
+        with self._connect() as ftp_client:
+            base_ftp_path = self._parsed_storage_uri.path
 
-        self._create_directory_structure(ftp_client, base_ftp_path)
+            self._create_directory_structure(ftp_client, base_ftp_path)
 
-        for root, dirs, files in os.walk(source_directory):
-            relative_ftp_path = root.replace(source_directory, base_ftp_path, 1)
+            for root, dirs, files in os.walk(source_directory):
+                relative_ftp_path = root.replace(source_directory, base_ftp_path, 1)
 
-            ftp_client.cwd(relative_ftp_path)
+                ftp_client.cwd(relative_ftp_path)
 
-            for directory in dirs:
-                self._create_directory_structure(ftp_client, directory, restore=True)
+                for directory in dirs:
+                    self._create_directory_structure(ftp_client, directory, restore=True)
 
-            for file in files:
-                file_path = os.path.join(root, file)
+                for file in files:
+                    file_path = os.path.join(root, file)
 
-                with open(file_path, "rb") as input_file:
-                    ftp_client.storbinary("STOR {0}".format(file), input_file)
+                    with open(file_path, "rb") as input_file:
+                        ftp_client.storbinary("STOR {0}".format(file), input_file)
 
     def delete(self) -> None:
-        ftp_client = self._connect()
-        filename = self._cd_to_file(ftp_client)
+        with self._connect() as ftp_client:
+            filename = self._cd_to_file(ftp_client)
 
-        try:
-            ftp_client.delete(filename)
-        except error_perm as original_exc:
-            if original_exc.args[0][:3] == "550":
-                raise NotFoundError("No File Found") from original_exc
-            raise original_exc
+            try:
+                ftp_client.delete(filename)
+            except error_perm as original_exc:
+                if original_exc.args[0][:3] == "550":
+                    raise NotFoundError("No File Found") from original_exc
+                raise original_exc
 
     def delete_directory(self) -> None:
-        ftp_client = self._connect()
-        base_ftp_path = self._parsed_storage_uri.path
+        with self._connect() as ftp_client:
+            base_ftp_path = self._parsed_storage_uri.path
 
-        try:
-            ftp_client.cwd(base_ftp_path)
+            try:
+                ftp_client.cwd(base_ftp_path)
 
-            directories_to_remove = []
-            for root, directories, files in self._walk(ftp_client):
-                for filename in files:
-                    ftp_client.delete("/{}/{}".format(root, filename))
+                directories_to_remove = []
+                for root, directories, files in self._walk(ftp_client):
+                    for filename in files:
+                        ftp_client.delete("/{}/{}".format(root, filename))
 
-                directories_to_remove.append("/{}".format(root))
-        except error_perm as original_exc:
-            if original_exc.args[0][:3] == "550":
-                raise NotFoundError("No File Found") from original_exc
-            raise original_exc
+                    directories_to_remove.append("/{}".format(root))
+            except error_perm as original_exc:
+                if original_exc.args[0][:3] == "550":
+                    raise NotFoundError("No File Found") from original_exc
+                raise original_exc
 
-        # delete directories _after_ removing files from directories
-        # directories should be removed in reverse order - leaf directories before
-        # parent directories - since there is no recursive delete
-        directories_to_remove.sort(reverse=True)
-        for directory in directories_to_remove:
-            ftp_client.rmd("{}".format(directory))
+            # delete directories _after_ removing files from directories
+            # directories should be removed in reverse order - leaf directories before
+            # parent directories - since there is no recursive delete
+            directories_to_remove.sort(reverse=True)
+            for directory in directories_to_remove:
+                ftp_client.rmd("{}".format(directory))
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         """
@@ -269,11 +283,15 @@ class FTPStorage(Storage):
 
 @register_storage_protocol("ftps")
 class FTPSStorage(FTPStorage):
-    def _connect(self) -> FTP:
+    @contextlib.contextmanager
+    def _connect(self) -> Generator[FTP, None, None]:
         ftp_client = ftplib.FTP_TLS(timeout=DEFAULT_FTP_TIMEOUT)
-        ftp_client.connect(self._hostname, port=self._port)
-        self._configure_keepalive(ftp_client)
-        ftp_client.login(self._username, self._password)
-        ftp_client.prot_p()
+        try:
+            ftp_client.connect(self._hostname, port=self._port)
+            self._configure_keepalive(ftp_client)
+            ftp_client.login(self._username, self._password)
+            ftp_client.prot_p()
 
-        return ftp_client
+            yield ftp_client
+        finally:
+            ftp_client.close()

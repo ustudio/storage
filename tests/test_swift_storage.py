@@ -21,7 +21,8 @@ from tests.helpers import FileSpy
 
 if TYPE_CHECKING:
     from tests.service_test_case import Environ
-    from wsgiref.types import StartResponse
+    # The "type: ignore" on the next line is needed for Python 3.9 and 3.10 support
+    from wsgiref.types import StartResponse  # type: ignore[import-not-found, unused-ignore]
 
 
 _LARGE_CHUNK = 32 * 1024 * 1024
@@ -167,7 +168,7 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
                 yield
 
     def assert_requires_all_parameters(self, path: str) -> None:
-        base_uri = f"swift://USER:KEY@CONTAINER"
+        base_uri = "swift://USER:KEY@CONTAINER"
         all_params = {
             "tenant_id": "1234",
             "region": "DFW",
@@ -182,11 +183,14 @@ class TestSwiftStorageProvider(StorageTestCase, SwiftServiceTestCase):
             with self.assertRaises(SwiftStorageError):
                 get_storage(uri)
 
-        for auth_string in ["USER:@", ":KEY@"]:
+        for auth_string in ["USER:@", ":KEY@", ""]:
             uri = f"swift://{auth_string}CONTAINER{path}?{urlencode(all_params)}"
 
             with self.assertRaises(InvalidStorageUri):
                 get_storage(uri)
+
+        with self.assertRaises(InvalidStorageUri):
+            get_storage(f"swift://{path}?{urlencode(all_params)}")
 
     def test_save_to_file_raises_exception_when_missing_required_parameters(self) -> None:
         self.assert_requires_all_parameters("/path/to/file.mp4")

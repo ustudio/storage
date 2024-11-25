@@ -1,5 +1,3 @@
-import distutils.dir_util
-from distutils.errors import DistutilsFileError
 import os
 import shutil
 from urllib.parse import parse_qs
@@ -43,8 +41,9 @@ class LocalStorage(Storage):
 
     def save_to_directory(self, destination_directory: str) -> None:
         try:
-            distutils.dir_util.copy_tree(self._parsed_storage_uri.path, destination_directory)
-        except DistutilsFileError:
+            shutil.copytree(
+                self._parsed_storage_uri.path, destination_directory, dirs_exist_ok=True)
+        except FileNotFoundError:
             raise NotFoundError("No Files Found")
 
     def _ensure_exists(self) -> None:
@@ -67,7 +66,7 @@ class LocalStorage(Storage):
 
     def load_from_directory(self, source_directory: str) -> None:
         self._ensure_exists()
-        distutils.dir_util.copy_tree(source_directory, self._parsed_storage_uri.path)
+        shutil.copytree(source_directory, self._parsed_storage_uri.path, dirs_exist_ok=True)
 
     def delete(self) -> None:
         try:

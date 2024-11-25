@@ -12,7 +12,8 @@ from typing import Any, cast, Dict, Generator, List, Optional, TYPE_CHECKING, Un
 
 if TYPE_CHECKING:
     from tests.service_test_case import Environ
-    from wsgiref.types import StartResponse
+    # The "type: ignore" on the next line is needed for Python 3.9 and 3.10 support
+    from wsgiref.types import StartResponse  # type: ignore[import-not-found, unused-ignore]
 
 
 def strip_slashes(path: str) -> str:
