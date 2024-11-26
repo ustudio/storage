@@ -3,7 +3,7 @@ name = "object-storage"
 version = "0.15.0"
 description = "Python library for accessing files over various file transfer protocols."
 authors = ["uStudio Developers <dev@ustudio.com>"]
-license = "Apache 2.0"
+license = "Apache-2.0"
 readme = "README.md"
 packages = [{include = "storage"}]
 
