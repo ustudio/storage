@@ -10,7 +10,7 @@ Python library for accessing files over various file transfer protocols.
 Install via pip:
 
 ```sh
-pip install object_storage
+pip install object-storage
 ```
 
 ## Quick Start ##
