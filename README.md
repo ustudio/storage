@@ -1,7 +1,7 @@
 storage
 =======
 
-[![build status](https://circleci.com/gh/ustudio/storage.png?circle-token=3b3e87d02777a6e2ef90bcb9651457a215b6d333)](https://circleci.com/gh/ustudio/storage)
+[![build status](https://dl.circleci.com/status-badge/img/gh/ustudio/storage/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/ustudio/storage/tree/master)
 
 Python library for accessing files over various file transfer protocols.
 
@@ -10,11 +10,8 @@ Python library for accessing files over various file transfer protocols.
 Install via pip:
 
 ```sh
-pip install object_storage
+pip install object-storage
 ```
-
-The current version is `0.14.4`.
-For Python 2.7, use the latest release from the `v0.12` branch.
 
 ## Quick Start ##
 
