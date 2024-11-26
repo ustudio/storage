@@ -246,6 +246,44 @@ Note that the `aws_access_key` and `aws_secret_access_key` should be URL encoded
 unsafe characters, if necessary. This may be necessary as AWS sometimes includes characters
 such as a `/`.
 
+#### JSON Credentials
+
+Credentials can also be provided as JSON in the URI's username field. Do not specify a
+password when providing credentials as JSON. The JSON must be URL encoded to quote
+special characters. For example:
+
+```
+s3://%7B%22version%22%3A1%2C%22key_id%22%3A%22ACCESS-KEY%22%2C%22access_secret%22%3A%22ACCESS-SECRET%22%7D@bucket/path/to/file
+```
+
+The JSON credentials must contain the following required attributes:
+
+```json
+{
+  "version": 1,
+  "key_id": "AKIAIOSFODNN7EXAMPLE",
+  "access_secret": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEY"
+}
+```
+
+The `version` must be `1`. Support for other version numbers may be added in the future.
+
+If the client needs to assume a role before accessing the bucket (for example, to
+access a bucket owned by a third party), include the `role`, `role_session_name`, and
+`external_id` attributes in the JSON:
+
+```json
+{
+  "version": 1,
+  "key_id": "AKIAIOSFODNN7EXAMPLE",
+  "access_secret": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEY",
+  "role": "arn:aws:iam::123456789012:role/demo",
+  "role_session_name": "testAssumeRoleSession",
+  "external_id": "123ABC"
+}
+```
+
+
 ### ftp ####
 
 A reference to a file on an FTP server. Username and passwords are supported.
