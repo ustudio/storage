@@ -21,6 +21,11 @@ class TestS3Storage(StorageTestCase, TestCase):
         super().setUp()
         self.temp_directory = None
 
+        config_class_patcher = mock.patch("botocore.config.Config", autospec=True)
+        self.mock_config_class = config_class_patcher.start()
+        self.addCleanup(config_class_patcher.stop)
+        self.mock_config = self.mock_config_class.return_value
+
         session_class_patcher = mock.patch("boto3.session.Session", autospec=True)
         self.mock_session_class = session_class_patcher.start()
         self.addCleanup(session_class_patcher.stop)
@@ -237,7 +242,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name="US_EAST")
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         mock_s3.put_object.assert_called_with(Bucket="bucket", Key="some/file", Body=mock_file)
 
@@ -270,7 +276,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name="US_EAST")
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         mock_transfer_class.assert_called_with(mock_s3)
 
@@ -312,7 +319,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name="US_EAST")
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
         mock_s3.get_object.assert_called_with(Bucket="bucket", Key="some/file")
         mock_file.write.assert_has_calls([
             mock.call(b"some"),
@@ -331,7 +339,8 @@ class TestS3Storage(StorageTestCase, TestCase):
         with self.assertRaises(NotFoundError):
             storage.save_to_file(mock_file)
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
         mock_s3.get_object.assert_called_with(Bucket="bucket", Key="some/file")
         mock_file.write.assert_not_called()
 
@@ -352,7 +361,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name="US_EAST")
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         mock_transfer_class.assert_called_with(mock_s3)
         mock_transfer.download_file.assert_called_with("bucket", "some/file", "destination/file")
@@ -469,7 +479,8 @@ class TestS3Storage(StorageTestCase, TestCase):
         mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
         mock_makedirs.assert_has_calls(
             [mock.call("save_to_directory/b"), mock.call("save_to_directory/e/f")])
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         mock_s3_client.download_file.assert_has_calls([
             mock.call("bucket", "directory/b/c.txt", "save_to_directory/b/c.txt"),
@@ -551,7 +562,8 @@ class TestS3Storage(StorageTestCase, TestCase):
         mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
         mock_makedirs.assert_has_calls(
             [mock.call("save_to_directory/b"), mock.call("save_to_directory/e/f")])
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         self.assertEqual(5, mock_s3_client.download_file.call_count)
         mock_s3_client.download_file.assert_has_calls([
@@ -639,7 +651,8 @@ class TestS3Storage(StorageTestCase, TestCase):
 
         mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
         mock_makedirs.assert_called_once_with("save_to_directory/b")
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         self.assertEqual(5, mock_s3_client.download_file.call_count)
         mock_s3_client.download_file.assert_has_calls([
@@ -683,7 +696,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name="US_EAST")
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
 
@@ -1019,7 +1033,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name="US_EAST")
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         mock_s3.delete_object.assert_called_with(Bucket="bucket", Key="some/file")
 
@@ -1095,7 +1110,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name=None)
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
         mock_s3.delete_objects.assert_called_once_with(
@@ -1139,7 +1155,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name=None)
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
         mock_s3.delete_objects.assert_not_called()
@@ -1177,7 +1194,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name=None)
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
         mock_s3.delete_objects.assert_called_once()
@@ -1215,7 +1233,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name=None)
 
-        self.mock_session.client.assert_called_with("s3")
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
         mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
         mock_s3.delete_objects.assert_called_once()
