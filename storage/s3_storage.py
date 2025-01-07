@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, unquote
 
 import boto3.session
 import boto3.s3.transfer
+import botocore.config
 from botocore.exceptions import ClientError
 from botocore.session import Session
 
@@ -80,7 +81,7 @@ class S3Storage(Storage):
             aws_session_token=session_token,
             region_name=self._region)
 
-        return aws_session.client("s3")
+        return aws_session.client("s3", config=botocore.config.Config(signature_version="v4"))
 
     def save_to_filename(self, file_path: str) -> None:
         client = self._connect()

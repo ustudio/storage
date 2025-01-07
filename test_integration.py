@@ -1,3 +1,4 @@
+import io
 import os
 import random
 import subprocess
@@ -6,6 +7,7 @@ import string
 import tempfile
 import time
 import unittest
+from urllib.request import urlopen
 
 from storage import get_storage
 
@@ -75,6 +77,30 @@ class IntegrationTests(unittest.TestCase):
             print("Diff output:\n{}".format(error.output))
             raise
 
+    def assert_download_url_generated_correctly(self, transport: str) -> None:
+        variable = "TEST_STORAGE_{}_URI".format(transport)
+        uri = os.getenv(variable, None)
+
+        if not uri:
+            raise unittest.SkipTest("Skipping {} - define {} to test".format(transport, variable))
+
+        uri += "/download-test"
+        upload_storage = get_storage(uri)
+        print(f"Testing using: {upload_storage.get_sanitized_uri()}")
+
+        print("Transport:", transport)
+
+        upload_storage.load_from_file(io.BytesIO(b"Test data"))
+
+        download_storage = get_storage(uri)
+
+        download_url = download_storage.get_download_url(seconds=3600)
+
+        print("Downloading from download URL")
+
+        with urlopen(download_url) as download:
+            assert download.read() == b"Test data"
+
     def test_file_transport_can_upload_and_download_directories(self) -> None:
         self.assert_transport_handles_directories("FILE")
 
@@ -92,3 +118,12 @@ class IntegrationTests(unittest.TestCase):
 
     def test_gs_transport_can_upload_and_download_directories(self) -> None:
         self.assert_transport_handles_directories("GS")
+
+    def test_s3_transport_can_generate_valid_download_urls(self) -> None:
+        self.assert_download_url_generated_correctly("S3")
+
+    def test_s3_transport_with_json_credentials_can_generate_valid_download_urls(self) -> None:
+        self.assert_download_url_generated_correctly("S3_JSON")
+
+    def test_gs_transport_can_generate_valid_download_urls(self) -> None:
+        self.assert_download_url_generated_correctly("GS")

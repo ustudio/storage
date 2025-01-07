@@ -1,4 +1,4 @@
-import botocore.client
+import botocore.config
 import botocore.session
 
 from typing import Optional, Union
@@ -26,5 +26,5 @@ class Session(object):
         aws_access_key_id: Optional[str] = None,
         aws_secret_access_key: Optional[str] = None,
         aws_session_token: Optional[str] = None,
-        config: Optional[botocore.client.Config] = None
+        config: Optional[botocore.config.Config] = None
         ) -> botocore.session.Session: ...
