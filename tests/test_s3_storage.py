@@ -1200,7 +1200,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                     "Size": 123,
                     "StorageClass": "STANDARD"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         storage = get_storage("s3://access_key:access_secret@bucket/some/dir")
@@ -1216,7 +1217,8 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_config_class.assert_called_with(signature_version="v4")
         self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
-        mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
+        mock_s3.list_objects.assert_called_once_with(
+            Bucket="bucket", Prefix="some/dir/", Delimiter="/")
         mock_s3.delete_objects.assert_called_once_with(
             Bucket="bucket",
             Delete={
@@ -1242,6 +1244,147 @@ class TestS3Storage(StorageTestCase, TestCase):
                 ]
             })
 
+    def test_delete_directory_deletes_all_objects_when_contents_are_paginated(self) -> None:
+        mock_s3 = self.mock_session.client.return_value
+
+        mock_s3.list_objects.side_effect = [
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    },
+                    {
+                        "Key": "directory/1",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    },
+                    {
+                        "Key": "directory/2",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    },
+                    {
+                        "Key": "directory/3",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    }
+                ],
+                "IsTruncated": True,
+                "NextMarker": "Page2Marker"
+            },
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/4",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    },
+                    {
+                        "Key": "directory/5",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    }
+                ],
+                "IsTruncated": True,
+                "NextMarker": "Page3Marker"
+            },
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/6",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    },
+                    {
+                        "Key": "directory/7",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    }
+                ],
+                "IsTruncated": False
+            }
+        ]
+
+        storage = get_storage("s3://access_key:access_secret@bucket/some/dir")
+
+        storage.delete_directory()
+
+        self.mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            aws_session_token=None,
+            region_name=None)
+
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
+
+        mock_s3.list_objects.assert_has_calls([
+            mock.call(Bucket="bucket", Prefix="some/dir/", Delimiter="/"),
+            mock.call(Bucket="bucket", Prefix="some/dir/", Delimiter="/", Marker="Page2Marker"),
+            mock.call(Bucket="bucket", Prefix="some/dir/", Delimiter="/", Marker="Page3Marker")])
+        mock_s3.delete_objects.assert_has_calls([
+            mock.call(
+                Bucket="bucket",
+                Delete={
+                    "Objects": [
+                        {
+                            "Key": "directory/"
+                        },
+                        {
+                            "Key": "directory/1"
+                        },
+                        {
+                            "Key": "directory/2"
+                        },
+                        {
+                            "Key": "directory/3"
+                        }
+                    ]
+                }),
+            mock.call(
+                Bucket="bucket",
+                Delete={
+                    "Objects": [
+                        {
+                            "Key": "directory/4"
+                        },
+                        {
+                            "Key": "directory/5"
+                        }
+                    ]
+                }),
+            mock.call(
+                Bucket="bucket",
+                Delete={
+                    "Objects": [
+                        {
+                            "Key": "directory/6"
+                        },
+                        {
+                            "Key": "directory/7"
+                        }
+                    ]
+                })
+        ])
+
     def test_delete_directory_raises_when_empty(self) -> None:
         mock_s3 = self.mock_session.client.return_value
 
@@ -1261,7 +1404,8 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_config_class.assert_called_with(signature_version="v4")
         self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
-        mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
+        mock_s3.list_objects.assert_called_once_with(
+            Bucket="bucket", Prefix="some/dir/", Delimiter="/")
         mock_s3.delete_objects.assert_not_called()
 
     def test_delete_directory_raises_not_found_error_when_files_do_not_exist(self) -> None:
@@ -1276,7 +1420,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                     "Size": 123,
                     "StorageClass": "STANDARD"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_s3.delete_objects.side_effect = ClientError({
@@ -1300,7 +1445,8 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_config_class.assert_called_with(signature_version="v4")
         self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
-        mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
+        mock_s3.list_objects.assert_called_once_with(
+            Bucket="bucket", Prefix="some/dir/", Delimiter="/")
         mock_s3.delete_objects.assert_called_once()
 
     def test_delete_directory_raises_original_exception_when_not_404(self) -> None:
@@ -1315,7 +1461,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                     "Size": 123,
                     "StorageClass": "STANDARD"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_s3.delete_objects.side_effect = ClientError({
@@ -1339,7 +1486,8 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_config_class.assert_called_with(signature_version="v4")
         self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
-        mock_s3.list_objects.assert_called_once_with(Bucket="bucket", Prefix="some/dir/")
+        mock_s3.list_objects.assert_called_once_with(
+            Bucket="bucket", Prefix="some/dir/", Delimiter="/")
         mock_s3.delete_objects.assert_called_once()
 
     def test_get_download_url_calls_boto_generate_presigned_url_with_correct_data(self) -> None:

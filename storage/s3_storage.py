@@ -193,19 +193,33 @@ class S3Storage(Storage):
     def delete_directory(self) -> None:
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
-        dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
+
+        dir_object = client.list_objects(
+            Bucket=self._bucket,
+            Prefix=directory_prefix,
+            Delimiter="/")
 
         if "Contents" not in dir_object:
             raise NotFoundError("No Files Found")
 
-        object_keys = [{"Key": o.get("Key", None)} for o in dir_object["Contents"]]
+        object_keys = [[{"Key": o.get("Key", None)} for o in dir_object["Contents"]]]
 
-        try:
-            client.delete_objects(Bucket=self._bucket, Delete={"Objects": object_keys})
-        except ClientError as original_exc:
-            if original_exc.response["Error"]["Code"] == "404":
-                raise NotFoundError("No File Found") from original_exc
-            raise original_exc
+        while dir_object["IsTruncated"]:
+            dir_object = client.list_objects(
+                Bucket=self._bucket,
+                Prefix=directory_prefix,
+                Delimiter="/",
+                Marker=dir_object["NextMarker"])
+
+            object_keys.append([{"Key": o.get("Key", None)} for o in dir_object["Contents"]])
+
+        for key_page in object_keys:
+            try:
+                client.delete_objects(Bucket=self._bucket, Delete={"Objects": key_page})
+            except ClientError as original_exc:
+                if original_exc.response["Error"]["Code"] == "404":
+                    raise NotFoundError("No File Found") from original_exc
+                raise original_exc
 
     def get_download_url(self, seconds: int = 60, key: Optional[str] = None) -> str:
         client = self._connect()
