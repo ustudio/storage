@@ -450,7 +450,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                 {
                     "Key": "directory/g.txt"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_path_exists.return_value = False
@@ -476,7 +477,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name="US_EAST")
 
-        mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
+        mock_s3_client.list_objects.assert_called_with(
+            Bucket="bucket", Prefix="directory/", Delimiter="/")
         mock_makedirs.assert_has_calls(
             [mock.call("save_to_directory/b"), mock.call("save_to_directory/e/f")])
         self.mock_config_class.assert_called_with(signature_version="v4")
@@ -487,6 +489,100 @@ class TestS3Storage(StorageTestCase, TestCase):
             mock.call("bucket", "directory/e.txt", "save_to_directory/e.txt"),
             mock.call("bucket", "directory/e/f/d.txt", "save_to_directory/e/f/d.txt"),
             mock.call("bucket", "directory/g.txt", "save_to_directory/g.txt")])
+
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists")
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    def test_save_to_directory_iterates_over_paginated_contents(
+        self,
+        mock_transfer_class: mock.Mock,
+        mock_path_exists: mock.Mock,
+        mock_makedirs: mock.Mock
+    ) -> None:
+        mock_s3_client = self.mock_session.client.return_value
+        mock_s3_client.list_objects.side_effect = [
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/"
+                    },
+                    {
+                        "Key": "directory/1"
+                    },
+                    {
+                        "Key": "directory/2"
+                    },
+                    {
+                        "Key": "directory/3"
+                    }
+                ],
+                "IsTruncated": True,
+                "NextMarker": "Page2Marker"
+            },
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/4"
+                    },
+                    {
+                        "Key": "directory/5"
+                    }
+                ],
+                "IsTruncated": True,
+                "NextMarker": "Page3Marker"
+            },
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/6"
+                    },
+                    {
+                        "Key": "directory/7"
+                    }
+                ],
+                "IsTruncated": False
+            }
+        ]
+
+        mock_path_exists.return_value = False
+        path_mock_path_exists_calls: list[str] = []
+
+        def mock_path_exists_side_effect(path: str) -> bool:
+            if any(path in x for x in path_mock_path_exists_calls):
+                return True
+            else:
+                path_mock_path_exists_calls.append(path)
+                return False
+
+        mock_path_exists.side_effect = mock_path_exists_side_effect
+
+        storage = get_storage(
+            "s3://access_key:access_secret@bucket/directory?region=US_EAST")
+
+        storage.save_to_directory("save_to_directory")
+
+        self.mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            aws_session_token=None,
+            region_name="US_EAST")
+
+        mock_s3_client.list_objects.assert_has_calls([
+            mock.call(Bucket="bucket", Prefix="directory/", Delimiter="/"),
+            mock.call(Bucket="bucket", Prefix="directory/", Delimiter="/", Marker="Page2Marker"),
+            mock.call(Bucket="bucket", Prefix="directory/", Delimiter="/", Marker="Page3Marker")])
+
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
+
+        mock_s3_client.download_file.assert_has_calls([
+            mock.call("bucket", "directory/1", "save_to_directory/1"),
+            mock.call("bucket", "directory/2", "save_to_directory/2"),
+            mock.call("bucket", "directory/3", "save_to_directory/3"),
+            mock.call("bucket", "directory/4", "save_to_directory/4"),
+            mock.call("bucket", "directory/5", "save_to_directory/5"),
+            mock.call("bucket", "directory/6", "save_to_directory/6"),
+            mock.call("bucket", "directory/7", "save_to_directory/7")])
 
     @mock.patch("storage.retry.time.sleep", autospec=True)
     @mock.patch("storage.retry.random.uniform", autospec=True)
@@ -525,7 +621,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                 {
                     "Key": "directory/g.txt"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_path_exists.return_value = False
@@ -559,7 +656,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name="US_EAST")
 
-        mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
+        mock_s3_client.list_objects.assert_called_with(
+            Bucket="bucket", Prefix="directory/", Delimiter="/")
         mock_makedirs.assert_has_calls(
             [mock.call("save_to_directory/b"), mock.call("save_to_directory/e/f")])
         self.mock_config_class.assert_called_with(signature_version="v4")
@@ -614,7 +712,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                 {
                     "Key": "directory/g.txt"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_path_exists.return_value = False
@@ -649,7 +748,8 @@ class TestS3Storage(StorageTestCase, TestCase):
             aws_session_token=None,
             region_name="US_EAST")
 
-        mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
+        mock_s3_client.list_objects.assert_called_with(
+            Bucket="bucket", Prefix="directory/", Delimiter="/")
         mock_makedirs.assert_called_once_with("save_to_directory/b")
         self.mock_config_class.assert_called_with(signature_version="v4")
         self.mock_session.client.assert_called_with("s3", config=self.mock_config)
@@ -699,7 +799,8 @@ class TestS3Storage(StorageTestCase, TestCase):
         self.mock_config_class.assert_called_with(signature_version="v4")
         self.mock_session.client.assert_called_with("s3", config=self.mock_config)
 
-        mock_s3_client.list_objects.assert_called_with(Bucket="bucket", Prefix="directory/")
+        mock_s3_client.list_objects.assert_called_with(
+            Bucket="bucket", Prefix="directory/", Delimiter="/")
 
     @mock.patch("storage.retry.time.sleep", autospec=True)
     @mock.patch("storage.retry.random.uniform", autospec=True)
@@ -738,7 +839,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                 {
                     "Key": "directory/g.txt"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_path_exists.return_value = False
@@ -837,7 +939,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                 {
                     "Key": "directory/g.txt"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_path_exists.return_value = False

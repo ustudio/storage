@@ -111,12 +111,22 @@ class S3Storage(Storage):
     def save_to_directory(self, directory_path: str) -> None:
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
-        dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
+        dir_object = client.list_objects(
+            Bucket=self._bucket, Prefix=directory_prefix, Delimiter="/")
 
         if "Contents" not in dir_object:
             raise NotFoundError("No Files Found")
 
         dir_contents = dir_object["Contents"]
+
+        while dir_object["IsTruncated"]:
+            dir_object = client.list_objects(
+                Bucket=self._bucket,
+                Prefix=directory_prefix,
+                Delimiter="/",
+                Marker=dir_object["NextMarker"])
+
+            dir_contents += dir_object["Contents"]
 
         for obj in dir_contents:
             file_key = obj["Key"].replace(self._keyname, "", 1)
