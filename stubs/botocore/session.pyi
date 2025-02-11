@@ -40,7 +40,6 @@ class Session(object):
         self,
         Bucket: str,
         Prefix: str,
-        Delimiter: Optional[str] = None,
         Marker: Optional[str] = None
     ) -> ListResponse:
         ...

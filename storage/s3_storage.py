@@ -111,8 +111,7 @@ class S3Storage(Storage):
     def save_to_directory(self, directory_path: str) -> None:
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
-        dir_object = client.list_objects(
-            Bucket=self._bucket, Prefix=directory_prefix, Delimiter="/")
+        dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
 
         if "Contents" not in dir_object:
             raise NotFoundError("No Files Found")
@@ -123,8 +122,7 @@ class S3Storage(Storage):
             dir_object = client.list_objects(
                 Bucket=self._bucket,
                 Prefix=directory_prefix,
-                Delimiter="/",
-                Marker=dir_object["NextMarker"])
+                Marker=dir_object["Contents"][-1]["Key"])
 
             dir_contents += dir_object["Contents"]
 
@@ -194,10 +192,7 @@ class S3Storage(Storage):
         client = self._connect()
         directory_prefix = "{}/".format(self._keyname)
 
-        dir_object = client.list_objects(
-            Bucket=self._bucket,
-            Prefix=directory_prefix,
-            Delimiter="/")
+        dir_object = client.list_objects(Bucket=self._bucket, Prefix=directory_prefix)
 
         if "Contents" not in dir_object:
             raise NotFoundError("No Files Found")
@@ -208,8 +203,7 @@ class S3Storage(Storage):
             dir_object = client.list_objects(
                 Bucket=self._bucket,
                 Prefix=directory_prefix,
-                Delimiter="/",
-                Marker=dir_object["NextMarker"])
+                Marker=dir_object["Contents"][-1]["Key"])
 
             object_keys.append([{"Key": o.get("Key", None)} for o in dir_object["Contents"]])
 
