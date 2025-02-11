@@ -20,7 +20,11 @@ ListObjectResponse = TypedDict(
     })
 
 ListResponse = TypedDict(
-    "ListResponse", {"Contents": List[ListObjectResponse]})
+    "ListResponse", {
+        "Contents": List[ListObjectResponse],
+        "IsTruncated": bool,
+        "NextMarker": Optional[str]
+    })
 
 DeleteEntries = TypedDict(
     "DeleteEntries", {"Objects": List[Dict[str, Optional[str]]]})
@@ -32,7 +36,13 @@ class Session(object):
 
     def get_object(self, Bucket: str, Key: str) -> ObjectResponse: ...
 
-    def list_objects(self, Bucket: str, Prefix: str) -> ListResponse: ...
+    def list_objects(
+        self,
+        Bucket: str,
+        Prefix: str,
+        Marker: Optional[str] = None
+    ) -> ListResponse:
+        ...
 
     def download_file(self, Bucket: str, Key: str, filepath: str) -> None: ...
 

@@ -450,7 +450,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                 {
                     "Key": "directory/g.txt"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_path_exists.return_value = False
@@ -487,6 +488,98 @@ class TestS3Storage(StorageTestCase, TestCase):
             mock.call("bucket", "directory/e.txt", "save_to_directory/e.txt"),
             mock.call("bucket", "directory/e/f/d.txt", "save_to_directory/e/f/d.txt"),
             mock.call("bucket", "directory/g.txt", "save_to_directory/g.txt")])
+
+    @mock.patch("os.makedirs")
+    @mock.patch("os.path.exists")
+    @mock.patch("boto3.s3.transfer.S3Transfer", autospec=True)
+    def test_save_to_directory_iterates_over_paginated_contents(
+        self,
+        mock_transfer_class: mock.Mock,
+        mock_path_exists: mock.Mock,
+        mock_makedirs: mock.Mock
+    ) -> None:
+        mock_s3_client = self.mock_session.client.return_value
+        mock_s3_client.list_objects.side_effect = [
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/"
+                    },
+                    {
+                        "Key": "directory/1"
+                    },
+                    {
+                        "Key": "directory/2"
+                    },
+                    {
+                        "Key": "directory/3"
+                    }
+                ],
+                "IsTruncated": True
+            },
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/4"
+                    },
+                    {
+                        "Key": "directory/5"
+                    }
+                ],
+                "IsTruncated": True
+            },
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/6"
+                    },
+                    {
+                        "Key": "directory/7"
+                    }
+                ],
+                "IsTruncated": False
+            }
+        ]
+
+        mock_path_exists.return_value = False
+        path_mock_path_exists_calls: list[str] = []
+
+        def mock_path_exists_side_effect(path: str) -> bool:
+            if any(path in x for x in path_mock_path_exists_calls):
+                return True
+            else:
+                path_mock_path_exists_calls.append(path)
+                return False
+
+        mock_path_exists.side_effect = mock_path_exists_side_effect
+
+        storage = get_storage(
+            "s3://access_key:access_secret@bucket/directory?region=US_EAST")
+
+        storage.save_to_directory("save_to_directory")
+
+        self.mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            aws_session_token=None,
+            region_name="US_EAST")
+
+        mock_s3_client.list_objects.assert_has_calls([
+            mock.call(Bucket="bucket", Prefix="directory/"),
+            mock.call(Bucket="bucket", Prefix="directory/", Marker="directory/3"),
+            mock.call(Bucket="bucket", Prefix="directory/", Marker="directory/5")])
+
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
+
+        mock_s3_client.download_file.assert_has_calls([
+            mock.call("bucket", "directory/1", "save_to_directory/1"),
+            mock.call("bucket", "directory/2", "save_to_directory/2"),
+            mock.call("bucket", "directory/3", "save_to_directory/3"),
+            mock.call("bucket", "directory/4", "save_to_directory/4"),
+            mock.call("bucket", "directory/5", "save_to_directory/5"),
+            mock.call("bucket", "directory/6", "save_to_directory/6"),
+            mock.call("bucket", "directory/7", "save_to_directory/7")])
 
     @mock.patch("storage.retry.time.sleep", autospec=True)
     @mock.patch("storage.retry.random.uniform", autospec=True)
@@ -525,7 +618,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                 {
                     "Key": "directory/g.txt"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_path_exists.return_value = False
@@ -614,7 +708,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                 {
                     "Key": "directory/g.txt"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_path_exists.return_value = False
@@ -738,7 +833,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                 {
                     "Key": "directory/g.txt"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_path_exists.return_value = False
@@ -837,7 +933,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                 {
                     "Key": "directory/g.txt"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_path_exists.return_value = False
@@ -1097,7 +1194,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                     "Size": 123,
                     "StorageClass": "STANDARD"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         storage = get_storage("s3://access_key:access_secret@bucket/some/dir")
@@ -1139,6 +1237,145 @@ class TestS3Storage(StorageTestCase, TestCase):
                 ]
             })
 
+    def test_delete_directory_deletes_all_objects_when_contents_are_paginated(self) -> None:
+        mock_s3 = self.mock_session.client.return_value
+
+        mock_s3.list_objects.side_effect = [
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    },
+                    {
+                        "Key": "directory/1",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    },
+                    {
+                        "Key": "directory/2",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    },
+                    {
+                        "Key": "directory/3",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    }
+                ],
+                "IsTruncated": True
+            },
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/4",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    },
+                    {
+                        "Key": "directory/5",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    }
+                ],
+                "IsTruncated": True
+            },
+            {
+                "Contents": [
+                    {
+                        "Key": "directory/6",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    },
+                    {
+                        "Key": "directory/7",
+                        "LastModified": "DATE-TIME",
+                        "ETag": "tag",
+                        "Size": 123,
+                        "StorageClass": "STANDARD"
+                    }
+                ],
+                "IsTruncated": False
+            }
+        ]
+
+        storage = get_storage("s3://access_key:access_secret@bucket/some/dir")
+
+        storage.delete_directory()
+
+        self.mock_session_class.assert_called_with(
+            aws_access_key_id="access_key",
+            aws_secret_access_key="access_secret",
+            aws_session_token=None,
+            region_name=None)
+
+        self.mock_config_class.assert_called_with(signature_version="v4")
+        self.mock_session.client.assert_called_with("s3", config=self.mock_config)
+
+        mock_s3.list_objects.assert_has_calls([
+            mock.call(Bucket="bucket", Prefix="some/dir/"),
+            mock.call(Bucket="bucket", Prefix="some/dir/", Marker="directory/3"),
+            mock.call(Bucket="bucket", Prefix="some/dir/", Marker="directory/5")])
+        mock_s3.delete_objects.assert_has_calls([
+            mock.call(
+                Bucket="bucket",
+                Delete={
+                    "Objects": [
+                        {
+                            "Key": "directory/"
+                        },
+                        {
+                            "Key": "directory/1"
+                        },
+                        {
+                            "Key": "directory/2"
+                        },
+                        {
+                            "Key": "directory/3"
+                        }
+                    ]
+                }),
+            mock.call(
+                Bucket="bucket",
+                Delete={
+                    "Objects": [
+                        {
+                            "Key": "directory/4"
+                        },
+                        {
+                            "Key": "directory/5"
+                        }
+                    ]
+                }),
+            mock.call(
+                Bucket="bucket",
+                Delete={
+                    "Objects": [
+                        {
+                            "Key": "directory/6"
+                        },
+                        {
+                            "Key": "directory/7"
+                        }
+                    ]
+                })
+        ])
+
     def test_delete_directory_raises_when_empty(self) -> None:
         mock_s3 = self.mock_session.client.return_value
 
@@ -1173,7 +1410,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                     "Size": 123,
                     "StorageClass": "STANDARD"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_s3.delete_objects.side_effect = ClientError({
@@ -1212,7 +1450,8 @@ class TestS3Storage(StorageTestCase, TestCase):
                     "Size": 123,
                     "StorageClass": "STANDARD"
                 }
-            ]
+            ],
+            "IsTruncated": False
         }
 
         mock_s3.delete_objects.side_effect = ClientError({
