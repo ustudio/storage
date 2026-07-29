@@ -1,6 +1,6 @@
 [project]
 name = "object-storage"
-version = "0.15.3"
+version = "0.15.4"
 description = "Python library for accessing files over various file transfer protocols."
 authors = [{name = "uStudio Developers", email = "dev@ustudio.com"}]
 repository = "https://github.com/ustudio/storage"
