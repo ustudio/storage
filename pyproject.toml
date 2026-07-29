@@ -15,7 +15,7 @@ packages = [{include = "storage"}]
 
 [tool.poetry.dependencies]
 boto3 = "^1.35.68"
-google-cloud-storage = "^2.18.2"
+google-cloud-storage = "^3.13.0"
 python-swiftclient = "^4.6.0"
 keystoneauth1 = "^5.9.0"
 
