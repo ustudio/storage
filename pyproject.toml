@@ -20,7 +20,7 @@ python-swiftclient = "^4.6.0"
 keystoneauth1 = "^5.9.0"
 
 [tool.poetry.group.dev.dependencies]
-flake8 = "^7.1.1"
+flake8 = "^7.3.0"
 mypy = "^2.3.0"
 pytest = "^9.1.1"
 
