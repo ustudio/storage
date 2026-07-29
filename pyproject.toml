@@ -22,7 +22,7 @@ keystoneauth1 = "^5.9.0"
 [tool.poetry.group.dev.dependencies]
 flake8 = "^7.1.1"
 mypy = "^1.13.0"
-pytest = "^8.3.3"
+pytest = "^9.1.1"
 
 [build-system]
 requires = ["poetry-core"]
