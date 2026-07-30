@@ -2,9 +2,8 @@ import io
 import os
 import tempfile
 
-from typing import Any, cast, List, Optional, Union
+from typing import Any, cast, List, Optional, TypedDict, Union
 from typing_extensions import Buffer
-from mypy_extensions import TypedDict
 
 
 class NamedIO(io.BufferedReader):

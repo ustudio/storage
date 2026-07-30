@@ -30,43 +30,43 @@ class TestLocalStorage(StorageTestCase):
         return "file:///path/to/file.mp4"
 
     def test_local_storage_save_to_filename(self) -> None:
-        temp_input = tempfile.NamedTemporaryFile()
-        temp_input.write(b"FOOBAR")
-        temp_input.flush()
+        with tempfile.NamedTemporaryFile() as temp_input:
+            temp_input.write(b"FOOBAR")
+            temp_input.flush()
 
-        temp_output = tempfile.NamedTemporaryFile()
+            with tempfile.NamedTemporaryFile() as temp_output:
 
-        storage = get_storage("file://%s" % (temp_input.name))
-        storage.save_to_filename(temp_output.name)
+                storage = get_storage("file://%s" % (temp_input.name))
+                storage.save_to_filename(temp_output.name)
 
-        with open(temp_output.name, "rb") as temp_output_fp:
-            self.assertEqual(b"FOOBAR", temp_output_fp.read())
+                with open(temp_output.name, "rb") as temp_output_fp:
+                    self.assertEqual(b"FOOBAR", temp_output_fp.read())
 
     def test_local_storage_raises_when_filename_does_not_exist(self) -> None:
         with tempfile.NamedTemporaryFile() as fp:
             removed_path = fp.name
 
         self.assertFalse(os.path.exists(removed_path))
-        temp_output = tempfile.NamedTemporaryFile()
+        with tempfile.NamedTemporaryFile() as temp_output:
 
-        storage = get_storage(f"file://{removed_path}")
-        with self.assertRaises(NotFoundError):
-            storage.save_to_filename(temp_output.name)
+            storage = get_storage(f"file://{removed_path}")
+            with self.assertRaises(NotFoundError):
+                storage.save_to_filename(temp_output.name)
 
     @mock.patch("os.makedirs", autospec=True)
     def test_local_storage_load_from_filename(self, mock_makedirs: mock.Mock) -> None:
-        temp_input = tempfile.NamedTemporaryFile()
-        temp_input.write(b"FOOBAR")
-        temp_input.flush()
+        with tempfile.NamedTemporaryFile() as temp_input:
+            temp_input.write(b"FOOBAR")
+            temp_input.flush()
 
-        temp_output = tempfile.NamedTemporaryFile()
-        storage = get_storage("file://%s" % (temp_output.name))
-        storage.load_from_filename(temp_input.name)
+            with tempfile.NamedTemporaryFile() as temp_output:
+                storage = get_storage("file://%s" % (temp_output.name))
+                storage.load_from_filename(temp_input.name)
 
-        self.assertEqual(0, mock_makedirs.call_count)
+                self.assertEqual(0, mock_makedirs.call_count)
 
-        with open(temp_output.name, "rb") as temp_output_fp:
-            self.assertEqual(b"FOOBAR", temp_output_fp.read())
+                with open(temp_output.name, "rb") as temp_output_fp:
+                    self.assertEqual(b"FOOBAR", temp_output_fp.read())
 
     def test_local_storage_save_to_directory(self) -> None:
         self.temp_directory = create_temp_nested_directory_with_files()
@@ -249,16 +249,16 @@ class TestLocalStorage(StorageTestCase):
             storage.delete_directory()
 
     def test_local_storage_save_to_file(self) -> None:
-        temp_input = tempfile.NamedTemporaryFile()
-        temp_input.write(b"FOOBAR")
-        temp_input.flush()
+        with tempfile.NamedTemporaryFile() as temp_input:
+            temp_input.write(b"FOOBAR")
+            temp_input.flush()
 
-        out_file = BytesIO()
+            out_file = BytesIO()
 
-        storage = get_storage("file://%s" % (temp_input.name))
-        storage.save_to_file(out_file)
+            storage = get_storage("file://%s" % (temp_input.name))
+            storage.save_to_file(out_file)
 
-        self.assertEqual(b"FOOBAR", out_file.getvalue())
+            self.assertEqual(b"FOOBAR", out_file.getvalue())
 
     def test_local_storage_raises_when_file_does_not_exist(self) -> None:
         with tempfile.NamedTemporaryFile() as fp:
@@ -274,13 +274,13 @@ class TestLocalStorage(StorageTestCase):
 
     def test_local_storage_load_from_file(self) -> None:
         in_file = BytesIO(b"foobar")
-        temp_output = tempfile.NamedTemporaryFile()
+        with tempfile.NamedTemporaryFile() as temp_output:
 
-        storage = get_storage("file://{0}".format(temp_output.name))
-        storage.load_from_file(in_file)
+            storage = get_storage("file://{0}".format(temp_output.name))
+            storage.load_from_file(in_file)
 
-        with open(temp_output.name, "rb") as temp_output_fp:
-            self.assertEqual(b"foobar", temp_output_fp.read())
+            with open(temp_output.name, "rb") as temp_output_fp:
+                self.assertEqual(b"foobar", temp_output_fp.read())
 
     @mock.patch("os.makedirs")
     @mock.patch("os.path.exists")
@@ -320,68 +320,68 @@ class TestLocalStorage(StorageTestCase):
         self.assertEqual(0, mock_makedirs.call_count)
 
     def test_local_storage_get_download_url(self) -> None:
-        temp_input = tempfile.NamedTemporaryFile()
-        temp_input.write(b"FOOBAR")
-        temp_input.flush()
+        with tempfile.NamedTemporaryFile() as temp_input:
+            temp_input.write(b"FOOBAR")
+            temp_input.flush()
 
-        download_url_base = "http://host:123/path/to/"
-        download_url_base_encoded = quote_plus(download_url_base)
+            download_url_base = "http://host:123/path/to/"
+            download_url_base_encoded = quote_plus(download_url_base)
 
-        storage_uri = f"file://{temp_input.name}?download_url_base={download_url_base_encoded}"
-        out_storage = get_storage(storage_uri)
-        temp_url = out_storage.get_download_url()
+            storage_uri = f"file://{temp_input.name}?download_url_base={download_url_base_encoded}"
+            out_storage = get_storage(storage_uri)
+            temp_url = out_storage.get_download_url()
 
-        self.assertEqual(
-            f"http://host:123/path/to/{os.path.basename(temp_input.name)}", temp_url)
+            self.assertEqual(
+                f"http://host:123/path/to/{os.path.basename(temp_input.name)}", temp_url)
 
     def test_local_storage_get_download_url_ignores_args(self) -> None:
-        temp_input = tempfile.NamedTemporaryFile()
-        temp_input.write(b"FOOBAR")
-        temp_input.flush()
+        with tempfile.NamedTemporaryFile() as temp_input:
+            temp_input.write(b"FOOBAR")
+            temp_input.flush()
 
-        download_url_base = "http://host:123/path/to/"
-        download_url_base_encoded = quote_plus(download_url_base)
+            download_url_base = "http://host:123/path/to/"
+            download_url_base_encoded = quote_plus(download_url_base)
 
-        storage_uri = f"file://{temp_input.name}?download_url_base={download_url_base_encoded}"
+            storage_uri = f"file://{temp_input.name}?download_url_base={download_url_base_encoded}"
 
-        out_storage = get_storage(storage_uri)
-        temp_url = out_storage.get_download_url(seconds=900)
+            out_storage = get_storage(storage_uri)
+            temp_url = out_storage.get_download_url(seconds=900)
 
-        self.assertEqual(
-            f"http://host:123/path/to/{os.path.basename(temp_input.name)}", temp_url)
+            self.assertEqual(
+                f"http://host:123/path/to/{os.path.basename(temp_input.name)}", temp_url)
 
-        temp_url = out_storage.get_download_url(key="secret")
+            temp_url = out_storage.get_download_url(key="secret")
 
-        self.assertEqual(
-            f"http://host:123/path/to/{os.path.basename(temp_input.name)}", temp_url)
+            self.assertEqual(
+                f"http://host:123/path/to/{os.path.basename(temp_input.name)}", temp_url)
 
     def test_local_storage_get_download_url_returns_none_on_empty_base(self) -> None:
-        temp_input = tempfile.NamedTemporaryFile()
-        temp_input.write(b"FOOBAR")
-        temp_input.flush()
+        with tempfile.NamedTemporaryFile() as temp_input:
+            temp_input.write(b"FOOBAR")
+            temp_input.flush()
 
-        storage_uri = "file://{fpath}".format(fpath=temp_input.name)
-        out_storage = get_storage(storage_uri)
+            storage_uri = "file://{fpath}".format(fpath=temp_input.name)
+            out_storage = get_storage(storage_uri)
 
-        with self.assertRaises(DownloadUrlBaseUndefinedError):
-            out_storage.get_download_url()
+            with self.assertRaises(DownloadUrlBaseUndefinedError):
+                out_storage.get_download_url()
 
     def test_local_storage_rejects_multiple_query_values_for_download_url_key_setting(self) -> None:
         self.assert_rejects_multiple_query_values("/foo/bar/object.mp4", "download_url_base")
 
     def test_local_storage_get_sanitized_uri_returns_filepath(self) -> None:
-        temp_input = tempfile.NamedTemporaryFile()
-        temp_input.write(b"FOOBAR")
-        temp_input.flush()
+        with tempfile.NamedTemporaryFile() as temp_input:
+            temp_input.write(b"FOOBAR")
+            temp_input.flush()
 
-        download_url_base = "http://host:123/path/to/"
-        download_url_base_encoded = quote_plus(download_url_base)
+            download_url_base = "http://host:123/path/to/"
+            download_url_base_encoded = quote_plus(download_url_base)
 
-        storage_uri = f"file://{temp_input.name}?download_url_base={download_url_base_encoded}"
-        out_storage = get_storage(storage_uri)
+            storage_uri = f"file://{temp_input.name}?download_url_base={download_url_base_encoded}"
+            out_storage = get_storage(storage_uri)
 
-        sanitized_uri = out_storage.get_sanitized_uri()
+            sanitized_uri = out_storage.get_sanitized_uri()
 
-        self.assertEqual(
-            f"file://{temp_input.name}?download_url_base={download_url_base_encoded}",
-            sanitized_uri)
+            self.assertEqual(
+                f"file://{temp_input.name}?download_url_base={download_url_base_encoded}",
+                sanitized_uri)

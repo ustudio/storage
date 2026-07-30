@@ -197,7 +197,9 @@ class S3Storage(Storage):
         if "Contents" not in dir_object:
             raise NotFoundError("No Files Found")
 
-        object_keys = [[{"Key": o.get("Key", None)} for o in dir_object["Contents"]]]
+        object_keys: list[list[dict[str, str | None]]] = [[
+            {"Key": o.get("Key", None)} for o in dir_object["Contents"]
+        ]]
 
         while dir_object["IsTruncated"]:
             dir_object = client.list_objects(

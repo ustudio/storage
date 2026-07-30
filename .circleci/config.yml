@@ -1,4 +1,8 @@
 version: 2.1
+parameters:
+  poetry_version:
+    type: string
+    default: "2.4.1"
 jobs:
   test:
     parameters:
@@ -36,7 +40,7 @@ jobs:
       - run:
           name: install dependencies
           command: |
-            poetry self update --no-ansi -- 1.8.4
+            poetry self update --no-ansi -- << pipeline.parameters.poetry_version >>
             poetry install --no-ansi
 
             mkdir -p test-reports
@@ -79,6 +83,8 @@ jobs:
       - run:
           name: Publish to PyPI
           command: |
+            poetry self update --no-ansi -- << pipeline.parameters.poetry_version >>
+
             export POETRY_HTTP_BASIC_PYPI_USERNAME=$PYPI_USERNAME
             export POETRY_HTTP_BASIC_PYPI_PASSWORD=$PYPI_PASSWORD
 
@@ -88,13 +94,6 @@ workflows:
   version: 2
   test-and-build:
     jobs:
-      - test:
-          name: test-3.9
-          python_version: "3.9"
-          filters:
-            tags:
-              only: /.*/
-          context: storage-library-tester
       - test:
           name: test-3.10
           python_version: "3.10"
@@ -123,13 +122,20 @@ workflows:
             tags:
               only: /.*/
           context: storage-library-tester
+      - test:
+          name: test-3.14
+          python_version: "3.14"
+          filters:
+            tags:
+              only: /.*/
+          context: storage-library-tester
       - publish:
           requires:
-            - test-3.9
             - test-3.10
             - test-3.11
             - test-3.12
             - test-3.13
+            - test-3.14
           filters:
             tags:
               only: /^v[0-9]+(\.[0-9]+)*.*/

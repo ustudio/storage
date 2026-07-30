@@ -7,7 +7,7 @@ from typing import BinaryIO, Callable, Dict, List, Optional, Type, TypeVar, Unio
 from storage.url_parser import sanitize_resource_uri
 
 
-_STORAGE_TYPES = {}         # maintains supported storage protocols
+_STORAGE_TYPES: dict[str, Type["Storage"]] = {}         # maintains supported storage protocols
 _LARGE_CHUNK = 32 * 1024 * 1024
 
 DEFAULT_SWIFT_TIMEOUT = 60
