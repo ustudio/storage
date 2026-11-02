@@ -2,7 +2,7 @@ version: 2.1
 parameters:
   poetry_version:
     type: string
-    default: "2.4.1"
+    default: "2.5.1"
 jobs:
   test:
     parameters:
