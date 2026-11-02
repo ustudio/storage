@@ -2,7 +2,7 @@ version: 2.1
 parameters:
   poetry_version:
     type: string
-    default: "2.4.1"
+    default: "2.5.1"
 jobs:
   test:
     parameters:
@@ -74,8 +74,11 @@ jobs:
           prefix: python-<< parameters.python_version >>
 
   publish:
+    parameters:
+      python_version:
+        type: string
     docker:
-      - image: cimg/python:3.13
+      - image: cimg/python:<< parameters.python_version >>
     working_directory: ~/repo
     steps:
       - checkout
@@ -95,47 +98,17 @@ workflows:
   test-and-build:
     jobs:
       - test:
-          name: test-3.10
-          python_version: "3.10"
-          filters:
-            tags:
-              only: /.*/
-          context: storage-library-tester
-      - test:
-          name: test-3.11
-          python_version: "3.11"
-          filters:
-            tags:
-              only: /.*/
-          context: storage-library-tester
-      - test:
-          name: test-3.12
-          python_version: "3.12"
-          filters:
-            tags:
-              only: /.*/
-          context: storage-library-tester
-      - test:
-          name: test-3.13
-          python_version: "3.13"
-          filters:
-            tags:
-              only: /.*/
-          context: storage-library-tester
-      - test:
-          name: test-3.14
-          python_version: "3.14"
+          matrix:
+            parameters:
+              python_version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
           filters:
             tags:
               only: /.*/
           context: storage-library-tester
       - publish:
+          python_version: "3.15"
           requires:
-            - test-3.10
-            - test-3.11
-            - test-3.12
-            - test-3.13
-            - test-3.14
+            - test
           filters:
             tags:
               only: /^v[0-9]+(\.[0-9]+)*.*/
